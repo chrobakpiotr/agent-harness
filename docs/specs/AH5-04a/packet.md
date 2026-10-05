@@ -46,3 +46,5 @@ without bypassing authority) belong to that packet.
    the "accepted SDD-OBS contracts" dependency.
 2. Origin admission is implemented in Showcase first (ADR 0001) and moves here afterwards with parity.
 3. 04a-1 takes plan acceptance through an injected lifecycle port; the library ships no implementation of it.
+4. `cryptography==49.0.0` is the optional extra `grants`, not a core dependency: releases from 47 ship no
+   Intel-macOS wheel. `human_grants` imports it lazily; without it the grant tests skip.

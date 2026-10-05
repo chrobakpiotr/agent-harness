@@ -1,0 +1,207 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "description": "Repository-relative mini-glob v1 validation is additionally enforced by profile.py; no absolute paths, traversal, backslashes, classes or braces."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Repository-relative mini-glob v1 validation is additionally enforced by profile.py; no absolute paths, traversal, backslashes, classes or braces."
+            },
+            "uniqueItems": true
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+            },
+            "uniqueItems": true
+          },
+          "applicability": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Repository-relative mini-glob v1 validation is additionally enforced by profile.py; no absolute paths, traversal, backslashes, classes or braces."
+            },
+            "uniqueItems": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+          },
+          "retry_policy": {
+            "enum": [
+              "forbid",
+              "allow"
+            ]
+          },
+          "retry_controls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+            },
+            "uniqueItems": true
+          },
+          "sandbox": {
+            "enum": [
+              "required",
+              "best-effort",
+              "off"
+            ]
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+                },
+                "format": {
+                  "enum": [
+                    "version",
+                    "sha256",
+                    "boolean"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "format"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "produces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Repository-relative mini-glob v1 validation is additionally enforced by profile.py; no absolute paths, traversal, backslashes, classes or braces."
+            },
+            "uniqueItems": true
+          },
+          "consumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "producer": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "description": "Repository-relative mini-glob v1 validation is additionally enforced by profile.py; no absolute paths, traversal, backslashes, classes or braces."
+                }
+              },
+              "required": [
+                "producer",
+                "path"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "cacheable": {
+            "type": "boolean"
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "expensive": {
+            "type": "boolean"
+          },
+          "aggregate": {
+            "type": "boolean"
+          },
+          "opaque_environment": {
+            "type": "boolean"
+          },
+          "opaque_external_state": {
+            "type": "boolean"
+          },
+          "independent_execution_classes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "const": "harness-managed-independent-execution-v1"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "command",
+          "inputs"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "critical": {
+                  "const": true
+                }
+              },
+              "required": [
+                "critical"
+              ]
+            },
+            "then": {
+              "properties": {
+                "retry_policy": {
+                  "const": "forbid"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "gates"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verification profile v1"
+}

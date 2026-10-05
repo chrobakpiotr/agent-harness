@@ -1,4 +1,4 @@
-"""The installed package imports only stdlib and itself: never a consumer."""
+"""The installed package imports only stdlib, itself and its optional extras: never a consumer."""
 
 import ast
 import sys
@@ -13,7 +13,7 @@ PACKAGE = Path(agent_harness.__file__).parent
 @unittest.skipUnless(hasattr(sys, "stdlib_module_names"), "needs Python 3.10+")
 class ImportBoundaryTest(unittest.TestCase):
     def test_only_stdlib_and_own_imports(self):
-        allowed = set(sys.stdlib_module_names) | {"agent_harness"}
+        allowed = set(sys.stdlib_module_names) | {"agent_harness", "cryptography"}
         foreign = set()
         for path in PACKAGE.rglob("*.py"):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
