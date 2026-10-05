@@ -33,4 +33,6 @@ jobs:
         run: pipx run ruff==0.16.10 check .
 
       - name: Build wheel, install outside checkout, test installed package
+        env:
+          AGENT_HARNESS_BENCHMARK: '1'  # planning benchmark limits are calibrated for CI runners
         run: scripts/check-wheel.sh

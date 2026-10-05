@@ -32,7 +32,7 @@ def _passes(src, tests):
             shutil.copy(test, tmp)
         names = [pathlib.Path(t).stem for t in tests]
         return subprocess.run([sys.executable, "-m", "unittest", *names], cwd=tmp,
-                              capture_output=True, timeout=120).returncode == 0
+                              capture_output=True, timeout=120, check=False).returncode == 0
 
 
 def _events(transcript):

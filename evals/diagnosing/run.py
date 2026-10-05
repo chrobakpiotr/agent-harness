@@ -40,7 +40,7 @@ def workspace(path, arm):
     if arm == "practice":
         shutil.copytree(SDD / "practices", docs / "practices")
     else:
-        builder = re.sub(r"## Practices\n.*?(?=## )", "", builder, flags=re.S)
+        builder = re.sub(r"## Practices\n.*?(?=## )", "", builder, flags=re.DOTALL)
     (docs / "agents" / "builder.md").write_text(builder)
     git = ["git", "-c", "user.name=eval", "-c", "user.email=eval@example.invalid"]
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
@@ -49,7 +49,7 @@ def workspace(path, arm):
 
 
 def main(runs):
-    out = ROOT / ".agent-runs" / "evals" / "diagnosing" / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = ROOT / ".agent-runs" / "evals" / "diagnosing" / datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
     out.mkdir(parents=True)
     meta = {"repo_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             "claude_version": subprocess.check_output(["claude", "--version"], text=True).strip(), "runs": runs}
@@ -60,7 +60,8 @@ def main(runs):
             ws, transcript = pathlib.Path(tempfile.mkdtemp()) / "ws", out / f"{arm}-{i}.jsonl"
             workspace(ws, arm)
             with transcript.open("w") as sink:
-                code = subprocess.run(CLAUDE, cwd=ws, stdout=sink, stderr=subprocess.STDOUT, timeout=1800).returncode
+                code = subprocess.run(CLAUDE, cwd=ws, stdout=sink, stderr=subprocess.STDOUT, timeout=1800,
+                                      check=False).returncode
             init = result = {}
             for line in transcript.read_text().splitlines():
                 try:

@@ -1,8 +1,8 @@
 import itertools
 import json
+import unittest
 from importlib import resources
 from unittest import mock
-import unittest
 
 from agent_harness.verification.model import Artifact, Gate, InvalidPolicy, Probe
 from agent_harness.verification.profile import load_profile, matches

@@ -41,7 +41,7 @@ Wave = AH5 task that may first move the module.
 | `control_plane.py` | 247 | — | **network** (GitHub/Jira, read-only intake); `.agent-state/control-plane` | `test_control_plane` | undecided (intake, not execution) | not in MVP |
 | `spec_inventory.py` | 149 | — | `docs/specs` inventory | `test_spec_inventory` | Showcase (project docs) | stays |
 | `verification-profiles/showcase.json` | — | — | Java/Gradle gates | `test_verification_profile_showcase` | **Showcase** (consumer policy) | stays |
-| `benchmarks/verification_planning.py` + baseline | — | `unittest.mock` of planner | harness performance regression | `test_verification_benchmark` | library (regression benchmark, not agent-benchmark corpus) | with 04a |
+| `benchmarks/verification_planning.py` + baseline | — | `unittest.mock` of planner | harness performance regression | `test_verification_benchmark` | library (regression benchmark, not agent-benchmark corpus) | 04a (moved; CI only) |
 | `human-issuer-registry.json` | — | — | trust root data | — | consumer-provided (state/trust, not package data) | 04a |
 | `requirements.txt` (`cryptography==49.0.0`) | — | — | only third-party dependency | — | library dependency when its user moves | with its user |
 

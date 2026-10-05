@@ -20,6 +20,7 @@ Until cutover (AH5-06) Showcase remains the implementation owner; changes go the
 | `agent_harness/verification/candidate.py` | `verification/candidate.py` | `2b5fd4e4` | `resolve_control_root` from `agent_harness.repository` |
 | `agent_harness/verification/store.py` | `verification/store.py` | `597ace86` | `_git`/`_worktrees`/`resolve_control_root` body replaced by `agent_harness.repository`, `RepositoryError` re-raised as `StoreError` with the same code; no default issuer registry (`__file__`), missing registry fails `FAILURE_GRANT_ISSUER_UNAVAILABLE`; new `profile_root` parameter passed to `validate_plan_record` |
 | `agent_harness/verification/authority.py` | `verification/authority.py` | `4ac59537` | no `import harness`: `publish_and_accept`, `resolve_accepted`, `resolve_execution`, `prepare_task_plan` take an injected `lifecycle` port (the Showcase `harness` module fits it); profile root is an explicit `profile_root` parameter instead of `__file__`; `prepare_task_plan` takes `profile_id` (no built-in `showcase`); `resolve_execution` guard unchanged |
+| `benchmarks/verification_planning.py` (repo, not in the wheel) | `benchmarks/verification_planning.py` | `50690851` | imports from `agent_harness.verification`, unused `sys` import removed; recorded Showcase baseline JSON not copied |
 | `agent_harness/schemas/verification-profile.schema.json` | `schemas/verification-profile.schema.json` | `375b2f5e` | none |
 
 Check a module against its source:
@@ -34,6 +35,8 @@ Ported tests: `test_trust` (all), `test_machine_outcomes` (2 of 3; the `verify.p
 `test_verification_store` (all), `test_verification_authority` (13 of 15: the executor case moves with 04b,
 lifecycle acceptance stays with the Showcase lifecycle module; the lifecycle is a mock port and
 `tests/fixtures/verification-profiles/showcase.json` is the source profile `5180d881` as test input).
+`test_verification_benchmark` (verbatim, limits unchanged; runs only with `AGENT_HARNESS_BENCHMARK=1`, set in CI:
+on a 1.4 GHz i5 the Showcase code itself measures an 11.9–13.6 s median against the 10 s limit).
 `test_verification_completion_boundary` drives the Showcase lifecycle CLI and stays there.
 
 Parity (AH5-04a-1): on one disposable repository Showcase `50c18f9` (Python 3.13) and the package

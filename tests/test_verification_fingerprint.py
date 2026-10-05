@@ -4,9 +4,10 @@ import pathlib
 import tempfile
 import unittest
 
+from test_repository import git, new_repo
+
 from agent_harness.verification.fingerprint import changed_surface
 from agent_harness.verification.model import InvalidPolicy
-from test_repository import git, new_repo
 
 
 class ChangedSurfaceTest(unittest.TestCase):

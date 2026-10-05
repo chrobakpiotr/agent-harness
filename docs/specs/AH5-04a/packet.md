@@ -50,3 +50,6 @@ without bypassing authority) belong to that packet.
    Intel-macOS wheel. `human_grants` imports it lazily; without it the grant tests skip.
    `check-wheel.sh` falls back to the last release with an Intel-macOS wheel (46.x), so the grant tests run
    there too; it prints the version used. Linux CI installs the pinned 49.0.0.
+5. The planning benchmark (`benchmarks/verification_planning.py`, source map "with 04a") joins 04a-1. Its limits
+   stay as in Showcase and it runs in CI only (`AGENT_HARNESS_BENCHMARK=1`): this development host misses them
+   with the Showcase code too, so locally it reports skipped, not PASS.
