@@ -1,0 +1,58 @@
+{
+  "description": "Deadline hit and cancel requested; descendants not proven gone, so drain is unconfirmed.",
+  "request": {
+    "contract_version": 1,
+    "request_id": "req-timeout",
+    "trial_id": "trial-001",
+    "task_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider": "fake",
+    "model": "fake-model-1",
+    "settings": {
+      "temperature": 0
+    },
+    "capabilities": [
+      "cancel",
+      "usage"
+    ],
+    "timeout_seconds": 600,
+    "max_attempts": 2,
+    "input_bindings": [
+      {
+        "name": "task",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "result": {
+    "contract_version": 1,
+    "request_id": "req-timeout",
+    "request_digest": "sha256:dc1e049109daab763d1b8101cc13dd6f1e5c49cc26106e2d2bbd83715154a0c1",
+    "execution_id": "exec-req-timeout",
+    "outcome": "timeout",
+    "exit_code": null,
+    "completion": null,
+    "error_code": null,
+    "drain": "unconfirmed",
+    "cancel_requested": true,
+    "isolation_level": "fake",
+    "resolved_model": "fake-model-1",
+    "versions": {
+      "agent-harness": "0.0.1"
+    },
+    "started_at": "2026-10-05T10:00:00Z",
+    "ended_at": "2026-10-05T10:10:00Z",
+    "attempts": [
+      {
+        "attempt_id": "att-1",
+        "outcome": "timeout",
+        "started_at": "2026-10-05T10:00:00Z",
+        "ended_at": "2026-10-05T10:10:00Z"
+      }
+    ],
+    "candidate": null,
+    "artifacts": [],
+    "usage_events": [],
+    "usage_completeness": "unknown"
+  }
+}

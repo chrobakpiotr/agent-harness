@@ -1,0 +1,63 @@
+{
+  "description": "Request requires qualified isolation; backend only discovered. Never launched.",
+  "request": {
+    "contract_version": 1,
+    "request_id": "req-not-qualified",
+    "trial_id": "trial-001",
+    "task_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider": "fake",
+    "model": "fake-model-1",
+    "settings": {
+      "temperature": 0
+    },
+    "capabilities": [
+      "qualified_isolation"
+    ],
+    "timeout_seconds": 600,
+    "max_attempts": 2,
+    "input_bindings": [
+      {
+        "name": "task",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "capability_report": {
+    "contract_version": 1,
+    "target": "docker-container",
+    "policy_digest": null,
+    "discovered": true,
+    "supported": false,
+    "qualified": false,
+    "launch_ready": false,
+    "capabilities": [
+      "cancel"
+    ],
+    "refusal": "NOT_QUALIFIED"
+  },
+  "result": {
+    "contract_version": 1,
+    "request_id": "req-not-qualified",
+    "request_digest": "sha256:3d35f6fe5d45f667ccfbac5f7e32363ffe0f39980d124896e195e676f0a1a9a8",
+    "execution_id": null,
+    "outcome": "rejected",
+    "exit_code": null,
+    "completion": null,
+    "error_code": "NOT_QUALIFIED",
+    "drain": null,
+    "cancel_requested": false,
+    "isolation_level": "unqualified",
+    "resolved_model": null,
+    "versions": {
+      "agent-harness": "0.0.1"
+    },
+    "started_at": null,
+    "ended_at": null,
+    "attempts": [],
+    "candidate": null,
+    "artifacts": [],
+    "usage_events": [],
+    "usage_completeness": "unknown"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "description": "Launched, exited 0, harness accepted completion; usage complete via summary.",
+  "request": {
+    "contract_version": 1,
+    "request_id": "req-success",
+    "trial_id": "trial-001",
+    "task_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider": "fake",
+    "model": "fake-model-1",
+    "settings": {
+      "temperature": 0
+    },
+    "capabilities": [
+      "cancel",
+      "usage"
+    ],
+    "timeout_seconds": 600,
+    "max_attempts": 2,
+    "input_bindings": [
+      {
+        "name": "task",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "result": {
+    "contract_version": 1,
+    "request_id": "req-success",
+    "request_digest": "sha256:75bc5c7e8b1e9c565a639d6584601fd02873d8a5a40c3007f15c528554fd1969",
+    "execution_id": "exec-req-success",
+    "outcome": "completed",
+    "exit_code": 0,
+    "completion": "accepted",
+    "error_code": null,
+    "drain": "confirmed",
+    "cancel_requested": false,
+    "isolation_level": "fake",
+    "resolved_model": "fake-model-1",
+    "versions": {
+      "agent-harness": "0.0.1"
+    },
+    "started_at": "2026-10-05T10:00:00Z",
+    "ended_at": "2026-10-05T10:01:00Z",
+    "attempts": [
+      {
+        "attempt_id": "att-1",
+        "outcome": "completed",
+        "started_at": "2026-10-05T10:00:00Z",
+        "ended_at": "2026-10-05T10:01:00Z"
+      }
+    ],
+    "candidate": {
+      "path": "candidate/solution.py",
+      "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 412
+    },
+    "artifacts": [
+      {
+        "name": "report",
+        "path": "outputs/report.json",
+        "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 90
+      }
+    ],
+    "usage_events": [
+      {
+        "contract_version": 1,
+        "event_id": "u-1",
+        "attempt_id": "att-1",
+        "source": "provider",
+        "kind": "stream",
+        "units": {
+          "input_tokens": 100,
+          "output_tokens": 20,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null
+        },
+        "cache_semantics": "unknown"
+      },
+      {
+        "contract_version": 1,
+        "event_id": "u-2",
+        "attempt_id": "att-1",
+        "source": "provider",
+        "kind": "summary",
+        "units": {
+          "input_tokens": 1200,
+          "output_tokens": 300,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null
+        },
+        "cache_semantics": "unknown"
+      }
+    ],
+    "usage_completeness": "complete"
+  }
+}

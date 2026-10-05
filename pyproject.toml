@@ -16,3 +16,6 @@ agent-harness = "agent_harness.__main__:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "agent_harness.__version__"}
+
+[tool.setuptools.package-data]
+agent_harness = ["contract_fixtures/*.json"]

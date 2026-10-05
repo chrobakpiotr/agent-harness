@@ -16,6 +16,7 @@ A small fix does not need Wayfinder ceremony.
 ## Map
 
 - `src/agent_harness/` — the installable package. Importing it must have no side effects.
+- `src/agent_harness/contract.py` — public execution contract v1 (owner of the shared schema; ADR 0002).
 - `tests/` — stdlib `unittest` suites; they run against the **installed wheel**, not the checkout.
 - `scripts/check-wheel.sh` — build → fresh venv → smoke outside the checkout → tests. CI runs it.
 - `docs/specs/` — task packets and evidence.
