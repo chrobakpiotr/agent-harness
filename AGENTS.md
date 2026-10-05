@@ -25,6 +25,10 @@ A small fix does not need Wayfinder ceremony.
   Consumer matrix: `docs/migration/consumers.md`.
 - `scripts/check-wheel.sh` — build → fresh venv → smoke outside the checkout → tests. CI runs it.
 - `docs/specs/` — task packets and evidence.
+- `docs/agentic-sdd/agents/` — roles (`builder`, `evaluator`); each points at the practices it uses.
+- `docs/agentic-sdd/practices/` — `diagnosing` (red gate or bug), `writing-for-agents` (editing an agent
+  document), `retro` (human-invoked). Full description: `docs/agentic-sdd/handbook.md`.
+- `evals/diagnosing/` — mini eval of the diagnosing practice; `run.py` calls a live model (manual only).
 
 ## Scope boundaries
 

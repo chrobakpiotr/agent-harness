@@ -1,6 +1,6 @@
 # AH5-07 — Versioned agent practices and a measured eval
 
-- Status: **accepted**.
+- Status: **accepted**; implemented, awaiting independent evaluation (constitution rule 7).
 - Source: master plan AH5-07 (develops H-06); depends on AH5-00. Inputs: `mattpocock/skills` at
   `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` (MIT, © 2026 Matt Pocock): `engineering/diagnosing-bugs`,
   `engineering/retro`, `productivity/writing-for-agents`; Showcase roles at `50c18f9` (read-only).
@@ -62,3 +62,34 @@ practices never create or schedule tasks), Showcase changes, live model calls in
    versioned one.
 2. The mini eval lives here, `evals/diagnosing/`.
 3. AC3 is authorised with the local `claude` CLI, N=3 runs per arm, manual and never in CI.
+
+## Evidence (2026-10-05)
+
+Environment: macOS 24.6.0 (x86_64), CPython 3.13.16, Claude Code 2.1.289, model `claude-opus-5-5`.
+
+- AC1: each practice opens with its notice; against the pin, every diff hunk is a listed adaptation
+  (`diagnosing` 9 hunks / 23 lines of 138, `retro` 9 / 24 of 44, `writing-for-agents` 4 / 13 of 81).
+  `SKILL-MECHANICS.md`, `agents/openai.yaml` and `scripts/hitl-loop.template.sh` were not copied.
+- AC2: `tests/test_eval_diagnosing.py`: the reference run passes; a fix without a red repro, a repro only
+  after the fix, a handoff without hypotheses, a regression test that passes on the base, and an unfixed
+  source each fail.
+- AC3: live A/B, `evals/diagnosing/run.py 3` at `fab55ca` plus this packet's working tree (practice and
+  role files as committed here), isolated with `--safe-mode --setting-sources project
+  --disable-slash-commands` (no user plugins, skills, hooks or CLAUDE.md). Total cost $0.98.
+
+  | Arm | PASS | fix | regression | red before fix | hypotheses | mean cost | mean turns |
+  |---|---|---|---|---|---|---|---|
+  | baseline | 0/3 | 3/3 | 3/3 | 2/3 | 0/3 | $0.14 | 6.3 |
+  | practice | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | $0.19 | 8.7 |
+
+  The first grading counted hypotheses only in "if … then" form and scored 0/3 in both arms; all three
+  practice handoffs held a ranked, numbered list with predictions in other wording. The check now counts
+  numbered items under a line naming hypotheses; all six saved runs were regraded with it (no new model
+  calls), and no baseline handoff mentions hypotheses, predictions or ruled-out causes.
+  Limits: N=3 on one easy fixture; both arms fixed the bug and wrote a regression test every time, so the
+  measured gain is process (repro before edit, recorded hypotheses) at about +40 % cost, not fix rate.
+  The hypotheses check is what the practice asks for, so it partly measures instruction-following.
+- AC4: `test_docs`: constitution rule 11 stays inline, every role links to the constitution, every
+  practice carries its notice.
+- AC5: `scripts/check-wheel.sh` on 3.13: 99 tests OK, 1 skipped (`test_human_grants`, no cryptography wheel
+  on Intel macOS); `evals/` and `docs/` stay out of the wheel.
