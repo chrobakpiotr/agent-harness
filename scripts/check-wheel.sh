@@ -15,9 +15,10 @@ trap 'rm -rf "$work"' EXIT
 "$python" -m venv "$work/venv"
 "$work/venv/bin/pip" install --quiet --upgrade pip  # old bundled pip misses cryptography wheels
 wheel=$(ls "$work"/dist/agent_harness-*.whl)
-# cryptography 47+ has no Intel-macOS wheel; there the grant tests skip instead of building OpenSSL.
-"$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel[grants]" ||
-  { echo "no cryptography wheel for this platform: grant tests skip"; "$work/venv/bin/pip" install --quiet "$wheel"; }
+# cryptography 47+ has no Intel-macOS wheel; there the grant tests run on the last release with one (46.x).
+"$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel[grants]" 2>/dev/null ||
+  { "$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel" "cryptography>=46,<47"
+    echo "pinned cryptography has no wheel here; grant tests use $("$work/venv/bin/python" -c 'import cryptography; print(cryptography.__version__)')"; }
 
 mkdir "$work/empty"
 cd "$work/empty"

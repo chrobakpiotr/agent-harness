@@ -48,3 +48,5 @@ without bypassing authority) belong to that packet.
 3. 04a-1 takes plan acceptance through an injected lifecycle port; the library ships no implementation of it.
 4. `cryptography==49.0.0` is the optional extra `grants`, not a core dependency: releases from 47 ship no
    Intel-macOS wheel. `human_grants` imports it lazily; without it the grant tests skip.
+   `check-wheel.sh` falls back to the last release with an Intel-macOS wheel (46.x), so the grant tests run
+   there too; it prints the version used. Linux CI installs the pinned 49.0.0.
