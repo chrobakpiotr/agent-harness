@@ -13,3 +13,12 @@
 - AC2: annotated tag `v0.1.0` pushed with `main`.
 - AC3: a consumer installs `git+https://github.com/chrobakpiotr/agent-harness.git@v0.1.0` into a fresh
   venv and the README example runs from an empty directory.
+
+## Evidence (2026-10-05)
+
+- AC1: `scripts/check-wheel.sh` 16/16 OK on CPython 3.13.16; 15 OK + 1 skipped on 3.9.6;
+  `test_readme_python_examples_run` executes the README example from the installed wheel; ruff clean.
+- AC2: `refs/tags/v0.1.0` = `b9463796` → commit `e57fda84`.
+- AC3: fresh venvs (3.9.6 and 3.13.16), empty cwd, `pip install "agent-harness @ git+…@v0.1.0"`,
+  `agent-harness --version` → `agent-harness 0.1.0`, README example OK, cwd left empty.
+- GitHub Actions result: not verified.
