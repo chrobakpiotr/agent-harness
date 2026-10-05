@@ -9,8 +9,8 @@ description = "Agent execution/lifecycle/evidence library extracted from the Sho
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-# ponytail: floor is the only interpreter verified locally; CI also runs 3.13 (Showcase target).
-requires-python = ">=3.9"
+# Showcase target; the moved modules use 3.10+ syntax and APIs verbatim.
+requires-python = ">=3.13"
 dependencies = []
 
 [project.optional-dependencies]

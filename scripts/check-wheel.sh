@@ -4,7 +4,7 @@ set -euo pipefail
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-python=${PYTHON:-python3}
+python=${PYTHON:-python3.13}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

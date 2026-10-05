@@ -1,6 +1,4 @@
 """Immutable values shared by verification entry points."""
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

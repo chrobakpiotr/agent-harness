@@ -3,8 +3,6 @@
 An ObservationSession is scoped to one planner call. Ready-gate and post-execution
 checks always create a new session, never reuse stat/mtime-based content caches.
 """
-from __future__ import annotations
-
 import hashlib
 import os
 import pathlib

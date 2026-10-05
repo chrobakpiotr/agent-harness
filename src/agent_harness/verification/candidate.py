@@ -143,7 +143,7 @@ def _paths(root: pathlib.Path, base_sha: str, trusted_runtime_root: pathlib.Path
     # are intentionally not consulted. Only exact trusted control roots above
     # are excluded.
     seen: set[str] = set()
-    root_stat = root.lstat()
+    root_stat = root.stat(follow_symlinks=False)
     if not stat.S_ISDIR(root_stat.st_mode):
         raise CandidateSealError('CANDIDATE_SEALING_UNSAFE_OBJECT')
     def walk(directory: pathlib.Path, prefix: str = '') -> None:
@@ -279,7 +279,7 @@ def seal_candidate(root: pathlib.Path, base_sha: str, authority_bindings: dict, 
     layers, head_sha, repo_id, _common = _paths(root, base_sha, trusted_runtime_root)
     if not isinstance(authority_bindings, dict) or not authority_bindings:
         raise CandidateSealError('CANDIDATE_SEALING_SNAPSHOT_UNAVAILABLE')
-    root_stat = root.lstat()
+    root_stat = root.stat(follow_symlinks=False)
     snapshots: dict[str, tuple[bytes | None, dict | None, dict[str, bytes]]] = {}
     total = 0
     for relative in sorted(layers):

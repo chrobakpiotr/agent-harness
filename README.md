@@ -14,7 +14,7 @@ Pin a released tag or commit (no PyPI release):
 agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.1.0
 ```
 
-Python ≥ 3.9, no third-party dependencies, no side effects on import. Public API: `agent_harness.contract`
+Python ≥ 3.13, no third-party dependencies (Ed25519 grants need the `grants` extra), no side effects on import. Public API: `agent_harness.contract`
 and the `agent-harness` CLI; other modules are internal.
 
 ## Use

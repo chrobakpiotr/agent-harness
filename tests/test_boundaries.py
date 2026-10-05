@@ -10,7 +10,6 @@ import agent_harness
 PACKAGE = Path(agent_harness.__file__).parent
 
 
-@unittest.skipUnless(hasattr(sys, "stdlib_module_names"), "needs Python 3.10+")
 class ImportBoundaryTest(unittest.TestCase):
     def test_only_stdlib_and_own_imports(self):
         allowed = set(sys.stdlib_module_names) | {"agent_harness", "cryptography"}
