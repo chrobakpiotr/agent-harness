@@ -9,6 +9,7 @@ Until cutover (AH5-06) Showcase remains the implementation owner; changes go the
 | `agent_harness/machine_outcomes.py` | `machine_outcomes.py` | `4944d690` | none |
 | `agent_harness/trust.py` | `trust.py` | `0c4ac157` | shebang and unused `import pathlib` removed |
 | `agent_harness/telemetry.py` | `telemetry.py` | `01f76609` | provenance/usage part only: `_MANUAL_*`, `record_manual` and `main` (CLI) not moved — they need `verification.store` and the lifecycle module; shebang and the then-unused `re`, `stat` imports removed |
+| `agent_harness/repository.py` | `verification/store.py` (`_git`, `_worktrees`, `resolve_control_root`) | `50c18f9` | `StoreError` → `RepositoryError` with the same codes; new `resolve_repo_context` builds a contract `RepoContext` (parity with the source resolver checked on a repo + linked worktree) |
 | `agent_harness/verification/__init__.py` | `verification/__init__.py` | `9ca74f28` | none |
 | `agent_harness/verification/model.py` | `verification/model.py` | `9200387e` | `from __future__ import annotations` (PEP 604 annotations on Python 3.9) |
 | `agent_harness/verification/serialization.py` | `verification/serialization.py` | `ef36fd81` | `from trust import` → `from agent_harness.trust import` |
