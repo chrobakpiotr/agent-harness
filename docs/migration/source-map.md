@@ -15,12 +15,13 @@ Wave = AH5 task that may first move the module.
 
 | Module | Lines | int: imports | Coupling to Showcase / state / env | Tests | Owner after cutover | Wave |
 |---|---|---|---|---|---|---|
-| `machine_outcomes.py` | 44 | — | none | `test_machine_outcomes` | library | 03a |
-| `trust.py` | 90 | — | path patterns name `.agent-state`, `.agent-runs` | `test_trust` | library | 03a |
-| `verification/model.py` | 176 | — | none | indirect | library | 03a |
-| `verification/serialization.py` | 246 | `.model`, `trust` (top-level) | none | indirect | library | 03a |
-| `telemetry.py` | 425 | — | writes `<repo>/.agent-runs/...`; `--repo` defaults to cwd; `__file__` for harness path in provenance; provider-exposed cost only (no price table) | `test_telemetry` | library | 03a |
-| `schemas/*.json` (9) | — | — | read by path relative to the harness dir | via validators | library (resources in wheel) | 03a |
+| `machine_outcomes.py` | 44 | — | none | `test_machine_outcomes` | library | 03a (moved) |
+| `trust.py` | 90 | — | path patterns name `.agent-state`, `.agent-runs` | `test_trust` | library | 03a (moved) |
+| `verification/model.py` | 176 | — | none | indirect | library | 03a (moved) |
+| `verification/serialization.py` | 246 | `.model`, `trust` (top-level) | none | `test_serialization` (new) | library | 03a (moved) |
+| `telemetry.py` provenance part (`atomic_write_json`, parsers, `summarize`, `reconcile_running`) | 425 | — | explicit `root`; writes `<root>/.agent-runs/...`; provider-exposed cost only (no price table) | `test_telemetry` | library | 03a (moved) |
+| `telemetry.py` `record_manual` + CLI | (same file) | `verification.store`, **`import harness` via `__file__` `sys.path` insert** | `docs/specs`, `.agent-state`, git HEAD/status; CLI `--repo` defaults to cwd | `test_telemetry` (manual cases) | library | with 03b store / lifecycle |
+| `schemas/*.json` (9) | — | — | read by path relative to the harness dir; users: `harness`, `runner`, `design`, `wayfinder`, `verification_contract` | via validators | library (resources in wheel) | with their users (none moved in 03a) |
 | `harness.py` state helpers: `repo_root`, `git_common_dir`, `state_key`, `runtime_state_dir`, `feature_repo_base` | part of 5,307 | — | `git rev-parse --git-common-dir`; state at `<common>/../.agent-state`; falls back to **cwd** when feature dir is not `docs/specs/*` | `test_harness` | library (`RepoContext`) | 03b |
 | `verification/store.py` `resolve_control_root`, lock | 1,217 | `.model`, `.serialization` | state at `<primary worktree>/.agent-runs/control/verification-v2`; mkdir lock, no stale auto-recovery; issuer registry via `__file__` | `test_verification_store` | library | 03b |
 | `verification/profile.py`, `fingerprint.py`, `planner.py` | 194/207/305 | `.model`, `.profile`, `.serialization`, `.fingerprint` | fingerprint uses Git common dir | `test_verification_profile*`, `_planner` via `verify` | library | 04a |

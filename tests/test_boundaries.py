@@ -27,5 +27,18 @@ class ImportBoundaryTest(unittest.TestCase):
         self.assertEqual(foreign, set())
 
 
+class NoLocationDerivedRootTest(unittest.TestCase):
+    def test_library_code_takes_roots_explicitly(self):
+        # Only the CLI entry point may default anything from the process environment.
+        offenders = [
+            f"{path.name}: {needle}"
+            for path in PACKAGE.rglob("*.py")
+            if path.name != "__main__.py"
+            for needle in ("__file__", "Path.cwd", "getcwd")
+            if needle in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(offenders, [])
+
+
 if __name__ == "__main__":
     unittest.main()
