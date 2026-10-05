@@ -19,6 +19,13 @@ class DocLinksTest(unittest.TestCase):
         ]
         self.assertEqual(broken, [])
 
+    def test_readme_python_examples_run(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"```python\n(.*?)```", readme, re.DOTALL)
+        self.assertTrue(blocks)
+        for block in blocks:
+            exec(compile(block, "README.md", "exec"), {})  # noqa: S102 - repository README, trusted
+
 
 if __name__ == "__main__":
     unittest.main()

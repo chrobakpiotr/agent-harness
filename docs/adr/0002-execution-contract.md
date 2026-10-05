@@ -1,6 +1,7 @@
 # ADR 0002 — Execution contract v1
 
-- Status: **Proposed** (owner: agent-harness; consumer review by agent-benchmark pending)
+- Status: **Accepted**; shipped in v0.1.0
+  (owner: agent-harness; consumer review by agent-benchmark done, see below)
 - Date: 2026-10-05
 - Code: `src/agent_harness/contract.py`; fixtures shipped in the wheel under
   `agent_harness/contract_fixtures/` (success, fail, timeout, unknown-terminal, missing-qualification).
@@ -60,7 +61,8 @@ candidate bytes → candidate reference; new outcome `rejected`; `usage_event_id
 
 1. Null units under `complete` were ambiguous → fixed by the `complete` rule above; the success
    fixture now reports cache units as 0.
-2. Pinning/distribution form of the wheel → open.
+2. Pinning → consumers pin a Git tag/SHA of this repository,
+   `agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@<sha>`. No PyPI.
 3. No launch/cancel API yet → agreed, the benchmark keeps its fake port. Per the master plan the
    offline public API (fake/controlled backend) is due after AH5-03b, hardened live after AH5-04c
    (AH5-05); not AH5-04b.
