@@ -23,3 +23,4 @@ import agent_harness, pathlib
 assert "site-packages" in pathlib.Path(agent_harness.__file__).parts, agent_harness.__file__
 print("installed:", agent_harness.__file__)'
 "$work/venv/bin/python" -m unittest discover -s "$repo/tests" -v
+"$work/venv/bin/python" "$repo/examples/minimal-consumer/consumer.py"

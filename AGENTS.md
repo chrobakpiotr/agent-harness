@@ -21,6 +21,8 @@ A small fix does not need Wayfinder ceremony.
 - `src/agent_harness/{trust,telemetry,machine_outcomes}.py`, `verification/` — modules extracted from Showcase;
   provenance and allowed deviations in `docs/migration/provenance.md`.
 - `tests/` — stdlib `unittest` suites; they run against the **installed wheel**, not the checkout.
+- `examples/minimal-consumer/` — public-API-only consumer; `check-wheel.sh` runs it against the wheel.
+  Consumer matrix: `docs/migration/consumers.md`.
 - `scripts/check-wheel.sh` — build → fresh venv → smoke outside the checkout → tests. CI runs it.
 - `docs/specs/` — task packets and evidence.
 
