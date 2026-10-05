@@ -29,7 +29,9 @@ Documents are plain JSON dicts validated by stdlib functions: `validate_request`
   nullable integer units (`input/output/cache_read/cache_write_tokens`) and `cache_semantics`.
   At most one `summary` per attempt; if present it is authoritative for that attempt and `stream`
   events are informational. Dedup key: `(execution_id, event_id)`. No events ⇒
-  `usage_completeness: unknown` (unknown ≠ 0). No prices.
+  `usage_completeness: unknown` (unknown ≠ 0). A null unit always means unknown; 0 means the
+  provider reported none. `complete` requires a summary for every attempt with every unit an
+  integer; otherwise the result is `partial` or `unknown`. No prices.
 - **Candidate (open point 2).** Reference, not bytes: `{path, sha256, size}`, path relative to the
   evidence root. The harness seals (computes the digest). Paths are relative POSIX with no empty,
   `.` or `..` segments, no backslash/NUL, ≤ 255 chars, else `UNSAFE_PATH`.
@@ -53,6 +55,15 @@ Documents are plain JSON dicts validated by stdlib functions: `validate_request`
 Benchmark fake today differs in: `harness_completion: success/failure` → `completion: accepted/rejected`;
 candidate bytes → candidate reference; new outcome `rejected`; `usage_event_id`/`usage` →
 `event_id`/`units` + `contract_version`, `source`, `cache_semantics`.
+
+## Consumer review (agent-benchmark, 2026-10-05)
+
+1. Null units under `complete` were ambiguous → fixed by the `complete` rule above; the success
+   fixture now reports cache units as 0.
+2. Pinning/distribution form of the wheel → open.
+3. No launch/cancel API yet → agreed, the benchmark keeps its fake port. Per the master plan the
+   offline public API (fake/controlled backend) is due after AH5-03b, hardened live after AH5-04c
+   (AH5-05); not AH5-04b.
 
 ## Not decided here
 

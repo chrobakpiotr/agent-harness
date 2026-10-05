@@ -123,8 +123,12 @@ def validate_result(doc, request):
         _ref(doc["candidate"], "result.candidate", named=False)
     for i, ref in enumerate(artifacts):
         _ref(ref, f"result.artifacts[{i}]", named=True)
-    _usage(usage, set(attempt_ids))
+    summaries = _usage(usage, set(attempt_ids))
     _check(usage or doc["usage_completeness"] == "unknown", "result.usage_completeness: no events means unknown")
+    if doc["usage_completeness"] == "complete":
+        _check(set(summaries) == set(attempt_ids)
+               and all(v is not None for e in summaries.values() for v in e["units"].values()),
+               "result.usage_completeness: complete needs a summary with integer units for every attempt")
     return doc
 
 
@@ -160,7 +164,7 @@ def validate_repo_context(doc):
 
 
 def _usage(events, attempt_ids):
-    event_ids, summaries = set(), set()
+    event_ids, summaries = set(), {}
     for i, event in enumerate(events):
         where = f"result.usage_events[{i}]"
         _fields(event, where, {"contract_version", "event_id", "attempt_id", "source", "kind", "units",
@@ -173,12 +177,13 @@ def _usage(events, attempt_ids):
         _enum(event["source"], ("provider", "harness"), where + ".source")
         if _enum(event["kind"], ("stream", "summary"), where + ".kind") == "summary":
             _check(event["attempt_id"] not in summaries, where + ": one summary per attempt")
-            summaries.add(event["attempt_id"])
+            summaries[event["attempt_id"]] = event
         _fields(event["units"], where + ".units", set(_UNITS))
         for unit in _UNITS:
             value = event["units"][unit]
             _check(value is None or (type(value) is int and value >= 0), f"{where}.units.{unit}")
         _enum(event["cache_semantics"], ("separate", "included_in_input", "unknown"), where + ".cache_semantics")
+    return summaries
 
 
 def _ref(ref, where, named):

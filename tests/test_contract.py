@@ -85,6 +85,10 @@ class MalformedTest(unittest.TestCase):
         self.rejects("MALFORMED", "success", lambda q, r: r["usage_events"][1].update(attempt_id="att-9"))
         self.rejects("MALFORMED", "success",
                      lambda q, r: r["usage_events"][1]["units"].update(input_tokens=-1))
+        # complete = every attempt has a summary with integer units; null always means unknown.
+        self.rejects("MALFORMED", "success",
+                     lambda q, r: r["usage_events"][1]["units"].update(cache_read_tokens=None))
+        self.rejects("MALFORMED", "success", lambda q, r: r["usage_events"].pop(1))
 
     def test_attempt_limits_and_times(self):
         self.rejects("MALFORMED", "fail", lambda q, r: q.update(max_attempts=1) or r.update(request_digest=contract.request_digest(q)))
