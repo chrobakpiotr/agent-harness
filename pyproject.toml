@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-harness"
+dynamic = ["version"]
+description = "Agent execution/lifecycle/evidence library extracted from the Showcase harness."
+readme = "AGENTS.md"
+# ponytail: floor is the only interpreter verified locally; CI also runs 3.13 (Showcase target).
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+agent-harness = "agent_harness.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "agent_harness.__version__"}
