@@ -9,6 +9,8 @@
   human grants and authority modules moved from Showcase `50c18f9` (AH5-04a-1). Plan acceptance goes through an
   injected lifecycle port; profile root and issuer registry are explicit parameters. Origin admission and
   completion stay blocked.
+- Showcase cutover wrapper (`migration/showcase-wrapper/`), rehearsal scripts and operator guide (AH5-06a);
+  Showcase itself is unchanged.
 - Agent practices (`docs/agentic-sdd/`): `builder`/`evaluator` roles, `diagnosing`, `writing-for-agents`,
   `retro` adapted from mattpocock/skills, handbook, and the `evals/diagnosing` mini eval (AH5-07).
 

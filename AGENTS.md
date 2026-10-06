@@ -28,6 +28,8 @@ A small fix does not need Wayfinder ceremony.
 - `docs/agentic-sdd/agents/` — roles (`builder`, `evaluator`); each points at the practices it uses.
 - `docs/agentic-sdd/practices/` — `diagnosing` (red gate or bug), `writing-for-agents` (editing an agent
   document), `retro` (human-invoked). Full description: `docs/agentic-sdd/handbook.md`.
+- `migration/showcase-wrapper/`, `scripts/rehearse-{cutover,rollback}.sh` — Showcase cutover wrapper and its
+  rehearsal (AH5-06); guide `docs/migration/cutover.md`.
 - `evals/diagnosing/` — mini eval of the diagnosing practice; `run.py` calls a live model (manual only).
 
 ## Scope boundaries
