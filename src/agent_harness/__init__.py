@@ -1,6 +1,7 @@
 """agent-harness: agent execution, lifecycle and evidence library.
 
-0.1.x ships the execution contract only (agent_harness.contract). Importing this package must have no side effects.
+Public API: the execution contract (agent_harness.contract) and the offline launch API
+(agent_harness.execution). Importing this package must have no side effects.
 """
 
 __version__ = "0.1.0"

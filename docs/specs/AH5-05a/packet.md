@@ -1,6 +1,6 @@
 # AH5-05a — Offline launch/cancel API (fake and controlled backends)
 
-- Status: **accepted**.
+- Status: **accepted**; implemented, awaiting independent evaluation and the agent-benchmark review of ADR 0004.
 - Source: master plan AH5-05 ("03b for the offline API; 04c for hardened live"); ADR 0002 "Not decided here"
   (launch/cancel API). Consumer: agent-benchmark AB5-06b (`docs/execution-port.md`, open item 3; AB5-06a
   test "cancellation tied to real terminal/drain" is NOT RUN until this exists). Independent of the Showcase
@@ -59,3 +59,24 @@ Out of scope: real providers, sandboxes, qualified isolation (04b/04c), retries 
 2. Contract v1 kept: offline backends report `qualified: false`, `launch_ready: false`, `refusal:
    NOT_QUALIFIED` ("not ready for a qualified launch") and still serve requests without `qualified_isolation`.
 3. Implement first; ADR 0004 carries a consumer delta for agent-benchmark, whose review follows.
+
+## Evidence (2026-10-06)
+
+Environment: macOS 24.6.0 (x86_64), CPython 3.13.16. Code: `src/agent_harness/execution.py`, ADR 0004.
+
+- AC1: `tests/test_execution.py` validates every returned result against its request: completed (2 attempts,
+  usage `complete`, candidate sealed and digest-checked), error, timeout, unknown, cancel, rejected.
+- AC2: a real child that spawned a grandchild is cancelled: `outcome: cancel`, `cancel_requested: true`,
+  `drain: confirmed`, and the grandchild PID no longer exists; with the group observed alive, `drain:
+  unconfirmed`; a 1 s timeout gives `timeout` with `drain: unconfirmed`; exit code 3 and a sealed output file
+  are reported for a completed process; a missing binary is `error`/`LAUNCH_FAILED`.
+- AC3: `qualified_isolation` → `NOT_QUALIFIED`, `usage` on the process backend → `CAPABILITY_UNSUPPORTED`; no
+  process started (marker file absent) and the evidence root stays empty.
+- AC4: a relaunch returns the stored result; a changed request with the same ID raises `BINDING_MISMATCH`; a
+  start marker without a result reconciles to `unknown` and the process is not run.
+- Mutation checks, each caught by the suite: no group kill on cancel, timeout allowed to confirm drain,
+  missing capability launched, binding check disabled, result not validated.
+- AC5: `examples/minimal-consumer/consumer.py` uses only `agent_harness.contract` and `agent_harness.execution`
+  (scripted launch with sealed candidate; process cancel with confirmed drain) from an empty directory against
+  the installed wheel; `scripts/check-wheel.sh`: 121 tests OK, 1 skipped (CI-only benchmark).
+- Limits (ADR 0004): descendants leaving the process group are not tracked; not a sandbox; never qualified.

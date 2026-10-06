@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Breaking:** Python >= 3.13 (was >= 3.9). The `v0.1.0` tag keeps its 3.9 floor.
+- Public offline launch/cancel API `agent_harness.execution` (ADR 0004): `launch`, `Execution`,
+  `ScriptedBackend` (fake), `ProcessBackend` (controlled local process group); contract v1 unchanged.
 - Optional extra `grants` (`cryptography==49.0.0`) for Ed25519 human retry grants; the core install keeps no
   third-party dependency.
 - Internal (no compatibility promise): verification profile, fingerprint, planner, candidate, store,
