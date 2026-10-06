@@ -240,9 +240,10 @@ def verify_qualification_evidence(doc, evidence_root):
                 digest.update(chunk)
         if "sha256:" + digest.hexdigest() != ref["sha256"]:
             raise ContractError("BINDING_MISMATCH", f"qualification evidence {ref['path']}")
-    job = doc["tuple"]["job_id"].encode()
+    # The job id as a whole token (ID characters as boundaries): `attempt-1` does not match `attempt-10`.
+    job = re.compile(rb"(?<![A-Za-z0-9._:/@+-])" + re.escape(doc["tuple"]["job_id"].encode()) + rb"(?![A-Za-z0-9._:/@+-])")
     for check in doc["checks"]:
-        if check["result"] == "pass" and not any(job in _evidence_bytes(root, r) for r in check["evidence"]):
+        if check["result"] == "pass" and not any(job.search(_evidence_bytes(root, r)) for r in check["evidence"]):
             raise ContractError("BINDING_MISMATCH", f"qualification.checks[{check['id']}]: evidence does not name the job")
     review = doc["independent_review"]
     if review is not None and review["subject"].encode() not in _evidence_bytes(root, review["evidence"]):

@@ -66,3 +66,10 @@ evidence; the remaining authenticity limit is stated in ADR 0002 instead of clai
 author compared case-insensitively; `--job-id` without `--capability-report` is misuse (2); a missing evidence
 root is blamed on the root; tampered or missing evidence is documented as 2. Isolated tests catch the job,
 subject and case-folding mutations.
+
+## Third check (2026-10-06)
+
+Verdict on `9e01ec4`: **fail** on one line — the job id was matched as a substring, so evidence of job
+`…attempt-10` satisfied a report for `…attempt-1` (also `job-12`→`job-1`, `job-1`→`1`). Fixed: the job id must
+appear as a whole token (ID characters as boundaries); the three renumbering cases are tested and substring
+matching (mutation) fails them. F2–F5 closed; no regressions.

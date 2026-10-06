@@ -102,6 +102,14 @@ class QualificationReportTest(unittest.TestCase):
         with self.assertRaises(contract.ContractError) as caught:
             contract.qualification_passes(relabelled, self.root)
         self.assertIn("does not name the job", str(caught.exception))
+        for old, new in (("github-run-42-attempt-10", "github-run-42-attempt-1"), ("job-12", "job-1"), ("job-1", "1")):
+            renumbered = copy.deepcopy(self.doc)
+            for check in renumbered["checks"]:
+                check["evidence"] = [self.evidence(f"{check['id']}-{old}", f"raw output of {check['id']} in job {old}\n")]
+            renumbered["tuple"]["job_id"] = new
+            renumbered["independent_review"] = self.review(renumbered)
+            with self.subTest(old=old, new=new), self.assertRaises(contract.ContractError):
+                contract.qualification_passes(renumbered, self.root)
         resigned = copy.deepcopy(self.doc)
         resigned["tuple"]["host"] = "another-host"
         resigned["independent_review"]["subject"] = contract.review_subject(resigned)  # author re-signs, same evidence
