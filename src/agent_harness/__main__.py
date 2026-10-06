@@ -34,9 +34,11 @@ def main(argv=None):
                       help="exit 0 if PATH is an exact copy, 1 if it drifted, 2 if unreadable or misused")
     qualification = commands.add_parser("qualification", help="check a target qualification report")
     qualification.add_argument("--check", metavar="FILE", required=True, help="the qualification report (JSON)")
-    qualification.add_argument("--evidence-root", metavar="DIR", help="verify every evidence file under DIR")
+    qualification.add_argument("--evidence-root", metavar="DIR", required=True,
+                               help="directory holding every evidence file; each is re-hashed")
     qualification.add_argument("--capability-report", metavar="FILE",
                                help="also check that this capability report binds to the qualification")
+    qualification.add_argument("--job-id", help="the current job; required with --capability-report")
     args = parser.parse_args(argv)
     if args.command == "qualification":
         return _qualification(args)
@@ -67,30 +69,39 @@ def main(argv=None):
     return 0
 
 
+def _load_json(path):
+    def unique(pairs):
+        keys = [k for k, _ in pairs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate JSON key")
+        return dict(pairs)
+    return json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique)
+
+
 def _qualification(args):
     """Exit 0: valid and passing; 1: valid but not passing or not bindable; 2: invalid or unreadable."""
+    current = args.check
     try:
-        doc = contract.validate_qualification_report(json.loads(Path(args.check).read_text(encoding="utf-8")))
-        if args.evidence_root is not None:
-            contract.verify_qualification_evidence(doc, args.evidence_root)
+        doc = contract.validate_qualification_report(_load_json(args.check))
+        passes = contract.qualification_passes(doc, args.evidence_root)
         report = None
         if args.capability_report is not None:
-            report = json.loads(Path(args.capability_report).read_text(encoding="utf-8"))
-            contract.validate_capability_report(report)
-    except (OSError, ValueError) as error:  # ContractError and JSON errors are ValueErrors
-        print(f"{args.check}: invalid ({error})", file=sys.stderr)
+            current = args.capability_report
+            if args.job_id is None:
+                raise ValueError("--job-id is required with --capability-report")
+            report = contract.validate_capability_report(_load_json(args.capability_report))
+    except (OSError, ValueError, RecursionError) as error:  # ContractError and JSON errors are ValueErrors
+        print(f"{current}: invalid ({type(error).__name__}: {str(error)[:200]})", file=sys.stderr)
         return 2
-    passes = contract.qualification_passes(doc)
-    print(f"{args.check}: qualification {doc['target']} {contract.qualification_digest(doc)} "
-          f"{'passes' if passes else 'does not pass'}")
+    print(f"{args.check}: qualification {doc['target']} job {doc['tuple']['job_id']} "
+          f"{contract.qualification_digest(doc)} {'passes' if passes else 'does not pass'}")
     if report is not None:
         try:
-            contract.validate_capability_binding(report, doc)
+            contract.validate_capability_binding(report, doc, args.evidence_root, args.job_id)
         except contract.ContractError as error:
             print(f"{args.capability_report}: does not bind ({error})", file=sys.stderr)
             return 1
     return 0 if passes else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

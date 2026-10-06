@@ -43,3 +43,16 @@
   145 tests OK, 1 skipped.
 - `contract_fixtures/qualification-example.json` is pinned in the golden fixture set as a format example of a
   fictitious target (`example-not-a-real-target`).
+
+## Independent evaluation (2026-10-06)
+
+Fresh-context verdict on `2da78f6`: **fail**. Fixed: nested JSON exited 1 with a traceback (now 2, also for
+duplicate keys); an invalid capability report was blamed on the other file; the `tuple` pinned nothing and had no
+job identity (now `job_id`, `host`, `kernel`, `engine`, `workload_image` digest are mandatory and binding takes the
+caller's `job_id`); evidence was optional, so forged digests passed and one file could serve every check (now
+passing always re-hashes evidence, and each passing check needs evidence of its own); `validate_capability_report`
+alone was not documented as insufficient (ADR 0002); the review was not tied to the report (now `subject` =
+report digest without the review, reviewer ≠ author, evidence distinct); the example fixture bound like a real
+report (its review now fails and its evidence is not shipped). Each new rule has a test whose mutation fails it
+(job binding, evidence verification, shared evidence, author self-review, unbound review, check set, image digest,
+review reusing check evidence). Remaining limits are listed in ADR 0002.

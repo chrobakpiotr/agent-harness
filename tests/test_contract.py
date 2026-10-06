@@ -26,8 +26,10 @@ class GoldenFixturesTest(unittest.TestCase):
         shipped = sorted(p.name for p in FIXTURES.iterdir() if p.name.endswith(".json"))
         self.assertEqual(shipped, sorted([*(f"{n}.json" for n in NAMES), "qualification-example.json"]))
         example = json.loads((FIXTURES / "qualification-example.json").read_text(encoding="utf-8"))
-        self.assertTrue(contract.qualification_passes(example))
-        self.assertEqual("example-not-a-real-target", example["target"])  # a format example, never evidence
+        contract.validate_qualification_report(example)
+        # A format example of a fictitious target: its review fails and its evidence is not shipped.
+        self.assertEqual(("example-not-a-real-target", "fail"),
+                         (example["target"], example["independent_review"]["verdict"]))
         for name in NAMES:
             with self.subTest(name):
                 doc = fixture(name)

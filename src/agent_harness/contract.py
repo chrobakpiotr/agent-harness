@@ -23,6 +23,9 @@ ISOLATION_LEVELS = ("fake", "controlled", "unqualified", "qualified")
 # Mandatory checks of a target qualification: Showcase Q01-Q16 and the grading boundary B1-B10
 # (docs/specs/AH5-04b/grading-requirements.md). A report records each one exactly once.
 QUALIFICATION_CHECKS = tuple(f"Q{i:02d}" for i in range(1, 17)) + tuple(f"B{i}" for i in range(1, 11))
+# The exact target facts every report states. `job_id` binds the report to one run: a GitHub-hosted job is a fresh
+# VM, so its qualification is valid in that job only.
+QUALIFICATION_TUPLE = ("job_id", "host", "kernel", "engine", "workload_image")
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -155,15 +158,18 @@ def validate_capability_report(doc):
 
 def validate_qualification_report(doc):
     """One exact target tuple's qualification: every mandatory check recorded separately with its evidence."""
-    _fields(doc, "qualification", {"contract_version", "target", "policy_digest", "tuple", "checks",
+    _fields(doc, "qualification", {"contract_version", "target", "policy_digest", "author", "tuple", "checks",
                                    "independent_review", "created_at"})
     _version(doc, "qualification")
     _id(doc["target"], "qualification.target")
     _match(_DIGEST, doc["policy_digest"], "qualification.policy_digest")
-    _check(isinstance(doc["tuple"], dict) and doc["tuple"], "qualification.tuple: the exact target facts")
+    _id(doc["author"], "qualification.author")
+    _check(isinstance(doc["tuple"], dict) and set(QUALIFICATION_TUPLE) <= set(doc["tuple"]),
+           f"qualification.tuple: must state {list(QUALIFICATION_TUPLE)}")
     for key, value in doc["tuple"].items():
         _id(key, "qualification.tuple")
         _id(value, f"qualification.tuple.{key}")
+    _match(_DIGEST, doc["tuple"]["workload_image"], "qualification.tuple.workload_image")
     ids = []
     for i, check in enumerate(_list(doc["checks"], "qualification.checks")):
         where = f"qualification.checks[{i}]"
@@ -174,19 +180,36 @@ def validate_qualification_report(doc):
             _ref(ref, f"{where}.evidence[{j}]", named=False)
         _check(check["result"] != "pass" or check["evidence"], where + ": a pass needs evidence")
     _check(sorted(ids) == sorted(QUALIFICATION_CHECKS), "qualification.checks: exactly one per mandatory check")
+    # Each passing check needs evidence of its own: one file cannot stand in for several checks.
+    owners = {}
+    for check in doc["checks"]:
+        for ref in check["evidence"]:
+            owners.setdefault(ref["sha256"], set()).add(check["id"])
+    for check in doc["checks"]:
+        _check(check["result"] != "pass" or any(owners[r["sha256"]] == {check["id"]} for r in check["evidence"]),
+               f"qualification.checks[{check['id']}]: a pass needs evidence of its own")
     review = doc["independent_review"]
     if review is not None:
-        _fields(review, "qualification.independent_review", {"reviewer", "verdict", "evidence"})
-        _id(review["reviewer"], "qualification.independent_review.reviewer")
-        _enum(review["verdict"], ("pass", "fail"), "qualification.independent_review.verdict")
-        _ref(review["evidence"], "qualification.independent_review.evidence", named=False)
+        where = "qualification.independent_review"
+        _fields(review, where, {"reviewer", "subject", "verdict", "evidence"})
+        _id(review["reviewer"], where + ".reviewer")
+        _check(review["reviewer"] != doc["author"], where + ".reviewer: must not be the author")
+        _check(review["subject"] == review_subject(doc), where + ".subject: must be this report's review_subject")
+        _enum(review["verdict"], ("pass", "fail"), where + ".verdict")
+        _ref(review["evidence"], where + ".evidence", named=False)
+        _check(review["evidence"]["sha256"] not in owners, where + ".evidence: must not be check evidence")
     _time(doc["created_at"], "qualification.created_at")
     return doc
 
 
-def qualification_passes(doc):
-    """True only when every mandatory check passed with evidence and an independent review passed."""
-    validate_qualification_report(doc)
+def review_subject(doc):
+    """What an independent review signs off: the report digest without the review itself."""
+    return request_digest({**doc, "independent_review": None})
+
+
+def qualification_passes(doc, evidence_root):
+    """True only when every mandatory check passed with its own verified evidence and the review passed."""
+    verify_qualification_evidence(doc, evidence_root)
     review = doc["independent_review"]
     return all(c["result"] == "pass" for c in doc["checks"]) and review is not None and review["verdict"] == "pass"
 
@@ -218,13 +241,17 @@ def verify_qualification_evidence(doc, evidence_root):
     return doc
 
 
-def validate_capability_binding(report, qualification):
-    """A report may claim ``qualified`` for a target only with that target's passing qualification."""
+def validate_capability_binding(report, qualification, evidence_root, job_id):
+    """A report may claim ``qualified`` only with a passing, evidence-verified qualification of the same target and
+    policy digest from the caller's own job (``job_id``). ``validate_capability_report`` alone does not make
+    ``qualified`` meaningful; consumers that rely on qualification must call this."""
     validate_capability_report(report)
     validate_qualification_report(qualification)
     if report["target"] != qualification["target"] or report["policy_digest"] != qualification["policy_digest"]:
         raise ContractError("BINDING_MISMATCH", "report.target/policy_digest")
-    if report["qualified"] and not qualification_passes(qualification):
+    if qualification["tuple"]["job_id"] != job_id:
+        raise ContractError("BINDING_MISMATCH", "qualification.tuple.job_id: qualified in another job")
+    if report["qualified"] and not qualification_passes(qualification, evidence_root):
         raise ContractError("BINDING_MISMATCH", "report.qualified: the qualification does not pass")
     return report
 

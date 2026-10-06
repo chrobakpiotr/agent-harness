@@ -78,16 +78,29 @@ Showcase lifecycle, outside this contract.
 ## Qualification report (2026-10-06, AH5-04b-r)
 
 An additive v1 document; no existing schema changes. `validate_qualification_report` covers one exact target
-tuple: `target`, `policy_digest`, `tuple` (exact host/engine/kernel/image facts), `checks` (exactly one per
-mandatory check `QUALIFICATION_CHECKS` = Q01–Q16 and B1–B10, each `pass`/`fail`/`not-run` with evidence
-references; a pass needs evidence), `independent_review` (nullable) and `created_at`. `qualification_passes` is
-true only when every check passes and the independent review passes. `validate_capability_binding` lets a
-`CapabilityReport` claim `qualified` only for the same target and policy digest with a passing qualification.
-`verify_qualification_evidence` re-hashes every evidence file inside an evidence root. CLI:
-`agent-harness qualification --check FILE [--evidence-root DIR] [--capability-report FILE]` (0 passing, 1 not
-passing or not bindable, 2 invalid). `qualification_digest` is the value ADR 0005 proposes for results. Showcase
-owns the probes, runs and raw evidence; `contract_fixtures/qualification-example.json` is a format example of a
-fictitious target, never evidence.
+tuple and one job: `target`, `policy_digest`, `author`, `tuple` (must state `job_id`, `host`, `kernel`, `engine` and
+`workload_image` as a sha256 digest; more facts allowed), `checks` (exactly one per mandatory check
+`QUALIFICATION_CHECKS` = Q01–Q16 and B1–B10, each `pass`/`fail`/`not-run`; a pass needs evidence of its own, not
+shared with another check), `independent_review` (nullable; `reviewer` ≠ `author`, `subject` =
+`review_subject(report)` — the report digest without the review — and evidence distinct from check evidence) and
+`created_at`.
+
+- `qualification_passes(report, evidence_root)` re-hashes every evidence file inside the root and is true only
+  when every check passes and the review passes. There is no unverified "passes".
+- `validate_capability_binding(report, qualification, evidence_root, job_id)`: same target and policy digest,
+  the caller's own job (`tuple.job_id`; a GitHub-hosted job is a fresh VM, so nothing stays qualified between
+  jobs), and `qualified` only with a passing qualification. `validate_capability_report` alone checks shape only
+  and does not make `qualified` meaningful; neither does `isolation_level: qualified` in a v1 result (ADR 0005
+  proposes a result `target`). Consumers that rely on qualification call the binding.
+- CLI: `agent-harness qualification --check FILE --evidence-root DIR [--capability-report FILE --job-id ID]`:
+  0 passing, 1 not passing or not bindable, 2 invalid or unreadable (any JSON error, duplicate keys or excessive
+  nesting); the message names the file at fault.
+- `qualification_digest` is the value ADR 0005 proposes for results. Showcase owns the probes, runs and raw
+  evidence; `contract_fixtures/qualification-example.json` is a format example of a fictitious target whose
+  review fails and whose evidence is not shipped.
+- Limits: the digest covers the parsed document (the CLI rejects duplicate keys); evidence paths are compared as
+  given (no Unicode normalisation); evidence files are resolved and then opened, so a swap between the two
+  checks is not excluded on a writable evidence root.
 
 ## Not decided here
 
