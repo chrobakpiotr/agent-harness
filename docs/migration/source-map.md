@@ -2,11 +2,11 @@
 
 - Source: Showcase `tooling/agent-harness/` at `50c18f947031f1b7bd8e8c6276b2a98b9b46ab98`
   (checkout HEAD matched this SHA, clean tree, 2026-10-05). Read-only survey; nothing copied yet.
-- Ownership rule: until cutover (AH5-06) Showcase is the only implementation owner of every module
-  below. After cutover the "Owner after cutover" column becomes the single owner; the old copy is
-  replaced by a thin wrapper, never kept as a second active implementation.
-- Status of this map: **proposed** (see `docs/adr/0001-extraction-ownership.md`). Owner columns are
-  proposals derived from the master plan's scope split, not accepted policy.
+- Ownership rule (ADR 0001, accepted): until cutover (AH5-06) Showcase is the only implementation owner of
+  every module below that is moved; afterwards the "Owner after cutover" column becomes the single owner, the
+  moved copy is replaced by the compatibility shim, never kept as a second active implementation.
+- Status of this map: survey of `50c18f9`; "Owner after cutover" entries are proposals until a packet moves the
+  module ("undecided" rows stay in Showcase).
 
 ## Execution modules (15,525 lines total)
 

@@ -76,3 +76,7 @@ validation; new parameters fail closed. Follow-ups:
   lifecycle port is mocked. Accepted for 04a-1 (decision 7).
 - Known: `test_primary_repository_authority_resolution` needs a Git checkout (`check-wheel.sh` always runs
   from one); from a `git archive` export it fails.
+8. Supersedes decision 2 (2026-10-06, ADR 0001 decision 1 as amended): origin admission (04a-2) has no Showcase
+   source and Showcase has no task or owner for it, so it is library-owned from creation, aligned with the
+   accepted SDD-OBS contracts. It still needs physical execution from a qualified backend (04b, which needs a
+   qualified Linux host).

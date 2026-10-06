@@ -2,7 +2,8 @@
 
 Source: Showcase `tooling/agent-harness/` at `50c18f947031f1b7bd8e8c6276b2a98b9b46ab98`
 (unchanged in that directory through `52e1837`). Same licence (MIT) and copyright holder.
-Until cutover (AH5-06) Showcase remains the implementation owner; changes go there first.
+Until cutover (AH5-06) Showcase remains the implementation owner of these moved modules; changes go there
+first, except fail-closed seams created by explicit roots (ADR 0001 decision 3), listed in the table below.
 
 | Package module | Source path | Source blob | Changes from source |
 |---|---|---|---|

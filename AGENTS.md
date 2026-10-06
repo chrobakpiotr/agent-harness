@@ -8,7 +8,8 @@ This file is a **map**, not a manual. Load only the context the task needs.
 
 1. `docs/agentic-sdd/constitution.md` — the shared agent contract (non-negotiable).
 2. The accepted spec/packet of the task under `docs/specs/<task-id>/`.
-3. Relevant ADRs under `docs/adr/` and migration notes under `docs/migration/`.
+3. Relevant ADRs under `docs/adr/` (0001 ownership, single writer, rollback, pins) and migration notes under
+   `docs/migration/`.
 4. Only the source paths listed in the packet.
 
 A small fix does not need Wayfinder ceremony.

@@ -158,3 +158,8 @@ Library `8f2d067` (committed `HEAD`), rehearsed Showcase `91d4671` (Showcase `HE
 - AC2: 21 workflow steps; exit codes identical; output identical after masking durations and eval IDs.
 - AC3: rollback wrapped → base, base → wrapped, base → base: ok.
 - AC5: read-only Git commands only; `tooling/agent-harness` unchanged.
+
+## Update (2026-10-06)
+
+Guide step 4 is done in Showcase: `4fd9abe` adds `requirements.txt` to `harness.protocol_files`, with a test.
+ADR 0001 (accepted, amended) now carries the single-writer rule and rollback cited above (decisions 6, 7).
