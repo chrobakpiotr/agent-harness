@@ -1,13 +1,15 @@
 import argparse
 import errno
 import hashlib
+import json
 import os
 import re
 import stat
 import sys
 from importlib import resources
+from pathlib import Path
 
-from agent_harness import __version__
+from agent_harness import __version__, contract
 
 
 def constitution():
@@ -30,7 +32,14 @@ def main(argv=None):
     mode.add_argument("--digest", action="store_true", help="print its version and sha256")
     mode.add_argument("--check", metavar="PATH",
                       help="exit 0 if PATH is an exact copy, 1 if it drifted, 2 if unreadable or misused")
+    qualification = commands.add_parser("qualification", help="check a target qualification report")
+    qualification.add_argument("--check", metavar="FILE", required=True, help="the qualification report (JSON)")
+    qualification.add_argument("--evidence-root", metavar="DIR", help="verify every evidence file under DIR")
+    qualification.add_argument("--capability-report", metavar="FILE",
+                               help="also check that this capability report binds to the qualification")
     args = parser.parse_args(argv)
+    if args.command == "qualification":
+        return _qualification(args)
     if args.command != "constitution":
         return 0
     text, version, digest = constitution()
@@ -56,6 +65,31 @@ def main(argv=None):
     else:
         sys.stdout.buffer.write(text)
     return 0
+
+
+def _qualification(args):
+    """Exit 0: valid and passing; 1: valid but not passing or not bindable; 2: invalid or unreadable."""
+    try:
+        doc = contract.validate_qualification_report(json.loads(Path(args.check).read_text(encoding="utf-8")))
+        if args.evidence_root is not None:
+            contract.verify_qualification_evidence(doc, args.evidence_root)
+        report = None
+        if args.capability_report is not None:
+            report = json.loads(Path(args.capability_report).read_text(encoding="utf-8"))
+            contract.validate_capability_report(report)
+    except (OSError, ValueError) as error:  # ContractError and JSON errors are ValueErrors
+        print(f"{args.check}: invalid ({error})", file=sys.stderr)
+        return 2
+    passes = contract.qualification_passes(doc)
+    print(f"{args.check}: qualification {doc['target']} {contract.qualification_digest(doc)} "
+          f"{'passes' if passes else 'does not pass'}")
+    if report is not None:
+        try:
+            contract.validate_capability_binding(report, doc)
+        except contract.ContractError as error:
+            print(f"{args.capability_report}: does not bind ({error})", file=sys.stderr)
+            return 1
+    return 0 if passes else 1
 
 
 if __name__ == "__main__":

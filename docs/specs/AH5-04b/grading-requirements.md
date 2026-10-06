@@ -30,5 +30,7 @@ Notes for the qualification owner:
   channel (B9) and the destroyed sandbox (B3), the verdict stays with the caller.
 - Until a target passes, model-written code stays ungraded; Harness `ProcessBackend` (`controlled`) is not a
   sandbox and is never used for grading.
+- Recording: each check is one entry of the contract v1 qualification report (ADR 0002, AH5-04b-r), checked with
+  `agent-harness qualification --check report.json --evidence-root <dir>`.
 - The B8/B10 gaps are proposed for contract v2 in ADR 0005; the target can record the evidence in its report
   meanwhile, but consumers cannot read it from a result until v2.

@@ -1,0 +1,309 @@
+{
+  "contract_version": 1,
+  "target": "example-not-a-real-target",
+  "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "tuple": {
+    "host": "example-host",
+    "engine": "example-engine-0.0.0",
+    "kernel": "example-kernel",
+    "workload_image": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "checks": [
+    {
+      "id": "Q01",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q01.log",
+          "sha256": "sha256:2b59f3205994bfa4676be3aad70effd86738341b62bc86ec97a75457afbf9781",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q02",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q02.log",
+          "sha256": "sha256:35d8c717e97830c833b16d651d737b0a669466668add0002772be405b0ff0174",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q03",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q03.log",
+          "sha256": "sha256:4012e2185ce58fbd1458ed075b5c3ea1bf594e7b604a07ef1eabd797aaaa6d57",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q04",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q04.log",
+          "sha256": "sha256:39231b2dffb11da7765841530510cd5409f36ba561bd9bc08e2335716f203758",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q05",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q05.log",
+          "sha256": "sha256:97bbbba4eb7cb9ca5645ff027e96435767da0c01f337180a84fc5f8c723eb416",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q06",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q06.log",
+          "sha256": "sha256:1a364b11cd5eb86416e3dc826ab5dab2dc7a4238cd52e049da7d3fa01d70e37e",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q07",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q07.log",
+          "sha256": "sha256:1cf416924ee8cdd3b0c11e84f968f8be62f9f0b5d3f9fdd930a896185727dd5e",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q08",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q08.log",
+          "sha256": "sha256:1ad6074588d4a51bdef754d2f0d8297b120c6fc8e3f72fbfca721ca2ec19a658",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q09",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q09.log",
+          "sha256": "sha256:884ea27a4b51a480aae4a7384f44c82025423ca45af5719cc8b525a85561ccda",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q10",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q10.log",
+          "sha256": "sha256:a9e51b0a8aa7479ab0b9b74060060f39e7e740b5972ef203ab74717e785d1ce7",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q11",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q11.log",
+          "sha256": "sha256:eb8aecec75632aa77430f673df35918f2e837fa5874fc14e9ff6f58591378be6",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q12",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q12.log",
+          "sha256": "sha256:66a96b312e789acdc75825a5743ce5750bfda1a76d9e4584881a37761902eaff",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q13",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q13.log",
+          "sha256": "sha256:26fd2a6feb63b900916a775896f90e6b8229db1fdb34f74c9bd421b3fcf958ef",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q14",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q14.log",
+          "sha256": "sha256:7ac864ff4e90949d7dd6445af4def184a7ac8b50cb72620e889d2d01bcf42a75",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q15",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q15.log",
+          "sha256": "sha256:de4e8cf90202de3776968b08d46ebd88b18cce58be6290824e41bb85dcbec2f3",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "Q16",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/Q16.log",
+          "sha256": "sha256:2b6447b5f7eeafc4363ee21b8ad2721ad06a90bc76b375b5cb905cbcd5d361cc",
+          "size": 17
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B1.log",
+          "sha256": "sha256:46d42e6736b885ace177adbd7c7e086be8fca32c56c35ab599c52da69f081b1a",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B2.log",
+          "sha256": "sha256:cd6a8c920b6498d965ca02f3c39795e62bd78eb77d15f3be3ed68970c12f9f1e",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B3.log",
+          "sha256": "sha256:14079a4d5f904cb927cd9b898e6467445ac8bb364033af70f253fa0deb1d2c39",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B4.log",
+          "sha256": "sha256:01f7649bfe29836e5e79bd2b269ac98da1e99591b84641deab21e9353fe4e46e",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B5.log",
+          "sha256": "sha256:ea1f2181f1399ff0a4b4619a5312bed5891576c27ff2c0ff7218d45269b8c7cb",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B6.log",
+          "sha256": "sha256:1f387e045fa6f46e8279d3e0a38f394dd157ec16eba0a7a7214d75f25cf548cf",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B7.log",
+          "sha256": "sha256:30a67e007c67daf73e40461927940763837ec8184325b5dd47ae343052df884f",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B8.log",
+          "sha256": "sha256:3dda1b3fb29037c1483187d4176545ba297140af033310505f42aa1b47202f50",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B9",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B9.log",
+          "sha256": "sha256:0f2ad9a3df70a055afd7d93a54d88427c9486fc6ef1057712448a6042a9372a1",
+          "size": 16
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "result": "pass",
+      "evidence": [
+        {
+          "path": "evidence/B10.log",
+          "sha256": "sha256:08476da109be6be15cda2d115ea43ef86ade75069cd6b5aef5da6005d6b70cdc",
+          "size": 17
+        }
+      ]
+    }
+  ],
+  "independent_review": {
+    "reviewer": "security-reviewer",
+    "verdict": "pass",
+    "evidence": {
+      "path": "evidence/review.log",
+      "sha256": "sha256:226de15521179d6b39c1dc34451ec7b378780e48f07715f4ba58ba7bf84aff55",
+      "size": 20
+    }
+  },
+  "created_at": "2026-10-06T00:00:00Z"
+}

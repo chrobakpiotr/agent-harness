@@ -2,6 +2,9 @@
 
 ## Unreleased (0.3.0.dev0)
 
+- Contract v1 qualification report (`validate_qualification_report`, `qualification_passes`,
+  `validate_capability_binding`, `verify_qualification_evidence`, `qualification_digest`) with mandatory checks
+  Q01–Q16 and B1–B10, and CLI `agent-harness qualification --check` (AH5-04b-r).
 - CLI `agent-harness constitution [--digest | --check PATH]`: the shared agent contract ships in the wheel;
   consumers check their verbatim copy for drift (AH5-00b). Constitution 1.0.1 (adds the check command to the
   ownership rule; no rule changes); a version names exactly one text.

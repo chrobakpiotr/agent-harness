@@ -24,7 +24,10 @@ def assert_code(test, code, fn, *args):
 class GoldenFixturesTest(unittest.TestCase):
     def test_fixture_set_is_shipped_and_valid(self):
         shipped = sorted(p.name for p in FIXTURES.iterdir() if p.name.endswith(".json"))
-        self.assertEqual(shipped, sorted(f"{n}.json" for n in NAMES))
+        self.assertEqual(shipped, sorted([*(f"{n}.json" for n in NAMES), "qualification-example.json"]))
+        example = json.loads((FIXTURES / "qualification-example.json").read_text(encoding="utf-8"))
+        self.assertTrue(contract.qualification_passes(example))
+        self.assertEqual("example-not-a-real-target", example["target"])  # a format example, never evidence
         for name in NAMES:
             with self.subTest(name):
                 doc = fixture(name)

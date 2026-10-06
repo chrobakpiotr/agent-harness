@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 
 CONTRACT_VERSION = 1
 
@@ -19,6 +20,9 @@ ERROR_CODES = ("CAPABILITY_UNSUPPORTED", "NOT_QUALIFIED", "BACKEND_UNAVAILABLE",
                "PROVIDER_ERROR", "INTERNAL_ERROR")
 CAPABILITIES = ("cancel", "usage", "qualified_isolation")
 ISOLATION_LEVELS = ("fake", "controlled", "unqualified", "qualified")
+# Mandatory checks of a target qualification: Showcase Q01-Q16 and the grading boundary B1-B10
+# (docs/specs/AH5-04b/grading-requirements.md). A report records each one exactly once.
+QUALIFICATION_CHECKS = tuple(f"Q{i:02d}" for i in range(1, 17)) + tuple(f"B{i}" for i in range(1, 11))
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -147,6 +151,82 @@ def validate_capability_report(doc):
     _enum(doc["refusal"], ERROR_CODES, "report.refusal", nullable=True)
     _check(doc["launch_ready"] == (doc["refusal"] is None), "report.refusal: required exactly when not launch_ready")
     return doc
+
+
+def validate_qualification_report(doc):
+    """One exact target tuple's qualification: every mandatory check recorded separately with its evidence."""
+    _fields(doc, "qualification", {"contract_version", "target", "policy_digest", "tuple", "checks",
+                                   "independent_review", "created_at"})
+    _version(doc, "qualification")
+    _id(doc["target"], "qualification.target")
+    _match(_DIGEST, doc["policy_digest"], "qualification.policy_digest")
+    _check(isinstance(doc["tuple"], dict) and doc["tuple"], "qualification.tuple: the exact target facts")
+    for key, value in doc["tuple"].items():
+        _id(key, "qualification.tuple")
+        _id(value, f"qualification.tuple.{key}")
+    ids = []
+    for i, check in enumerate(_list(doc["checks"], "qualification.checks")):
+        where = f"qualification.checks[{i}]"
+        _fields(check, where, {"id", "result", "evidence"})
+        ids.append(_enum(check["id"], QUALIFICATION_CHECKS, where + ".id"))
+        _enum(check["result"], ("pass", "fail", "not-run"), where + ".result")
+        for j, ref in enumerate(_list(check["evidence"], where + ".evidence")):
+            _ref(ref, f"{where}.evidence[{j}]", named=False)
+        _check(check["result"] != "pass" or check["evidence"], where + ": a pass needs evidence")
+    _check(sorted(ids) == sorted(QUALIFICATION_CHECKS), "qualification.checks: exactly one per mandatory check")
+    review = doc["independent_review"]
+    if review is not None:
+        _fields(review, "qualification.independent_review", {"reviewer", "verdict", "evidence"})
+        _id(review["reviewer"], "qualification.independent_review.reviewer")
+        _enum(review["verdict"], ("pass", "fail"), "qualification.independent_review.verdict")
+        _ref(review["evidence"], "qualification.independent_review.evidence", named=False)
+    _time(doc["created_at"], "qualification.created_at")
+    return doc
+
+
+def qualification_passes(doc):
+    """True only when every mandatory check passed with evidence and an independent review passed."""
+    validate_qualification_report(doc)
+    review = doc["independent_review"]
+    return all(c["result"] == "pass" for c in doc["checks"]) and review is not None and review["verdict"] == "pass"
+
+
+def qualification_digest(doc):
+    validate_qualification_report(doc)
+    return request_digest(doc)  # sha256 of the canonical document
+
+
+def verify_qualification_evidence(doc, evidence_root):
+    """Every evidence file exists inside ``evidence_root`` with the recorded size and digest."""
+    validate_qualification_report(doc)
+    root = Path(evidence_root).resolve(strict=True)
+    refs = [ref for check in doc["checks"] for ref in check["evidence"]]
+    if doc["independent_review"] is not None:
+        refs.append(doc["independent_review"]["evidence"])
+    for ref in refs:
+        path = (root / ref["path"]).resolve()
+        if not path.is_relative_to(root):
+            raise ContractError("UNSAFE_PATH", f"qualification evidence {ref['path']}")
+        if not path.is_file() or path.stat().st_size != ref["size"]:
+            raise ContractError("BINDING_MISMATCH", f"qualification evidence {ref['path']}")
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+        if "sha256:" + digest.hexdigest() != ref["sha256"]:
+            raise ContractError("BINDING_MISMATCH", f"qualification evidence {ref['path']}")
+    return doc
+
+
+def validate_capability_binding(report, qualification):
+    """A report may claim ``qualified`` for a target only with that target's passing qualification."""
+    validate_capability_report(report)
+    validate_qualification_report(qualification)
+    if report["target"] != qualification["target"] or report["policy_digest"] != qualification["policy_digest"]:
+        raise ContractError("BINDING_MISMATCH", "report.target/policy_digest")
+    if report["qualified"] and not qualification_passes(qualification):
+        raise ContractError("BINDING_MISMATCH", "report.qualified: the qualification does not pass")
+    return report
 
 
 def validate_repo_context(doc):

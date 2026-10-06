@@ -75,6 +75,20 @@ later wants harness-managed reports for them, each is its own `CapabilityReport.
 digest and qualification; one target's report never qualifies another, and parent-spec completion stays
 Showcase lifecycle, outside this contract.
 
+## Qualification report (2026-10-06, AH5-04b-r)
+
+An additive v1 document; no existing schema changes. `validate_qualification_report` covers one exact target
+tuple: `target`, `policy_digest`, `tuple` (exact host/engine/kernel/image facts), `checks` (exactly one per
+mandatory check `QUALIFICATION_CHECKS` = Q01–Q16 and B1–B10, each `pass`/`fail`/`not-run` with evidence
+references; a pass needs evidence), `independent_review` (nullable) and `created_at`. `qualification_passes` is
+true only when every check passes and the independent review passes. `validate_capability_binding` lets a
+`CapabilityReport` claim `qualified` only for the same target and policy digest with a passing qualification.
+`verify_qualification_evidence` re-hashes every evidence file inside an evidence root. CLI:
+`agent-harness qualification --check FILE [--evidence-root DIR] [--capability-report FILE]` (0 passing, 1 not
+passing or not bindable, 2 invalid). `qualification_digest` is the value ADR 0005 proposes for results. Showcase
+owns the probes, runs and raw evidence; `contract_fixtures/qualification-example.json` is a format example of a
+fictitious target, never evidence.
+
 ## Not decided here
 
 Python API for launching/cancelling (no implementation yet; arrives with a real backend in AH5-04b),
