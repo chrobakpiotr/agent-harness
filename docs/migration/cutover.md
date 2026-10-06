@@ -24,10 +24,18 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
 1. In `tooling/agent-harness/requirements.txt` add the pinned library next to `cryptography`:
    `agent-harness[grants] @ git+https://github.com/chrobakpiotr/agent-harness.git@<tag SHA>` (a tag SHA,
    never a branch).
-2. Copy the wrapper files over `tooling/agent-harness/` and delete nothing else.
-3. Run the Showcase CI protocol (`harness.py doctor`, `validate-all`, `verification_contract.py validate`,
-   `spec_inventory.py --check`) and the harness test suite. Tests of moved modules now live in the library;
-   remove them from Showcase in the same change.
+2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`.
+3. In the same change, remove only these five Showcase tests, which patch Showcase names that calls inside the
+   library cannot see; their behaviour is tested in the library (`tests/test_verification_authority.py`) and
+   the Showcase bindings by `test_cutover_wrapper.py`:
+   `test_verification_authority.AcceptedPlanResolutionTest.` `test_exact_accepted_plan_reconstructs_current_units_without_running_them`,
+   `test_origin_authority_is_v2_and_execution_fails_closed`, `test_post_seal_candidate_mutation_rejects_before_execution`,
+   `test_trusted_orchestrator_plan_creation_binds_running_attempt_and_candidate`,
+   `test_unknown_execution_unit_rejects_before_execution`. Every other Showcase test stays.
+4. Add `tooling/agent-harness/requirements.txt` to `harness.protocol_files`: after the cutover `trust.py` and
+   `telemetry.py` are wrappers, so the library pin must be part of the protocol fingerprint (a re-pin changes
+   the trust classifier).
+5. Run every step of the `agentic-sdd` workflow and the harness test suite.
 
 ## Boundaries
 
@@ -56,6 +64,7 @@ admission is blocked anyway; the rehearsal uses a minimal repository with `PYTHO
 ## Rehearse
 
 `scripts/rehearse-cutover.sh <showcase checkout> [<sha>]` exports Showcase twice, applies the wrapper to one
-copy, runs the harness tests and the CI protocol on both, and diffs them. It never modifies Showcase.
+copy, runs the harness tests and every Python step of the `agentic-sdd` workflow on both, and diffs them. It
+only reads Showcase (`git archive`, `git --no-optional-locks status`, `rev-parse`).
 `scripts/rehearse-rollback.sh <its WORK dir>` then writes lifecycle state and an accepted plan with one side and
 reads and continues it with the other, in both directions.

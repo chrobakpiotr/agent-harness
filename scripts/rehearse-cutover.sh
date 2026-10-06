@@ -11,7 +11,10 @@ python=${PYTHON:-python3.13}
 work=${WORK:-$(mktemp -d)}
 mkdir -p "$work" && work=$(cd "$work" && pwd -P)  # resolved, as the harness prints paths
 # Only read-only Git commands touch Showcase. Other work may move it meanwhile, so the check covers the harness.
-harness_state() { git -C "$showcase" status --porcelain -- tooling/agent-harness; git -C "$showcase" rev-parse "$sha"; }
+harness_state() {
+  git -C "$showcase" --no-optional-locks status --porcelain -- tooling/agent-harness
+  git -C "$showcase" rev-parse "$sha"
+}
 before=$(harness_state)
 head_before=$(git -C "$showcase" rev-parse --short HEAD)
 
@@ -20,6 +23,27 @@ head_before=$(git -C "$showcase" rev-parse --short HEAD)
 "$work/build-venv/bin/python" -m build --wheel --outdir "$work/dist" "$repo" >/dev/null
 wheel=$(ls "$work"/dist/agent_harness-*.whl)
 if [ "$(uname -sm)" = "Darwin x86_64" ]; then crypto="cryptography<49"; else crypto="cryptography==49.0.0"; fi
+# macOS /var -> /private/var: tests comparing resolved paths need a resolved temp root.
+mkdir -p "$work/tmp" && export TMPDIR="$work/tmp"
+
+# Every Python step of the Showcase agentic-sdd workflow at $sha except installs, the unit tests (run below)
+# and report printing: `|` blocks hold one command per line, `>-` blocks fold into one command.
+git -C "$showcase" show "$sha:.github/workflows/agentic-sdd.yml" | "$python" -c '
+import re, sys
+lines, i = sys.stdin.read().splitlines(), 0
+while i < len(lines):
+    m = re.match(r"(\s*)run: ?(.*)$", lines[i])
+    i += 1
+    if not m:
+        continue
+    head, block = m.group(2).strip(), []
+    while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > len(m.group(1))):
+        block.append(lines[i].strip()); i += 1
+    commands = [" ".join(l for l in block if l)] if head == ">-" else [l for l in block if l] if head == "|" else [head]
+    for c in commands:
+        if c.startswith("python3 ") and "pip install" not in c and "unittest discover" not in c:
+            print(c)
+' > "$work/ci-commands.txt"
 
 rehearse_side() {
   side=$1
@@ -56,14 +80,13 @@ rehearse_side() {
        name != "" && index($0, " ... ") { emit(status(substr($0, index($0, " ... ") + 5))); next }
        name != "" { emit(status($0)) }' "$work/$side-tests.log" | sort > "$work/$side-results.txt"
   : > "$work/$side-ci.txt"
-  for command in "harness.py doctor" "spec_inventory.py docs/specs --check docs/specs/INVENTORY.md" \
-                 "harness.py validate-all docs/specs" "verification_contract.py validate docs/specs/SDD-001" \
-                 "verification_contract.py validate docs/specs/SDD-OBS-001"; do
-    # shellcheck disable=SC2086
-    out=$(cd "$work/$side" && "$py" tooling/agent-harness/$command 2>&1) && rc=0 || rc=$?
+  : > "$work/$side-ci-rc.txt"
+  while IFS= read -r command; do
+    out=$(cd "$work/$side" && bash -c "$command" 2>&1) && rc=0 || rc=$?
     out=${out//$work\/$side-venv\//<venv>/}
     printf '## %s -> %s\n%s\n' "$command" "$rc" "${out//$work\/$side\//<export>/}" >> "$work/$side-ci.txt"
-  done
+    printf '%s -> %s\n' "$command" "$rc" >> "$work/$side-ci-rc.txt"
+  done < "$work/ci-commands.txt"
 }
 
 rehearse_side base & base_pid=$!
@@ -78,6 +101,9 @@ echo "tests base:    $(cut -d' ' -f3 "$work/base-results.txt" | sort | uniq -c |
 echo "tests wrapped: $(cut -d' ' -f3 "$work/wrapped-results.txt" | sort | uniq -c | tr '\n' ' ')"
 diff "$work/base-results.txt" "$work/wrapped-results.txt" > "$work/tests.diff" && echo "test results: identical" \
   || echo "test results differ: $(grep -c '^[<>]' "$work/tests.diff") lines in $work/tests.diff"
-diff "$work/base-ci.txt" "$work/wrapped-ci.txt" > "$work/ci.diff" && echo "ci commands: identical" \
-  || echo "ci commands differ: see $work/ci.diff"
+echo "ci commands: $(wc -l < "$work/ci-commands.txt") from the Showcase workflow"
+diff "$work/base-ci-rc.txt" "$work/wrapped-ci-rc.txt" > "$work/ci-rc.diff" && echo "ci exit codes: identical" \
+  || echo "ci exit codes differ: see $work/ci-rc.diff"
+diff "$work/base-ci.txt" "$work/wrapped-ci.txt" > "$work/ci.diff" && echo "ci output: identical" \
+  || echo "ci output differs ($(grep -c '^[<>]' "$work/ci.diff") lines, timings included): see $work/ci.diff"
 echo "results: $work"
