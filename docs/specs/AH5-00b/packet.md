@@ -50,5 +50,12 @@ consistent, benchmark copy truthfully drifted).
 Fresh-context verdict on `bc79e22`: **fail** — a FIFO with no writer hung `--check` forever, and the read was
 unbounded for a pipe or a growing file. Fix: only a regular file is a copy (FIFOs, devices → 2), and the read is
 capped at the canonical length + 1; a FIFO test with a timeout fails if the regular-file guard is removed.
-`/dev/stdin` is now refused (2) instead of timing-dependent. Builds from `main` are `0.3.0.dev0`, so a wheel with
+`/dev/stdin` is deterministic: refused (2) when stdin is a pipe or device, checked when redirected from a file. Builds from `main` are `0.3.0.dev0`, so a wheel with
 this command is distinguishable from `0.2.0`.
+
+## Final re-check (2026-10-06)
+
+Verdict on `aa2da19`: **pass** (FIFO, symlink to FIFO, `/dev/zero`, directory, empty path → 2; growing file and
+len+1 bytes → 1; `--version` `0.3.0.dev0`). Closed afterwards: the read cap is protected by a test asserting the CLI
+reads at most the canonical length + 1 bytes (removing the cap fails it); the file is opened non-blocking and its type checked on the open
+handle, so a path swapped to a FIFO between check and read cannot block.

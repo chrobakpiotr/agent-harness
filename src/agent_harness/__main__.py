@@ -38,10 +38,12 @@ def main(argv=None):
         print(f"constitution {version} {digest}")
     elif args.check is not None:  # an empty PATH is unreadable (2); it is never skipped
         try:
-            # Only a regular file is a copy: a FIFO or device could block or never end.
-            if not stat.S_ISREG(os.stat(args.check).st_mode):
-                raise OSError(errno.EINVAL, "not a regular file")
-            with open(args.check, "rb") as handle:
+            # Only a regular file is a copy: a FIFO or device could block or never end. Opening non-blocking
+            # and checking the open handle leaves no gap between the check and the read.
+            fd = os.open(args.check, os.O_RDONLY | os.O_NONBLOCK)
+            with open(fd, "rb") as handle:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(errno.EINVAL, "not a regular file")
                 copy = handle.read(len(text) + 1)  # bounded: anything longer has drifted
         except OSError as error:
             print(f"{args.check}: unreadable ({error.strerror})", file=sys.stderr)

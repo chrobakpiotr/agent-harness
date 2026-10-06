@@ -1,6 +1,7 @@
 """Versioned copies of the shared agent contract: `agent-harness constitution --check` detects any drift."""
 
 import hashlib
+import io
 import os
 import re
 import subprocess
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 from importlib import resources
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL = (resources.files("agent_harness") / "constitution.md").read_bytes()
@@ -49,6 +51,22 @@ class ConstitutionCopyTest(unittest.TestCase):
                               capture_output=True, check=False, timeout=30)  # no writer: must not block
         self.assertEqual(2, proc.returncode)
         self.assertEqual(2, cli("--check", "/dev/zero").returncode)
+
+    def test_a_copy_is_never_read_past_the_canonical_length(self):
+        from agent_harness import __main__ as cli_module
+        sizes, real_open = [], open
+
+        def spying_open(*args, **kwargs):
+            handle = real_open(*args, **kwargs)
+            read = handle.read
+            handle.read = lambda size=-1: sizes.append(size) or read(size)
+            return handle
+        path = self.dir / "long.md"
+        path.write_bytes(CANONICAL + b"x" * 100_000)
+        with mock.patch.object(cli_module, "open", spying_open, create=True), \
+             mock.patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(1, cli_module.main(["constitution", "--check", str(path)]))
+        self.assertEqual([len(CANONICAL) + 1], sizes)
 
     def test_repository_copy_is_the_shipped_text(self):
         proc = cli("--check", str(ROOT / "docs" / "agentic-sdd" / "constitution.md"))
