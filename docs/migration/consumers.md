@@ -11,3 +11,17 @@ writes none of them.
 
 Offline launch/cancel exists (ADR 0004, `fake`/`controlled`); the hardened track still needs a qualified
 backend (AH5-04b/04c). Until then no consumer execution is qualified, and results say so (`isolation_level`).
+
+## Shared agent contract copies (AH5-00b)
+
+Each consumer keeps a verbatim copy of the constitution of the agent-harness version it pins, and its own
+rules in a separate file (Showcase-specific rules stay in Showcase's constitution). In CI, with the pinned
+package installed:
+
+```text
+agent-harness constitution --check <path of the copy>   # 0 = exact copy, 1 = drifted, 2 = unreadable
+```
+
+Create or refresh the copy with `agent-harness constitution > <path>` after re-pinning, through review;
+`agent-harness constitution --digest` prints the version and sha256 to record next to the pin. Status:
+agent-benchmark's `docs/constitution.md` is a hand-condensed copy, not yet verbatim; Showcase has no copy yet.

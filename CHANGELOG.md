@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- CLI `agent-harness constitution [--digest | --check PATH]`: the shared agent contract ships in the wheel;
+  consumers check their verbatim copy for drift (AH5-00b). Constitution 1.0.1 (adds the check command to the
+  ownership rule; no rule changes); a version names exactly one text.
+
 ## 0.2.0 — 2026-10-06
 
 - **Breaking:** Python >= 3.13 (was >= 3.9). The `v0.1.0` tag keeps its 3.9 floor.

@@ -1,0 +1,36 @@
+# AH5-00b — Versioned shared-contract copies with a drift check
+
+- Status: **accepted** (ordered 2026-10-06).
+- Source: constitution "Ownership" rule (consumers receive versioned copies: version + digest + drift check;
+  updates by review, never auto-following `main`); AH5-00. Consumers: agent-benchmark (`docs/constitution.md`,
+  today a hand-condensed copy), Showcase (its own constitution stays authoritative for Showcase-specific rules).
+
+## Scope
+
+- The canonical text ships in the wheel as `agent_harness/constitution.md`, byte-identical to
+  `docs/agentic-sdd/constitution.md` (enforced by a test that runs the same check consumers run).
+- CLI (public): `agent-harness constitution` prints the canonical text; `--digest` prints
+  `constitution <version> sha256:<hex>`; `--check PATH` exits 0 when PATH is byte-identical to the canonical text
+  of the installed version, 1 when it drifted, 2 when it cannot be read.
+- Consumer procedure in `docs/migration/consumers.md`: keep a verbatim copy, local rules in a separate file, run
+  `--check` in CI against the pinned version; updating = re-pin, then copy the new text through review.
+
+## Acceptance criteria
+
+- AC1: `--check` passes on an exact copy and fails (exit 1) on a one-byte change, a missing trailing newline,
+  and another version's text; unreadable path exits 2.
+- AC2: the repository's own `docs/agentic-sdd/constitution.md` passes `--check` against the shipped text.
+- AC3: the installed wheel prints the same digest from an empty directory; `scripts/check-wheel.sh` green.
+
+## Evidence (2026-10-06)
+
+- AC1: `tests/test_constitution.py` (CLI as a subprocess): exact copy → 0; a one-character change, a missing
+  trailing newline and another version line → 1; missing path → 2. A whitespace-tolerant comparison
+  (mutation) fails the suite.
+- AC2: `docs/agentic-sdd/constitution.md` passes `--check` against the shipped text (same test).
+- AC3: `scripts/check-wheel.sh`: 138 tests OK, 1 skipped; the constitution tests run against the installed wheel
+  from an empty directory. Digest: `constitution 1.0.1 sha256:15cecfb87da0cb0d9ef2e47310b5ff9330992e50de05ef449b472988a63dcb04`.
+- The text gained the check command in its ownership rule, so the version moved to 1.0.1: the 1.0.0 text in
+  the `v0.1.0`/`v0.2.0` trees differs, and a version names exactly one text.
+- agent-benchmark's `docs/constitution.md` reports drifted (hand-condensed, not a copy); adopting a verbatim copy
+  is its change, after a tag that ships this command.

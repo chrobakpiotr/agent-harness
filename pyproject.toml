@@ -27,7 +27,7 @@ agent-harness = "agent_harness.__main__:main"
 version = {attr = "agent_harness.__version__"}
 
 [tool.setuptools.package-data]
-agent_harness = ["contract_fixtures/*.json", "schemas/*.json"]
+agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"]
 
 [tool.ruff.lint.per-file-ignores]
 # Verbatim extraction from Showcase (docs/migration/provenance.md); restyle only in a separate change.
