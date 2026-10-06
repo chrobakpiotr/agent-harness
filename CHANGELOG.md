@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — not yet tagged
+## 0.2.0 — 2026-10-06
 
 - **Breaking:** Python >= 3.13 (was >= 3.9). The `v0.1.0` tag keeps its 3.9 floor.
 - Public offline launch/cancel API `agent_harness.execution` (ADR 0004): `launch`, `Execution`,
