@@ -1,6 +1,6 @@
 # AH5-04b-r — Qualification report document and check command
 
-- Status: **accepted** (ordered 2026-10-06). Harness owns the format and validator; Showcase owns the probes,
+- Status: **accepted** and **done** (final check 2026-10-06: pass); released in 0.3.0. Harness owns the format and validator; Showcase owns the probes,
   the qualification run and its raw evidence (ADR 0001).
 - Source: Showcase handoff (`9ffb1b4`): every Q01–Q16 and B1–B10 check must be recorded separately with its own
   result and evidence, bound to one exact target and policy digest; contract v1 `CapabilityReport` has no
@@ -73,3 +73,9 @@ Verdict on `9e01ec4`: **fail** on one line — the job id was matched as a subst
 `…attempt-10` satisfied a report for `…attempt-1` (also `job-12`→`job-1`, `job-1`→`1`). Fixed: the job id must
 appear as a whole token (ID characters as boundaries); the three renumbering cases are tested and substring
 matching (mutation) fails them. F2–F5 closed; no regressions.
+
+## Final check (2026-10-06)
+
+Verdict on `b8e1e90`: **pass** — whole-token job match verified on 18 cases (renumbering rejected, real mentions
+and JSON contexts matched, metacharacters escaped, no backtracking on 10–50 MB). A job id followed by a sentence
+period does not match (fails closed).

@@ -14,7 +14,7 @@ backend (AH5-04b/04c). Until then no consumer execution is qualified, and result
 
 ## Shared agent contract copies (AH5-00b)
 
-Needs a release after `0.2.0` (the command is not in `v0.2.0`). Each consumer keeps a verbatim copy of the constitution of the agent-harness version it pins, and its own
+Needs `v0.3.0` or later (the command is not in `v0.2.0`). Each consumer keeps a verbatim copy of the constitution of the agent-harness version it pins, and its own
 rules in a separate file (Showcase-specific rules stay in Showcase's constitution). In CI, with the pinned
 package installed:
 

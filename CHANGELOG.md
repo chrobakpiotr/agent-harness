@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.3.0.dev0)
+## 0.3.0 — 2026-10-06
 
 - Contract v1 qualification report (`validate_qualification_report`, `qualification_passes`,
   `validate_capability_binding`, `verify_qualification_evidence`, `qualification_digest`) with mandatory checks
