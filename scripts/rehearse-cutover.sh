@@ -43,7 +43,9 @@ while i < len(lines):
     for c in commands:
         if c.startswith("python3 ") and "pip install" not in c and "unittest discover" not in c:
             print(c)
-' > "$work/ci-commands.txt"
+        else:
+            print(c, file=sys.stderr)
+' > "$work/ci-commands.txt" 2> "$work/ci-skipped.txt"
 
 rehearse_side() {
   side=$1
@@ -61,13 +63,14 @@ rehearse_side() {
   # Tests start `python3` subprocesses; in Showcase CI that is the interpreter the requirements went into.
   export PATH="$work/$side-venv/bin:$PATH"
   # One process per test module, and per class for the large test_harness, several at a time: the suite
-  # mostly waits on locks and subprocesses.
+  # mostly waits on locks and subprocesses. Single-process `discover` puts the harness directory on sys.path
+  # through earlier modules; here it is explicit, so modules that `import harness` run on their own.
   mkdir -p "$work/$side-logs"
   (cd "$work/$side/tooling/agent-harness/tests" && for module in test_*.py; do
      if [ "$module" = test_harness.py ]; then grep -oE '^class [A-Za-z0-9_]+' "$module" | sed 's/^class /test_harness./'
      else echo "${module%.py}"; fi
    done) | (cd "$work/$side" && xargs -P "${JOBS:-8}" -I{} sh -c \
-     'PYTHONPATH=tooling/agent-harness/tests "$1" -m unittest -v "$2" > "$3/$2.log" 2>&1 || true' \
+     'PYTHONPATH=tooling/agent-harness/tests:tooling/agent-harness "$1" -m unittest -v "$2" > "$3/$2.log" 2>&1 || true' \
      _ "$py" {} "$work/$side-logs")
   cat "$work/$side-logs"/*.log > "$work/$side-tests.log"
   # "name (id) ... status"; a docstring moves " ... status" to the next line, printed output moves the status
@@ -101,9 +104,15 @@ echo "tests base:    $(cut -d' ' -f3 "$work/base-results.txt" | sort | uniq -c |
 echo "tests wrapped: $(cut -d' ' -f3 "$work/wrapped-results.txt" | sort | uniq -c | tr '\n' ' ')"
 diff "$work/base-results.txt" "$work/wrapped-results.txt" > "$work/tests.diff" && echo "test results: identical" \
   || echo "test results differ: $(grep -c '^[<>]' "$work/tests.diff") lines in $work/tests.diff"
-echo "ci commands: $(wc -l < "$work/ci-commands.txt") from the Showcase workflow"
+echo "ci commands: $(wc -l < "$work/ci-commands.txt") from the Showcase workflow; skipped (installs, unit tests," \
+     "report printing, non-Python): $(wc -l < "$work/ci-skipped.txt"), listed in $work/ci-skipped.txt"
 diff "$work/base-ci-rc.txt" "$work/wrapped-ci-rc.txt" > "$work/ci-rc.diff" && echo "ci exit codes: identical" \
   || echo "ci exit codes differ: see $work/ci-rc.diff"
 diff "$work/base-ci.txt" "$work/wrapped-ci.txt" > "$work/ci.diff" && echo "ci output: identical" \
   || echo "ci output differs ($(grep -c '^[<>]' "$work/ci.diff") lines, timings included): see $work/ci.diff"
+# Durations, run ids and eval result directories vary per run; nothing else may differ.
+mask() { sed -E 's/[0-9]+(\.[0-9]+)?/N/g; s/[0-9a-f]{12,}/H/g; s#evals/[a-z-]+/[A-Za-z0-9]+/#evals/X/#g' "$1"; }
+diff <(mask "$work/base-ci.txt") <(mask "$work/wrapped-ci.txt") > "$work/ci-masked.diff" \
+  && echo "ci output after masking numbers and ids: identical" \
+  || echo "ci output after masking differs: see $work/ci-masked.diff"
 echo "results: $work"

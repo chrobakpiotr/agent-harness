@@ -1,6 +1,6 @@
 # AH5-06 — Release and controlled cutover
 
-- Status: **accepted**; integration authorised. 06a (rehearsal) implemented, awaiting independent evaluation;
+- Status: **accepted**; integration authorised. 06a (rehearsal) implemented, re-evaluation fixes applied, awaiting re-check;
   06b (cutover) waits for 04b/04c.
 - Source: master plan AH5-06; depends on AH5-05, independent review, integration authorisation. Showcase input:
   `91d4671` (`tooling/agent-harness/` unchanged since `50c18f9`), read-only in 06a.
@@ -103,3 +103,35 @@ run): `evidence-rehearsal-91d4671-r2.tar.gz` (summary, results, diffs, per-modul
 - AC2: 21 workflow steps; exit codes identical; output identical after masking durations and run IDs.
 - AC3: `rehearse-rollback.sh`: wrapped → base, base → wrapped and base → base all ok, as in the first run.
 - AC5: `tooling/agent-harness` unchanged; only read-only Git commands on Showcase.
+
+## Re-evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `7a9a620`: **fail**. Findings 1, 2, 4 and 6 closed. Corrections to the
+section above, and fixes:
+
+- Not closed: `test_verification_completion_boundary` (6 tests) never ran in the rehearsal: its per-module run
+  lacked the harness directory on `PYTHONPATH`, so it failed to import on both sides. The "TMPDIR" attribution
+  above was wrong for it. Fix: the harness directory is on `PYTHONPATH`; these are the only Showcase tests
+  besides the five removed ones that drive the wrapped authority against the real lifecycle.
+- Overstated: `test_cutover_wrapper.py` let swapped positional arguments, a dropped `repository`, dropped
+  store `control_root`/registry and non-replacing aliases through. Fix: it now asserts the exact arguments of
+  every authority entry point, store pass-through, and module identity for every alias; each of those eight
+  mutations fails it.
+- The CI masking now happens in the script (`ci-masked.diff`); skipped workflow commands are listed
+  (`ci-skipped.txt`) instead of dropped silently.
+- Not rehearsed: guide steps 3 (removing the five tests) and 4 (`protocol_files`), both Showcase changes in
+  06b. The planning benchmark fails on both sides on this host (Showcase code included), as in AH5-04a.
+
+## Evidence 06a, third run (2026-10-06)
+
+Committed scripts, rehearsed SHA `91d4671` (Showcase `HEAD` moved `2b2a428` → `3b63e43` during the run through
+other work; `tooling/agent-harness` unchanged): `evidence-rehearsal-91d4671-r3.tar.gz`.
+
+- AC1: base 632 tests (631 ok, 1 FAIL: planning benchmark, host speed); wrapped 636 (629 ok, 6 FAIL,
+  1 ERROR). Differences: the 5 authority patch-boundary tests (removed at cutover), R4 process timing under
+  parallel load, and the 4 `test_cutover_wrapper` tests (wrapped only, all ok). `completion_boundary`: 6/6 ok
+  on both sides.
+- AC2: 21 workflow steps (19 non-Python or install/test/report lines listed as skipped); exit codes identical;
+  output identical after the script's masking of numbers and run IDs.
+- AC3: rollback wrapped → base, base → wrapped, base → base: ok.
+- AC5: read-only Git commands only; `tooling/agent-harness` unchanged.
