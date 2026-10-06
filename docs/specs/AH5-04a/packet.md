@@ -1,6 +1,9 @@
 # AH5-04a — Accepted origin and full obligation coverage
 
 - Status: 04a-1 **accepted** and **done** (evaluated 2026-10-06, decision 7); 04a-2 deferred to Showcase.
+  Blocked (2026-10-06): Showcase has no task, owner or approved host for origin admission or a qualified
+  backend; origin admission stays fail-closed there, and its latest host probe qualified no backend
+  (Showcase `docs/reviews/S30-03a-qualification-2026-10-04.json`).
 - Source: master plan AH5-04a; depends on AH5-03b and accepted SDD-OBS contracts. Showcase input `50c18f9`
   (`tooling/agent-harness/` unchanged through `d7ab1f9`; read-only).
 

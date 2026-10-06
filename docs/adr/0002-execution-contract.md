@@ -67,6 +67,14 @@ candidate bytes → candidate reference; new outcome `rejected`; `usage_event_id
    offline public API (fake/controlled backend) is due after AH5-03b, hardened live after AH5-04c
    (AH5-05); not AH5-04b.
 
+## Consumer alignment: Showcase S30-06 (2026-10-06)
+
+Showcase `c9a5fec`/`a6fac3c` define REF-CORRECTNESS, REF-PERFORMANCE and the external PROD-Q as separate
+qualification targets. They are not harness execution targets today and need no contract change. If Showcase
+later wants harness-managed reports for them, each is its own `CapabilityReport.target` with its own policy
+digest and qualification; one target's report never qualifies another, and parent-spec completion stays
+Showcase lifecycle, outside this contract.
+
 ## Not decided here
 
 Python API for launching/cancelling (no implementation yet; arrives with a real backend in AH5-04b),

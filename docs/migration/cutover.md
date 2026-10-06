@@ -68,6 +68,8 @@ Candidate sealing (`prepare_task_plan`) refuses the full Showcase tree: it walks
 secret-named path (`infra/k8s/helm/ecommerce/templates/secret.yaml`), high-entropy text, or binary `__pycache__`
 files stop it (`SECRET_BEARING_CANDIDATE_UNSEALABLE`, `CANDIDATE_PRIVACY_PREFLIGHT_UNAVAILABLE`). Origin
 admission is blocked anyway; the rehearsal uses a minimal repository with `PYTHONDONTWRITEBYTECODE=1`.
+Showcase confirms this is intended fail-closed policy: clean generated caches before sealing, and any exception
+for the templated Helm file needs its own narrow review and test, never a weaker general rule.
 
 ## Rehearse
 
