@@ -1,6 +1,6 @@
 # AH5-06 — Release and controlled cutover
 
-- Status: **accepted**; integration authorised. 06a (rehearsal) implemented, re-evaluation fixes applied, awaiting re-check;
+- Status: **accepted**; integration authorised. 06a (rehearsal) **done** (third evaluation: pass);
   06b (cutover) waits for 04b/04c.
 - Source: master plan AH5-06; depends on AH5-05, independent review, integration authorisation. Showcase input:
   `91d4671` (`tooling/agent-harness/` unchanged since `50c18f9`), read-only in 06a.
@@ -133,5 +133,28 @@ other work; `tooling/agent-harness` unchanged): `evidence-rehearsal-91d4671-r3.t
   on both sides.
 - AC2: 21 workflow steps (19 non-Python or install/test/report lines listed as skipped); exit codes identical;
   output identical after the script's masking of numbers and run IDs.
+- AC3: rollback wrapped → base, base → wrapped, base → base: ok.
+- AC5: read-only Git commands only; `tooling/agent-harness` unchanged.
+
+## Third evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `fdbc017`: **pass** — A (completion boundary runs, 6/6 both sides;
+per-module totals equal CI-style `discover`), B (21 shim mutations all caught) and C closed; r3 archive
+byte-identical to its run. Low findings fixed in `8f2d067`: the CI mask now hides only durations and eval
+result IDs (a changed count stays visible); the rehearsal builds the wheel and copies the shim from a clean
+export of the committed `HEAD` and prints its SHA; `test_cutover_wrapper` also pins the shim's defaults
+(`unit_id`, `repository`, `reconstruct`). Wording: the "19 skipped" counts workflow shell lines (installs,
+the unit-test run, the report gate), not steps.
+
+## Evidence 06a, fourth run (2026-10-06)
+
+Library `8f2d067` (committed `HEAD`), rehearsed Showcase `91d4671` (Showcase `HEAD` moved `5f4c86f` →
+`640b618` during the run through other work; `tooling/agent-harness` unchanged):
+`evidence-rehearsal-91d4671-r4.tar.gz`.
+
+- AC1: base 632 (631 ok, 1 FAIL: planning benchmark, host speed); wrapped 637 (631 ok, 5 FAIL, 1 ERROR).
+  Differences: exactly the 5 authority patch-boundary tests (removed at cutover) and the 5
+  `test_cutover_wrapper` tests (wrapped only, all ok). `completion_boundary` 6/6 on both sides.
+- AC2: 21 workflow steps; exit codes identical; output identical after masking durations and eval IDs.
 - AC3: rollback wrapped → base, base → wrapped, base → base: ok.
 - AC5: read-only Git commands only; `tooling/agent-harness` unchanged.
