@@ -1,6 +1,7 @@
 # ADR 0005 — Contract v2: target evidence and resource limits in results
 
-- Status: **Proposed** (needs a decision and agent-benchmark consumer review; nothing implemented)
+- Status: **Proposed** — shape agreed in the agent-benchmark consumer review (2026-10-06, below); to be
+  implemented after a target qualifies (AH5-04b). Nothing implemented.
 - Date: 2026-10-06
 - Inputs: agent-benchmark AB5-05b B8/B10 (`29889c2`); `docs/specs/AH5-04b/grading-requirements.md`; ADR 0002.
 
@@ -17,19 +18,30 @@ free-form `versions` map, which carries no meaning). v1 schemas are closed, so a
 
 - Result `target`: `null` for non-qualified launches, else `{"id", "qualification_digest", "image_digest"}` — the
   `CapabilityReport.target` and `policy_digest` of the passing report, plus the workload image digest.
-- Request `limits` (nullable): `{"wall_seconds", "cpus", "memory_bytes", "pids", "disk_bytes", "output_bytes"}`
-  as integers; result `limits`: `{"applied": {...same keys...}, "fired": null | "timeout" | "oom" | "pids" |
-  "disk" | "output"}`. A launch that cannot enforce a requested limit is `rejected` (`CAPABILITY_UNSUPPORTED`),
-  never silently unlimited. `fired: "timeout"` iff `outcome: timeout`; any other fired limit gives
-  `outcome: error`, `error_code: LIMIT_EXCEEDED` (new code), `drain` from the target.
-- `isolation_level: qualified` requires a non-null `target`; other levels require `target: null`.
+- Request `limits` (nullable): `{"cpus", "memory_bytes", "pids", "disk_bytes", "output_bytes"}` as integers.
+  Wall time stays `timeout_seconds` (no second wall limit). Result `limits`: `{"applied": {...same keys...,
+  "timeout_seconds"}, "fired": null | "timeout" | "oom" | "pids" | "disk", "output_truncated": bool}`.
+- `applied` equals the request exactly; a target that cannot enforce a value exactly rejects the request
+  (`CAPABILITY_UNSUPPORTED`), never rounds it and never runs silently unlimited.
+- Output is not a kill limit: output beyond `output_bytes` is dropped and `output_truncated` is true. `fired`
+  names a limit the target observed ending or impairing the run (`disk` usually surfaces as write errors);
+  `fired: null` does not prove that no limit was reached.
+- The validator enforces both directions: `error_code: LIMIT_EXCEEDED` (new code) iff `fired` is non-null and not
+  `timeout` (with `outcome: error`); `fired: timeout` iff `outcome: timeout`.
+- `isolation_level: qualified` requires a non-null `target` and non-null `limits` (no hidden defaults); other
+  levels require `target: null`.
+- Grading is a launch like any other: a grading request binds the candidate and test-input digests in
+  `input_bindings`, and its verdict file returns through `artifacts[]`; a target's qualification covers grading
+  launches as well as agent execution.
 - v1 stays supported for reading; producers emit one version per document; consumers pin a release.
 
-## Open questions
+## Consumer review (agent-benchmark, 2026-10-06, on `f95a026`)
 
-1. Is `LIMIT_EXCEEDED` with `limits.fired` preferable to new `outcome` values (`oom`, …)? The proposal keeps the
-   outcome set small and puts the cause in `limits.fired`.
-2. Do offline backends (`fake`/`controlled`) accept `limits`? Proposal: `ScriptedBackend` may script `fired`;
-   `ProcessBackend` rejects a request with limits (it cannot enforce them).
-3. Timing: v2 is only useful once a target qualifies (AH5-04b); agree the shape now so the qualification records
-   the same evidence.
+1. `LIMIT_EXCEEDED` plus `limits.fired`, not new outcome values: outcome-based reports and predeclared exclusions
+   stay unchanged.
+2. Offline backends: `ScriptedBackend` can script `fired` (so consumers test limit handling offline);
+   `ProcessBackend` rejects any non-null `limits`.
+3. Shape fixed now, implemented after qualification.
+4. Gaps adopted above: one wall limit (`timeout_seconds`), output truncation instead of an output kill, `fired`
+   as observed cause, explicit limits required for qualified launches, `applied` equal to the request.
+5. Consumer side when v2 ships: agent-benchmark carries `target` and `limits` in its trial and grade records.
