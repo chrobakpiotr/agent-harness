@@ -1,6 +1,7 @@
 # AH5-05a — Offline launch/cancel API (fake and controlled backends)
 
-- Status: **accepted** and **done** (re-evaluated 2026-10-06: pass); agent-benchmark review of ADR 0004 pending.
+- Status: **accepted** and **done** (re-evaluated 2026-10-06: pass); agent-benchmark review: accepted once
+  `0.2.0` is tagged (see ADR 0004, "Consumer review").
 - Source: master plan AH5-05 ("03b for the offline API; 04c for hardened live"); ADR 0002 "Not decided here"
   (launch/cancel API). Consumer: agent-benchmark AB5-06b (`docs/execution-port.md`, open item 3; AB5-06a
   test "cancellation tied to real terminal/drain" is NOT RUN until this exists). Independent of the Showcase
@@ -115,3 +116,12 @@ longer inherits running executions (`os.register_at_fork`); a corrupt start mark
 for a stored result of another request and a changed request while running (both mutations caught). Recorded
 as limits in ADR 0004: spellings of one evidence root that `resolve()` does not fold (case-insensitive volume,
 symlinked `executions/`) behave like two processes. Pending: agent-benchmark review of ADR 0004.
+
+## Consumer review follow-up (2026-10-06)
+
+agent-benchmark accepted deltas 1–4 and asked to settle three points before tagging; done in `b1dd552`:
+`__version__` `0.2.0`; `launch(request, backend, *, workspace, evidence_root)` with no `RepoContext`
+(digest-pinned bundles have no Git base, and `repo_id`/`base_sha`/`authority_root` were unused);
+`ScriptedBackend(rejection=...)` for `BACKEND_UNAVAILABLE`. New tests: path validation, no repository
+arguments accepted, scripted rejection without side effects. `scripts/check-wheel.sh`: 135 tests OK,
+1 skipped. Pinning waits for the `v0.2.0` tag.
