@@ -1,6 +1,6 @@
 # AH5-05a — Offline launch/cancel API (fake and controlled backends)
 
-- Status: **accepted**; implemented, awaiting independent evaluation and the agent-benchmark review of ADR 0004.
+- Status: **accepted** and **done** (re-evaluated 2026-10-06: pass); agent-benchmark review of ADR 0004 pending.
 - Source: master plan AH5-05 ("03b for the offline API; 04c for hardened live"); ADR 0002 "Not decided here"
   (launch/cancel API). Consumer: agent-benchmark AB5-06b (`docs/execution-port.md`, open item 3; AB5-06a
   test "cancellation tied to real terminal/drain" is NOT RUN until this exists). Independent of the Showcase
@@ -105,3 +105,13 @@ Fresh-context evaluator verdict on `7dd7f8e`: **fail**. AC2, AC3 and AC5 held. F
 Mutations caught after the fixes (each on a copy of `src`): SIGTERM only, SIGKILL only, EPERM as gone, cancel
 flag lost, not create-once, no lock (5/5 runs), raw ID as filename, race record ignored, symlink escape sealed,
 no exit hook. Suite stable 5/5. `scripts/check-wheel.sh`: 131 tests OK, 1 skipped.
+
+## Re-evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `fed9f09`: **pass** — the six findings are closed (escape, race in and
+across processes, exit cleanup, mutations, `setsid` wording, smaller items); no new high-severity defect.
+Low findings fixed afterwards: the exit hook uses one 30 s deadline for all executions; a forked child no
+longer inherits running executions (`os.register_at_fork`); a corrupt start marker is `MALFORMED`; new tests
+for a stored result of another request and a changed request while running (both mutations caught). Recorded
+as limits in ADR 0004: spellings of one evidence root that `resolve()` does not fold (case-insensitive volume,
+symlinked `executions/`) behave like two processes. Pending: agent-benchmark review of ADR 0004.

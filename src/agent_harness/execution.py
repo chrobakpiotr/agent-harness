@@ -36,8 +36,13 @@ def _cancel_running_at_exit():
         running = list(_RUNNING.values())
     for execution in running:
         execution.cancel()
+    deadline = time.monotonic() + 30  # one deadline for all, not 30 s each
     for execution in running:
-        execution._done.wait(30)
+        execution._done.wait(max(0.0, deadline - time.monotonic()))
+
+
+# A forked child has none of the parent's worker threads; it must not wait for their executions.
+os.register_at_fork(after_in_child=_RUNNING.clear)
 
 
 class Execution:
@@ -76,7 +81,7 @@ def launch(request, repo, backend):
             return running
         marker_path = root / f"{slot}.started"
         if marker_path.exists():  # read-only: a reused ID is checked before anything else
-            _check_binding(json.loads(marker_path.read_text())["request_digest"], request)
+            _check_binding(_marker_digest(marker_path), request)
         missing = [c for c in request["capabilities"] if c not in backend.capabilities]
         if missing:  # never launched: no process, nothing written
             code = "NOT_QUALIFIED" if "qualified_isolation" in missing else "CAPABILITY_UNSUPPORTED"
@@ -129,7 +134,7 @@ def _stored(root, slot, request, backend):
         _publish(root / f"{slot}.started", marker)
         return None
     except FileExistsError:
-        _check_binding(json.loads((root / f"{slot}.started").read_text())["request_digest"], request)
+        _check_binding(_marker_digest(root / f"{slot}.started"), request)
     if not result_path.exists():
         # Started by another launcher that has not published a result (or never will): launch state unknown,
         # never rerun. If that launcher finishes later, its result loses to this record.
@@ -138,6 +143,13 @@ def _stored(root, slot, request, backend):
         except FileExistsError:
             pass
     return _load(result_path, request)
+
+
+def _marker_digest(path):
+    try:
+        return json.loads(path.read_text())["request_digest"]
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise contract.ContractError("MALFORMED", f"start marker {path.name}") from error
 
 
 def _load(path, request):

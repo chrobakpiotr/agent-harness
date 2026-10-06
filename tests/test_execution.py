@@ -272,6 +272,30 @@ class ExecutionTest(unittest.TestCase):
         result = self.run_to_end(self.process("pass", candidate="link.txt"))
         self.assertIsNone(result["candidate"])
 
+    def test_stored_result_of_another_request_or_a_corrupt_marker_is_malformed(self):
+        self.run_to_end(execution.ScriptedBackend())
+        root = Path(self.repo["evidence_root"]) / "executions"
+        slot = execution._slot("req-1")
+        other = dict(self.request(), timeout_seconds=99)
+        (root / f"{slot}.json").unlink()
+        execution._publish(root / f"{slot}.json", execution._unknown(other, execution.ScriptedBackend(), None,
+                                                                     False, None))
+        with self.assertRaises(contract.ContractError) as caught:
+            execution.launch(self.request(), self.repo, execution.ScriptedBackend())
+        self.assertEqual("MALFORMED", caught.exception.code)
+        (root / f"{slot}.started").write_text("{")
+        with self.assertRaises(contract.ContractError) as caught:
+            execution.launch(self.request(), self.repo, execution.ScriptedBackend())
+        self.assertEqual("MALFORMED", caught.exception.code)
+
+    def test_changed_request_while_running_is_refused(self):
+        running = execution.launch(self.request(), self.repo, execution.ScriptedBackend(duration=5))
+        with self.assertRaises(contract.ContractError) as caught:
+            execution.launch(self.request(timeout=99), self.repo, execution.ScriptedBackend())
+        self.assertEqual("BINDING_MISMATCH", caught.exception.code)
+        running.cancel()
+        running.result(timeout=10)
+
     def test_changed_request_reusing_an_id_is_refused_before_capability_checks(self):
         self.run_to_end(execution.ScriptedBackend())
         with self.assertRaises(contract.ContractError) as caught:

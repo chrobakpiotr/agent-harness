@@ -41,7 +41,12 @@
   can outlive a confirmed drain; `ProcessBackend` is not a sandbox and never qualified. Qualified isolation is
   AH5-04b/04c.
 - Executions still running when the interpreter exits are cancelled by an exit hook (their process groups
-  are terminated); a hard kill of the caller leaves them running, and a relaunch then reports `unknown`.
+  are terminated, 30 s in total); a hard kill of the caller leaves them running, and a relaunch then reports
+  `unknown`. A forked child does not inherit the parent's running executions.
+- One process recognises a relaunch by the resolved evidence root. Two spellings that the filesystem treats as
+  the same directory but `resolve()` does not (case-insensitive volumes, two roots symlinking one
+  `executions/`) behave like two processes: the first published record wins, which can be `unknown`. Use one
+  canonical evidence root per repository.
 - No real providers, retries or usage capture for processes; no artefact retention policy.
 - The child inherits the caller's environment unless `env` is given; callers keep secrets out of it.
 
