@@ -14,11 +14,13 @@ Verification-v2 launch and completion are deliberately blocked.
 
 1. **Ownership.** Showcase is the single implementation owner of each **moved** module until the AH5-06
    cutover; afterwards the library is. New capability with no Showcase source (the offline launch API, the
-   constitution CLI, verification-v2 origin admission AH5-04a-2, and the qualified backend of AH5-04b as a new
-   `agent_harness.execution` backend) is library-owned from creation and aligned with the accepted Showcase
-   specs (SDD-OBS) rather than invented. It never modifies a moved copy: the Showcase modules mapped to 04b
-   (`verification_sandbox`, `verification_command`, `supervisor`, `executor`) stay Showcase-owned and move only
-   with parity, so no module has two actively developed copies.
+   constitution CLI, the qualified backend of AH5-04b as an `agent_harness.execution` backend) is
+   library-owned from creation and aligned with the accepted Showcase specs (SDD-OBS) rather than invented.
+   **Per-module handover:** when the library has to change a moved module before the cutover (origin
+   admission in `verification/authority.py` for 04a-2; `supervisor`/`executor` for 04b), ownership of that
+   module moves to the library first: Showcase freezes its copy by agreement with its owner, records the
+   freeze, and consumes the library module through the compatibility shim from then on. A module never has two
+   actively developed copies; the full cutover (06b) switches whatever is still Showcase-owned.
    After the cutover ownership stays per module: Showcase keeps `harness.py`, `orchestrate.py`, `runner.py`,
    `verify.py`, executor, supervisor, workspace, sandbox, its profiles and issuer registry until a packet
    moves them; the moved modules become the compatibility shim of `docs/migration/cutover.md`.
@@ -36,9 +38,9 @@ Verification-v2 launch and completion are deliberately blocked.
    the Gradle cache knob stay with Showcase as consumer policy.
 5. **Guards.** Guards listed under "Diagnostic / incomplete components" move unchanged with the module that
    holds them and keep their tests where the test's driver lives (the completion-boundary test drives the
-   Showcase lifecycle and stays there). The offline launch path (`agent_harness.execution`,
-   `isolation_level: fake/controlled`) is separate from verification-v2: it never satisfies origin admission
-   or completion and never reports a qualified launch.
+   Showcase lifecycle and stays there). The offline backends (`ScriptedBackend`, `ProcessBackend`;
+   `isolation_level: fake/controlled`) never satisfy origin admission or completion and never report a
+   qualified launch; only a backend qualified under the 04b packet may, and only through the authority path.
 6. **Single writer.** Exactly one implementation writes a given state root (`.agent-state`,
    `.agent-runs/control/verification-v2`). Before the cutover the library writes no Showcase state; consumers
    run either the Showcase scripts or the pinned shim against a repository, never both. The library writes no
@@ -59,7 +61,8 @@ Verification-v2 launch and completion are deliberately blocked.
 
 - Owners for `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `eval.py` and
   `verify.py`: they stay in Showcase until a packet moves them (`verify.py` needs the executor).
-- AH5-04b needs a qualified Linux host; origin admission (04a-2) needs 04b's physical execution.
+- AH5-04b needs a qualified Linux host; origin admission (04a-2) needs 04b's physical execution. Each needs a
+  per-module handover (decision 1) agreed with Showcase before its first change to a moved module.
 
 ## Consequences
 

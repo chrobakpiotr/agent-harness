@@ -29,5 +29,5 @@ Copying source, contract fixtures (AH5-02), AMQP quarantine, any change in Showc
   and `__file__`/cwd/git/env greps over Showcase `tooling/agent-harness/`; guard lines read in
   `verification/authority.py:135`, `verification/executor.py:127`, `verification_sandbox.py:doctor`,
   `verification/workspace.py:118`.
-- Owner columns and ADR are proposals; final ownership needs independent review. (2026-10-06: ADR 0001 accepted with
-  amendments after independent review.)
+- Owner columns and ADR were proposals pending independent review; ADR 0001 is accepted with amendments
+  (2026-10-06), and an owner column binds when a packet moves the module.

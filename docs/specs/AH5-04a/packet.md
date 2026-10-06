@@ -62,9 +62,10 @@ without bypassing authority) belong to that packet.
 7. 04a-1 is accepted with the lifecycle port mocked here; a test of the package authority through a real
    lifecycle belongs to the cutover (AH5-06).
 
-8. Supersedes decision 2 (2026-10-06, ADR 0001 decision 1 as amended): origin admission (04a-2) has no Showcase
-   source and Showcase has no task or owner for it, so it is library-owned from creation, aligned with the
-   accepted SDD-OBS contracts. It still needs physical execution from a qualified backend (04b, which needs a
+8. Supersedes decision 2 (2026-10-06, ADR 0001 decision 1 as amended): Showcase has no task or owner for origin
+   admission, so the library implements it, aligned with the accepted SDD-OBS contracts. Its fail-closed guard
+   lives in the moved `verification/authority.py`, so the work starts with a per-module handover of that module
+   (Showcase freezes its copy by agreement and consumes the library one through the shim). It still needs physical execution from a qualified backend (04b, which needs a
    qualified Linux host).
 
 ## Independent evaluation (2026-10-06)
