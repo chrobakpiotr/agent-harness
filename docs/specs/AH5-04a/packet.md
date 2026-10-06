@@ -1,6 +1,6 @@
 # AH5-04a — Accepted origin and full obligation coverage
 
-- Status: 04a-1 **accepted**; 04a-2 deferred to Showcase.
+- Status: 04a-1 **accepted** and **done** (evaluated 2026-10-06, decision 7); 04a-2 deferred to Showcase.
 - Source: master plan AH5-04a; depends on AH5-03b and accepted SDD-OBS contracts. Showcase input `50c18f9`
   (`tooling/agent-harness/` unchanged through `d7ab1f9`; read-only).
 
@@ -55,6 +55,8 @@ without bypassing authority) belong to that packet.
    with the Showcase code too, so locally it reports skipped, not PASS.
 6. Python floor 3.13 (Showcase target): the moved modules keep their 3.10+ syntax and APIs verbatim; the
    `v0.1.0` tag keeps 3.9 (CHANGELOG, Unreleased).
+7. 04a-1 is accepted with the lifecycle port mocked here; a test of the package authority through a real
+   lifecycle belongs to the cutover (AH5-06).
 
 ## Independent evaluation (2026-10-06)
 
@@ -67,7 +69,7 @@ validation; new parameters fail closed. Follow-ups:
 - `prepare_task_plan` loaded a profile resolving outside `profile_root` (refused only at publish): now refused
   before sealing; `test_trusted_orchestrator_refuses_a_profile_outside_the_root` fails without the check.
 - The floor change is recorded as decision 6.
-- Open for a human: the AC "completion-boundary tests pass unchanged" is met only in Showcase, which runs its
-  own copy; no test here drives the package authority through a real lifecycle (the port is mocked).
+- The AC "completion-boundary tests pass unchanged" is met in Showcase, which runs its own copy; here the
+  lifecycle port is mocked. Accepted for 04a-1 (decision 7).
 - Known: `test_primary_repository_authority_resolution` needs a Git checkout (`check-wheel.sh` always runs
   from one); from a `git archive` export it fails.
