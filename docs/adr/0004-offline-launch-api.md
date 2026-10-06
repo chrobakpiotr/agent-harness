@@ -17,9 +17,14 @@
 - **Refusal without side effects.** A required capability the backend lacks gives `rejected`
   (`NOT_QUALIFIED` for `qualified_isolation`, else `CAPABILITY_UNSUPPORTED`): nothing started, nothing written.
 - **One request ID, one execution.** A start marker and the terminal result are published create-once under
-  `<evidence_root>/executions/`. Relaunching an ID returns the stored result; a launch interrupted before its
-  result (crash) reconciles to `unknown` and is never rerun; a different request reusing the ID is
-  `BINDING_MISMATCH`. In one process, a relaunch while running returns the running `Execution`.
+  `<evidence_root>/executions/`, named by the sha256 of the request ID (IDs may contain `/`). The first
+  record wins: a launcher that finds a start without a result records `unknown`, and the original launch then
+  returns that record. A stored result is validated against its request when read. Relaunching an ID returns
+  the stored result; a launch interrupted before its result (crash) reconciles to `unknown` and is never rerun;
+  a different request reusing the ID is `BINDING_MISMATCH`, checked before any capability refusal. In one
+  process, a relaunch while running returns the running `Execution`.
+- **Candidate files.** `ProcessBackend(candidate=...)` must be a relative path without `..`; a file resolving
+  outside the workspace (symlink) is not sealed.
 - **Backends.** `ScriptedBackend` — deterministic attempts, usage summaries and candidate bytes;
   `isolation_level: fake`; capabilities `cancel`, `usage`. `ProcessBackend(argv)` — a real child in
   `repo.workspace` in its own process group; timeout and cancel send SIGTERM then SIGKILL to the group;
@@ -32,8 +37,11 @@
 
 ## Limits
 
-- A descendant that leaves the process group (`setsid`) is not tracked; `ProcessBackend` is not a sandbox
-  and never qualified. Qualified isolation is AH5-04b/04c.
+- `drain: confirmed` covers the process group only. A descendant that leaves it (`setsid`) is not tracked and
+  can outlive a confirmed drain; `ProcessBackend` is not a sandbox and never qualified. Qualified isolation is
+  AH5-04b/04c.
+- Executions still running when the interpreter exits are cancelled by an exit hook (their process groups
+  are terminated); a hard kill of the caller leaves them running, and a relaunch then reports `unknown`.
 - No real providers, retries or usage capture for processes; no artefact retention policy.
 - The child inherits the caller's environment unless `env` is given; callers keep secrets out of it.
 

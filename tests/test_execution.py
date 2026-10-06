@@ -3,8 +3,10 @@
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -131,7 +133,7 @@ class ExecutionTest(unittest.TestCase):
     def test_start_without_result_reconciles_to_unknown_and_never_reruns(self):
         root = Path(self.repo["evidence_root"]) / "executions"
         root.mkdir()
-        (root / "req-1.started").write_text(json.dumps(
+        (root / (execution._slot("req-1") + ".started")).write_text(json.dumps(
             {"contract_version": 1, "request_id": "req-1", "request_digest": contract.request_digest(self.request())}))
         marker = self.root / "workspace" / "ran"
         result = execution.launch(self.request(), self.repo,
@@ -153,6 +155,129 @@ class ExecutionTest(unittest.TestCase):
                 report = contract.validate_capability_report(backend.report())
                 self.assertEqual((False, False, "NOT_QUALIFIED"),
                                  (report["qualified"], report["launch_ready"], report["refusal"]))
+
+    def test_request_id_cannot_escape_the_evidence_root(self):
+        evidence = Path(self.repo["evidence_root"])
+        self.run_to_end(execution.ScriptedBackend(candidate=b"a"), self.request("a"))
+        for request_id in ("a/../../../ESCAPED", "x/y"):
+            with self.subTest(request_id=request_id):
+                result = self.run_to_end(execution.ScriptedBackend(candidate=b"b"), self.request(request_id))
+                self.assertEqual("completed", result["outcome"])
+                self.assertTrue((evidence / result["candidate"]["path"]).resolve().is_relative_to(evidence))
+        self.assertEqual(["authority", "evidence", "workspace"], sorted(p.name for p in self.root.iterdir()))
+        self.assertFalse(any(p.name.startswith("ESCAPED") for p in self.root.rglob("*")))
+
+    def test_a_relaunch_racing_a_running_launch_never_hangs_it(self):
+        first = execution.launch(self.request(), self.repo, execution.ScriptedBackend(duration=1))
+        other_process_view = dict(self.repo, evidence_root=self.repo["evidence_root"] + "/")  # same root, other key
+        with mock.patch.dict(execution._RUNNING, clear=True):
+            second = execution.launch(self.request(), other_process_view, execution.ScriptedBackend()).result(10)
+        self.assertEqual("unknown", second["outcome"])
+        self.assertEqual(second, first.result(timeout=10))  # the first record wins; nothing hangs
+        self.assertEqual({}, {k: v for k, v in execution._RUNNING.items() if v is first})
+
+    def test_concurrent_launches_of_one_request_run_once(self):
+        runs = []
+
+        class Counting(execution.ScriptedBackend):
+            def run(self, *args):
+                runs.append(1)
+                return super().run(*args)
+        backend = Counting(duration=0.2)
+        executions, barrier = [], threading.Barrier(20)
+
+        def launch_together():
+            barrier.wait()
+            executions.append(execution.launch(self.request(), self.repo, backend))
+        threads = [threading.Thread(target=launch_together) for _ in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        results = {json.dumps(e.result(timeout=10), sort_keys=True) for e in executions}
+        self.assertEqual((1, 1), (len(runs), len(results)))
+        self.assertEqual("completed", json.loads(results.pop())["outcome"])  # not degraded to unknown
+
+    def test_publish_is_create_once(self):
+        path = self.root / "record.json"
+        execution._publish(path, {"n": 1})
+        with self.assertRaises(FileExistsError):
+            execution._publish(path, {"n": 2})
+        self.assertEqual({"n": 1}, json.loads(path.read_text()))
+        self.assertEqual(["record.json"], sorted(p.name for p in self.root.iterdir() if p.is_file()))
+
+    def test_cancel_terminates_gracefully_then_kills_what_ignores_it(self):
+        graceful = self.root / "workspace" / "got-sigterm"
+        stubborn_pid = self.root / "workspace" / "stubborn.pid"
+        stubborn = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+        code = ("import signal, subprocess, sys, time\n"
+                f"s = subprocess.Popen([sys.executable, '-c', {stubborn!r}])\n"
+                f"open({str(stubborn_pid)!r}, 'w').write(str(s.pid))\n"
+                f"signal.signal(signal.SIGTERM, lambda *_: (open({str(graceful)!r}, 'w'), sys.exit(0)))\n"
+                "time.sleep(60)\n")
+        launched = execution.launch(self.request(), self.repo, self.process(code))
+        for _ in range(200):
+            if stubborn_pid.exists() and stubborn_pid.read_text():
+                break
+            time.sleep(0.05)
+        time.sleep(0.3)
+        launched.cancel()
+        result = launched.result(timeout=30)
+        self.assertEqual(("cancel", "confirmed"), (result["outcome"], result["drain"]))
+        self.assertTrue(graceful.exists())  # SIGTERM first
+        with self.assertRaises(ProcessLookupError):  # SIGKILL for what ignores it
+            os.kill(int(stubborn_pid.read_text()), 0)
+
+    def test_group_without_permission_counts_as_alive(self):
+        with mock.patch.object(execution.os, "killpg", side_effect=PermissionError):
+            self.assertTrue(execution._group_alive(12345))
+        with mock.patch.object(execution.os, "killpg", side_effect=ProcessLookupError):
+            self.assertFalse(execution._group_alive(12345))
+
+    def test_broken_backend_after_cancel_keeps_cancel_requested(self):
+        class BrokenAfterCancel(execution.ScriptedBackend):
+            def run(self, request, repo, cancelled, *args):
+                cancelled.wait(10)
+                raise RuntimeError("backend lost")
+        launched = execution.launch(self.request(), self.repo, BrokenAfterCancel())
+        launched.cancel()
+        result = launched.result(timeout=10)
+        self.assertEqual(("unknown", True, "unconfirmed"),
+                         (result["outcome"], result["cancel_requested"], result["drain"]))
+
+    def test_running_children_are_stopped_when_the_caller_exits(self):
+        pid_file = self.root / "workspace" / "child.pid"
+        child = self.root / "child.py"
+        child.write_text(f"import os, time\nopen({str(pid_file)!r}, 'w').write(str(os.getpid()))\ntime.sleep(60)\n")
+        driver = self.root / "driver.py"
+        driver.write_text(
+            "import os, sys, time\n"
+            "from agent_harness import execution\n"
+            f"execution.launch({self.request()!r}, {self.repo!r},\n"
+            f"                 execution.ProcessBackend([sys.executable, {str(child)!r}], grace=1.0))\n"
+            "for _ in range(200):\n"
+            f"    if os.path.exists({str(pid_file)!r}):\n"
+            "        break\n"
+            "    time.sleep(0.05)\n")
+        subprocess.run([sys.executable, str(driver)], check=True, timeout=60)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(pid_file.read_text()), 0)
+
+    def test_candidate_must_stay_inside_the_workspace(self):
+        with self.assertRaises(ValueError):
+            execution.ProcessBackend(["true"], candidate="../out")
+        outside = self.root / "outside.txt"
+        outside.write_text("secret")
+        (self.root / "workspace" / "link.txt").symlink_to(outside)
+        result = self.run_to_end(self.process("pass", candidate="link.txt"))
+        self.assertIsNone(result["candidate"])
+
+    def test_changed_request_reusing_an_id_is_refused_before_capability_checks(self):
+        self.run_to_end(execution.ScriptedBackend())
+        with self.assertRaises(contract.ContractError) as caught:
+            execution.launch(self.request(capabilities=["qualified_isolation"]), self.repo,
+                             execution.ScriptedBackend())
+        self.assertEqual("BINDING_MISMATCH", caught.exception.code)
 
 
 if __name__ == "__main__":

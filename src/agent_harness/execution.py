@@ -5,10 +5,12 @@
 group, ``isolation_level: controlled``; no sandbox, never qualified). Nothing here qualifies isolation.
 
 Every launch is bound to its ``request_id``: a start marker and the terminal result are published create-once
-under ``<evidence_root>/executions/``, so a relaunch returns the stored result, a launch interrupted before its
-result reports ``unknown``, and a different request reusing the ID is ``BINDING_MISMATCH``.
+under ``<evidence_root>/executions/``, named by the sha256 of the ID (an ID may contain ``/``), so a relaunch
+returns the stored result, a launch interrupted before its result reports ``unknown``, and a different request
+reusing the ID is ``BINDING_MISMATCH``. Executions still running at interpreter exit are cancelled.
 """
 
+import atexit
 import hashlib
 import json
 import os
@@ -23,8 +25,19 @@ from pathlib import Path
 
 from . import __version__, contract
 
-_RUNNING = {}  # (evidence_root, request_id) -> Execution launched by this process
+_RUNNING = {}  # (resolved executions dir, slot) -> Execution launched by this process
 _RUNNING_LOCK = threading.Lock()
+
+
+@atexit.register
+def _cancel_running_at_exit():
+    """Children run in their own session; stop them rather than leave them running after the caller exits."""
+    with _RUNNING_LOCK:
+        running = list(_RUNNING.values())
+    for execution in running:
+        execution.cancel()
+    for execution in running:
+        execution._done.wait(30)
 
 
 class Execution:
@@ -53,60 +66,85 @@ def launch(request, repo, backend):
     contract.validate_request(request)
     contract.validate_repo_context(repo)
     execution = Execution(request)
-    missing = [c for c in request["capabilities"] if c not in backend.capabilities]
-    if missing:  # never launched: no process, nothing written
-        code = "NOT_QUALIFIED" if "qualified_isolation" in missing else "CAPABILITY_UNSUPPORTED"
-        execution._finish(_rejected(request, backend, code))
-        return execution
-    root = Path(repo["evidence_root"]) / "executions"
-    key = (repo["evidence_root"], request["request_id"])
+    root = Path(repo["evidence_root"]).resolve() / "executions"
+    slot = _slot(request["request_id"])
+    key = (str(root), slot)
     with _RUNNING_LOCK:
         running = _RUNNING.get(key)
         if running is not None:
             _check_binding(contract.request_digest(running.request), request)
             return running
-        stored = _stored(root, request, backend)
+        marker_path = root / f"{slot}.started"
+        if marker_path.exists():  # read-only: a reused ID is checked before anything else
+            _check_binding(json.loads(marker_path.read_text())["request_digest"], request)
+        missing = [c for c in request["capabilities"] if c not in backend.capabilities]
+        if missing:  # never launched: no process, nothing written
+            code = "NOT_QUALIFIED" if "qualified_isolation" in missing else "CAPABILITY_UNSUPPORTED"
+            execution._finish(_rejected(request, backend, code))
+            return execution
+        stored = _stored(root, slot, request, backend)
         if stored is not None:
             execution._finish(stored)
             return execution
         _RUNNING[key] = execution
-    threading.Thread(target=_run, args=(execution, repo, backend, root, key), daemon=True).start()
+    threading.Thread(target=_run, args=(execution, repo, backend, root, slot, key), daemon=True).start()
     return execution
 
 
-def _run(execution, repo, backend, root, key):
+def _run(execution, repo, backend, root, slot, key):
     request = execution.request
     started_at = _now()
     execution_id = f"{backend.kind}-{uuid.uuid4()}"
+    result = None
     try:
-        body = backend.run(request, repo, execution._cancel, execution_id, started_at)
-        result = _envelope(request, backend, execution_id, execution._cancel.is_set(), body)
-        contract.validate_result(result, request)
-    except Exception:  # noqa: BLE001 - a broken backend or result never becomes success
-        result = _unknown(request, backend, execution_id, execution._cancel.is_set(), started_at)
-    _publish(root / f"{request['request_id']}.json", result)
-    with _RUNNING_LOCK:
-        _RUNNING.pop(key, None)
-    execution._finish(result)
+        try:
+            body = backend.run(request, repo, execution._cancel, execution_id, started_at)
+            result = _envelope(request, backend, execution_id, execution._cancel.is_set(), body)
+            contract.validate_result(result, request)
+        except Exception:  # noqa: BLE001 - a broken backend or result never becomes success
+            result = _unknown(request, backend, execution_id, execution._cancel.is_set(), started_at)
+        try:
+            _publish(root / f"{slot}.json", result)
+        except FileExistsError:  # another launcher recorded this ID first: its record is authoritative
+            result = _load(root / f"{slot}.json", request)
+    finally:
+        with _RUNNING_LOCK:
+            _RUNNING.pop(key, None)
+        if result is None:
+            result = _unknown(request, backend, execution_id, execution._cancel.is_set(), started_at)
+        execution._finish(result)
 
 
-def _stored(root, request, backend):
+def _slot(request_id):
+    return hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+
+
+def _stored(root, slot, request, backend):
     """The stored result for this request ID, ``unknown`` if a start was never finished, else None (claimed)."""
     root.mkdir(parents=True, exist_ok=True)
-    result_path = root / f"{request['request_id']}.json"
+    result_path = root / f"{slot}.json"
     marker = {"contract_version": contract.CONTRACT_VERSION, "request_id": request["request_id"],
               "request_digest": contract.request_digest(request)}
     try:
-        _publish(root / f"{request['request_id']}.started", marker)
+        _publish(root / f"{slot}.started", marker)
         return None
     except FileExistsError:
-        _check_binding(json.loads((root / f"{request['request_id']}.started").read_text())["request_digest"], request)
-    if result_path.exists():
-        return json.loads(result_path.read_text())
-    # Started by an earlier process that never published a result: launch state unknown, never rerun.
-    result = _unknown(request, backend, None, False, None)
-    _publish(result_path, result)
-    return result
+        _check_binding(json.loads((root / f"{slot}.started").read_text())["request_digest"], request)
+    if not result_path.exists():
+        # Started by another launcher that has not published a result (or never will): launch state unknown,
+        # never rerun. If that launcher finishes later, its result loses to this record.
+        try:
+            _publish(result_path, _unknown(request, backend, None, False, None))
+        except FileExistsError:
+            pass
+    return _load(result_path, request)
+
+
+def _load(path, request):
+    try:
+        return contract.validate_result(json.loads(path.read_text()), request)
+    except (OSError, ValueError) as error:  # ContractError is a ValueError
+        raise contract.ContractError("MALFORMED", f"stored result {path.name}") from error
 
 
 def _check_binding(digest, request):
@@ -116,11 +154,11 @@ def _check_binding(digest, request):
 
 def _publish(path, doc):
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}")
-    tmp.write_text(json.dumps(doc, sort_keys=True))
     try:
+        tmp.write_text(json.dumps(doc, sort_keys=True))
         os.link(tmp, path)  # create-once: fails if the record exists
     finally:
-        tmp.unlink()
+        tmp.unlink(missing_ok=True)
 
 
 def _envelope(request, backend, execution_id, cancel_requested, body):
@@ -155,7 +193,7 @@ def _unknown(request, backend, execution_id, cancel_requested, started_at):
 
 def _seal(source, repo, request):
     """Copy a candidate file into the evidence root and return its contract reference."""
-    relative = f"executions/{request['request_id']}/candidate"
+    relative = f"executions/{_slot(request['request_id'])}/candidate"
     target = Path(repo["evidence_root"]) / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(source, bytes):
@@ -234,6 +272,8 @@ class ProcessBackend:
     capabilities = ("cancel",)
 
     def __init__(self, argv, *, candidate=None, env=None, grace=2.0):
+        if candidate is not None and (Path(candidate).is_absolute() or ".." in Path(candidate).parts):
+            raise ValueError("candidate must be a path inside the workspace")
         self.argv, self.candidate, self.env, self.grace = list(argv), candidate, env, grace
 
     def report(self):
@@ -264,8 +304,10 @@ class ProcessBackend:
         elif outcome == "timeout":
             drained = False  # a timeout does not prove descendants are gone (ADR 0002)
         candidate = None
-        if outcome == "completed" and self.candidate is not None and (workspace / self.candidate).is_file():
-            candidate = _seal(workspace / self.candidate, repo, request)
+        if outcome == "completed" and self.candidate is not None:
+            source = (workspace / self.candidate).resolve()  # a symlink out of the workspace is not sealed
+            if source.is_file() and workspace.resolve() in source.parents:
+                candidate = _seal(source, repo, request)
         return self._body(outcome, child.returncode if outcome == "completed" else None,
                           "confirmed" if drained else "unconfirmed", started_at, ended, candidate=candidate)
 

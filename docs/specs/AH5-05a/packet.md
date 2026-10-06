@@ -80,3 +80,28 @@ Environment: macOS 24.6.0 (x86_64), CPython 3.13.16. Code: `src/agent_harness/ex
   (scripted launch with sealed candidate; process cancel with confirmed drain) from an empty directory against
   the installed wheel; `scripts/check-wheel.sh`: 121 tests OK, 1 skipped (CI-only benchmark).
 - Limits (ADR 0004): descendants leaving the process group are not tracked; not a sandbox; never qualified.
+
+## Independent evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `7dd7f8e`: **fail**. AC2, AC3 and AC5 held. Findings and fixes:
+
+- High: a contract-valid `request_id` containing `/` and `..` wrote records and the candidate outside the
+  evidence root (the ID was a filename). Fix: records and candidates are named by the sha256 of the ID.
+- High: a second launcher that recorded `unknown` while the first ran made the first thread die on
+  `FileExistsError` before finishing, so `result()` hung forever and the in-process registry leaked. Fix: the
+  run always finishes and unregisters (`try/finally`); the first published record wins and is returned; the
+  registry key uses the resolved evidence root.
+- Medium: running children outlived the interpreter (own session, daemon thread). Fix: an exit hook cancels
+  running executions; ADR 0004 states that a hard kill of the caller still leaves them.
+- Medium: five mutations survived (SIGTERM-only, SIGKILL-only, EPERM as gone, cancel flag lost on the unknown
+  path, overwrite instead of create-once, no lock). Fix: tests for graceful SIGTERM then SIGKILL of a
+  SIGTERM-ignoring descendant, EPERM, cancel flag after a broken backend, create-once, and 20 concurrent
+  launches of one request (one run, real outcome). All ten mutations listed below are caught.
+- Low: `drain: confirmed` after a `setsid` escape is now stated as covering the process group only (ADR 0004).
+- Smaller: stored results are validated against the request (corrupt → `MALFORMED`); a changed request reusing
+  an ID is refused before capability checks; a failed temp write leaves no file; candidate paths must stay in
+  the workspace (`..` refused, symlink out not sealed).
+
+Mutations caught after the fixes (each on a copy of `src`): SIGTERM only, SIGKILL only, EPERM as gone, cancel
+flag lost, not create-once, no lock (5/5 runs), raw ID as filename, race record ignored, symlink escape sealed,
+no exit hook. Suite stable 5/5. `scripts/check-wheel.sh`: 131 tests OK, 1 skipped.
