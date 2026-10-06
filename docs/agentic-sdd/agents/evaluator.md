@@ -23,5 +23,5 @@ Use fresh context: the [constitution](../constitution.md), spec, plan, task pack
 
 ## Output
 
-Emit a structured evaluator result with `pass`, `fail`, or `needs-human` and concrete reproducible evidence: for a `fail`,
-the **red** command of the [diagnosing](../practices/diagnosing.md) Phase 1 loop, run and shown. A subjective confidence score is optional and never determines the verdict.
+Emit a structured evaluator result with `pass`, `fail`, or `needs-human` and concrete reproducible evidence: for a `fail` that can be
+executed, the **red** command of the [diagnosing](../practices/diagnosing.md) Phase 1 loop, run and shown. A subjective confidence score is optional and never determines the verdict.

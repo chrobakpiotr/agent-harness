@@ -36,7 +36,7 @@
 - `AGENTS.md`: map lines only (agent gets the map and references). Human handbook: `docs/agentic-sdd/
   handbook.md`, the full description of roles, practices, eval and update procedure.
 - Mini eval `evals/diagnosing/`: a fixture repository with one planted bug and a deterministic grader.
-  It passes only if the evidence shows a red reproduction command run before any fix, ranked falsifiable
+  It checks, by heuristics over the transcript and the handoff, a red reproduction run before any fix, listed
   hypotheses, and a regression test that fails on the base and passes on the fix.
 
 ## Out of scope
@@ -93,3 +93,26 @@ Environment: macOS 24.6.0 (x86_64), CPython 3.13.16, Claude Code 2.1.289, model 
   practice carries its notice.
 - AC5: `scripts/check-wheel.sh` on 3.13: 99 tests OK, 1 skipped (`test_human_grants`, no cryptography wheel
   on Intel macOS); `evals/` and `docs/` stay out of the wheel.
+
+## Independent evaluation (2026-10-06)
+
+Fresh-context evaluator verdict: **fail**, on the grader only. AC1, AC4 and AC5 held, and the AC3 table
+reproduced. Findings and fixes:
+
+- The red-before-fix check missed shell edits other than four idioms (`python3 -c open(...,'w')`, `cp`,
+  `git apply`) and counted any `1998`, including `echo`/`print(1998)`. Fix: any shell segment naming
+  `invoice.py` that is not a reader, a redirect into it, or a tree-rewriting Git command counts as an edit; a
+  red event must be a `python` command whose output, but not its own text, holds the symptom.
+- A numbered list of steps counted as hypotheses; bullets and an earlier "hypothesis" line failed real
+  lists. Fix: list items (numbered or bullets) under any line naming hypotheses, each stating a prediction or
+  outcome.
+- A regression test failing on the base through an ImportError counted. Fix: the base run must fail with
+  assertion failures only.
+- The evaluator role now asks for the red command only for a `fail` that can be executed.
+
+All cases are in `tests/test_eval_diagnosing.py`. The six live runs regraded with the fixed grader give the
+same table as above. Correction to the AC3 reading: at N=3, red before fix (3/3 vs 2/3) is one run and
+not evidence of a process gain; the only clear difference is the recorded hypotheses, which the practice
+asks for. The packet's "passes only if" wording now says the checks are heuristics. The run artifacts
+(`.agent-runs/` is ignored by Git) are kept as `evidence/live-run-20261005T211008Z.tar.gz`; regrade with
+`python3.13 evals/diagnosing/grade.py <run>/<arm-i> <run>/<arm-i>.jsonl` after extracting it.

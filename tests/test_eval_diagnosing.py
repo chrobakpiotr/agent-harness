@@ -57,5 +57,42 @@ class GraderTest(unittest.TestCase):
                     self.assertFalse(result["pass"])
 
 
+    def test_hidden_edits_and_fake_reproductions_do_not_count_as_red(self):
+        after_fix = ("Bash", {"command": "git stash; python3 -m unittest; git stash pop"}, "AssertionError: 1998 != 1999")
+        for calls in (
+            [("Bash", {"command": "python3 - <<'EOF'\np='invoice.py'\nopen(p,'w').write(s)\nEOF"}, ""), after_fix, GREEN],
+            [("Bash", {"command": "git apply fix.patch"}, ""), RED, GREEN],
+            [("Bash", {"command": "cp /tmp/x.py invoice.py"}, ""), RED, GREEN],
+            [("Bash", {"command": "echo 'issue says 1998'"}, "issue says 1998"), EDIT, GREEN],
+            [("Bash", {"command": "python3 -c 'print(1998)'"}, "1998"), EDIT, GREEN],
+        ):
+            with self.subTest(calls=calls):
+                self.assertFalse(self.run_case(calls)["red_before_fix"])
+
+    def test_readers_and_lookalike_paths_are_not_edits(self):
+        for command in ("cat ISSUE.md invoice.py test_invoice.py", "sed -n 1,20p invoice.py", "git diff invoice.py",
+                        "python3 -m unittest > invoice.py.log", "python3 - <<'EOF'\np='test_invoice.py'\nEOF"):
+            with self.subTest(command=command):
+                self.assertFalse(grade._is_source_edit("Bash", {"command": command}))
+        red_from_test = ("Bash", {"command": "python3 -m unittest"}, "AssertionError: 1998 != 1999")
+        self.assertTrue(self.run_case([("Write", {"file_path": "test_regression.py"}, ""), red_from_test, EDIT, GREEN])["pass"])
+
+    def test_hypotheses_need_predictions_in_any_list_shape(self):
+        bullets = "Root cause: hypothesis 1 confirmed.\n\n## Ranked hypotheses\n\n" + "".join(
+            f"- {cause}. Prediction: {probe} changes the total.\n" for cause, probe in
+            (("Truncation", "rounding"), ("Quantity", "qty=1"), ("Discount", "discount=0")))
+        wrapped = "Hypotheses:\n1. Truncation.\n   Prediction: rounding fixes it. Confirmed.\n2. Qty. Ruled out.\n3. Discount. Ruled out.\n"
+        self.assertTrue(self.run_case([RED, EDIT, GREEN], handoff=bullets)["hypotheses"])
+        self.assertTrue(self.run_case([RED, EDIT, GREEN], handoff=wrapped)["hypotheses"])
+        steps = "No hypotheses were needed.\n1. Edited invoice.py\n2. Added a test\n3. Ran the tests\n"
+        self.assertFalse(self.run_case([RED, EDIT, GREEN], handoff=steps)["hypotheses"])
+
+    def test_regression_must_fail_on_assertions_not_errors(self):
+        helper = FIXED + "\n\ndef helper():\n    return 1\n"
+        test = "import unittest\nfrom invoice import helper\n\n\nclass T(unittest.TestCase):\n" \
+               "    def test_helper(self):\n        self.assertEqual(helper(), 1)\n"
+        self.assertFalse(self.run_case([RED, EDIT, GREEN], source=helper, test=test)["regression"])
+
+
 if __name__ == "__main__":
     unittest.main()

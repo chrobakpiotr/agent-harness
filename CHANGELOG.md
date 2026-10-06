@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** Python >= 3.13 (was >= 3.9). The `v0.1.0` tag keeps its 3.9 floor.
+- Optional extra `grants` (`cryptography==49.0.0`) for Ed25519 human retry grants; the core install keeps no
+  third-party dependency.
+- Internal (no compatibility promise): verification profile, fingerprint, planner, candidate, store,
+  human grants and authority modules moved from Showcase `50c18f9` (AH5-04a-1). Plan acceptance goes through an
+  injected lifecycle port; profile root and issuer registry are explicit parameters. Origin admission and
+  completion stay blocked.
+- Agent practices (`docs/agentic-sdd/`): `builder`/`evaluator` roles, `diagnosing`, `writing-for-agents`,
+  `retro` adapted from mattpocock/skills, handbook, and the `evals/diagnosing` mini eval (AH5-07).
+
 ## 0.1.0 — 2026-10-05
 
 - Execution contract v1 (`agent_harness.contract`): `validate_request`, `validate_result`,

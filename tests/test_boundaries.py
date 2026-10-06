@@ -12,17 +12,21 @@ PACKAGE = Path(agent_harness.__file__).parent
 
 class ImportBoundaryTest(unittest.TestCase):
     def test_only_stdlib_and_own_imports(self):
-        allowed = set(sys.stdlib_module_names) | {"agent_harness", "cryptography"}
+        allowed = set(sys.stdlib_module_names) | {"agent_harness"}
         foreign = set()
         for path in PACKAGE.rglob("*.py"):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            # The optional `grants` extra: only human_grants, and only lazily, so importing never needs it.
+            extra = {"cryptography"} if path.name == "human_grants.py" else set()
+            for node in ast.walk(tree):
+                lazy = set() if node in tree.body else extra
                 if isinstance(node, ast.Import):
                     names = [alias.name for alias in node.names]
                 elif isinstance(node, ast.ImportFrom) and node.level == 0:
                     names = [node.module]
                 else:
                     continue
-                foreign |= {f"{path.name}: {n}" for n in names if n.split(".")[0] not in allowed}
+                foreign |= {f"{path.name}: {n}" for n in names if n.split(".")[0] not in allowed | lazy}
         self.assertEqual(foreign, set())
 
 

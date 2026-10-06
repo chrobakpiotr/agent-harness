@@ -46,10 +46,10 @@ without bypassing authority) belong to that packet.
    the "accepted SDD-OBS contracts" dependency.
 2. Origin admission is implemented in Showcase first (ADR 0001) and moves here afterwards with parity.
 3. 04a-1 takes plan acceptance through an injected lifecycle port; the library ships no implementation of it.
-4. `cryptography==49.0.0` is the optional extra `grants`, not a core dependency: releases from 47 ship no
-   Intel-macOS wheel. `human_grants` imports it lazily; without it the grant tests skip.
-   `check-wheel.sh` falls back to the last release with an Intel-macOS wheel (46.x), so the grant tests run
-   there too; it prints the version used. Linux CI installs the pinned 49.0.0.
+4. `cryptography==49.0.0` is the optional extra `grants`, not a core dependency: 49.0.0 ships no Intel-macOS
+   wheel (47.x and 48.x ship universal2 wheels). `human_grants` imports it lazily; without it the grant tests
+   skip. `check-wheel.sh` installs the pinned extra and fails unless that exact version imports; only on
+   Intel macOS it installs `cryptography<49` (48.0.1) instead and prints the version used.
 5. The planning benchmark (`benchmarks/verification_planning.py`, source map "with 04a") joins 04a-1. Its limits
    stay as in Showcase and it runs in CI only (`AGENT_HARNESS_BENCHMARK=1`): this development host misses them
    with the Showcase code too, so locally it reports skipped, not PASS.

@@ -8,7 +8,7 @@ whole set, how it is measured and how it changes.
 | Role | File | Practices it points at |
 |---|---|---|
 | Builder | [agents/builder.md](agents/builder.md) | diagnosing (unexpected red gate or test, bug fix), writing-for-agents (editing an agent document) |
-| Evaluator | [agents/evaluator.md](agents/evaluator.md) | diagnosing (a `fail` carries the red command, run and shown) |
+| Evaluator | [agents/evaluator.md](agents/evaluator.md) | diagnosing (an executable `fail` carries the red command, run and shown) |
 
 Both come from Showcase `docs/agentic-sdd/agents/` at `50c18f9`; Showcase keeps its copies (and its
 stack-specific reviewers) until it consumes a versioned copy from here. Every role links to the
@@ -32,8 +32,9 @@ Adapted from [mattpocock/skills](https://github.com/mattpocock/skills) at `d81f3
 
 `evals/diagnosing/` is a fixture repository with one planted bug (`invoice.py` truncates cents), hidden
 tests and a deterministic grader. A run passes only with all four: a correct fix, a regression test that
-fails on the base and passes on the fix, a red reproduction (the symptom `1998` in command output) before
-the first source edit, and three "if … then" hypotheses in `HANDOFF.md`.
+fails on the base with assertion failures and passes on the fix, a red reproduction (a `python` command
+printing the symptom `1998`) before the first change of `invoice.py`, and three hypotheses stating a
+prediction or outcome in `HANDOFF.md`. The transcript checks are heuristics; `grade.py` lists them.
 
 - Grader self-test (offline, in CI): `tests/test_eval_diagnosing.py`.
 - Live A/B (manual, costs money, needs an authorised order): `python3.13 evals/diagnosing/run.py 3`. The

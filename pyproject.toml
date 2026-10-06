@@ -35,4 +35,5 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json"]
                                          "SIM114", "TRY004"]
 "src/agent_harness/telemetry.py" = ["UP017"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
-"tests/test_verification_{authority,store}.py" = ["B023", "F401", "F841", "I001", "RUF059", "SIM117"]
+"tests/test_verification_authority.py" = ["I001", "SIM117"]
+"tests/test_verification_store.py" = ["B023", "F401", "F841", "I001", "RUF059", "SIM117"]

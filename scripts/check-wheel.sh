@@ -15,10 +15,20 @@ trap 'rm -rf "$work"' EXIT
 "$python" -m venv "$work/venv"
 "$work/venv/bin/pip" install --quiet --upgrade pip  # old bundled pip misses cryptography wheels
 wheel=$(ls "$work"/dist/agent_harness-*.whl)
-# cryptography 47+ has no Intel-macOS wheel; there the grant tests run on the last release with one (46.x).
-"$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel[grants]" 2>/dev/null ||
-  { "$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel" "cryptography>=46,<47"
-    echo "pinned cryptography has no wheel here; grant tests use $("$work/venv/bin/python" -c 'import cryptography; print(cryptography.__version__)')"; }
+if [ "$(uname -sm)" = "Darwin x86_64" ]; then
+  # cryptography 49.0.0 ships no Intel-macOS wheel; grant tests use the newest release that has one.
+  "$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel" "cryptography<49"
+else
+  "$work/venv/bin/pip" install --quiet --only-binary=cryptography "$wheel[grants]"
+fi
+# The grant tests skip without cryptography; fail here instead, and require the pin outside the fallback.
+"$work/venv/bin/python" -c '
+import cryptography, importlib.metadata, platform, re
+pin = next(re.search(r"==([0-9.]+)", r).group(1)
+           for r in importlib.metadata.requires("agent-harness") if r.startswith("cryptography"))
+fallback = (platform.system(), platform.machine()) == ("Darwin", "x86_64")
+assert fallback or cryptography.__version__ == pin, (cryptography.__version__, pin)
+print("cryptography", cryptography.__version__, "pin", pin, "(Intel-macOS fallback)" if fallback else "")'
 
 mkdir "$work/empty"
 cd "$work/empty"
