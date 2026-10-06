@@ -61,9 +61,11 @@ Verification-v2 launch and completion are deliberately blocked.
 - Owners for `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `eval.py` and
   `verify.py`: they stay in Showcase until a packet moves them (`verify.py` needs the executor).
 - 04a-2 waits for an accepted, registered Showcase task under SDD-OBS-001 (the task DAG has none yet).
-- 04b waits for a qualification target: the local Docker Desktop Linux guest is a candidate only; if it fails
-  the full qualification, a dedicated supported Linux runner is an external prerequisite. 04c follows 04a-2
-  and 04b.
+- 04b waits for a qualification target: the local Docker Desktop Linux guest is a candidate only. Fallback
+  (2026-10-06): a GitHub-hosted `ubuntu` runner in Showcase CI (free, `sudo` and Docker available). Each job is a
+  fresh VM with a changing image, so a qualification binds only to that job's exact tuple (runner image
+  version, kernel, engine, pinned workload image digest, policy) and is re-run with its own evidence per job;
+  nothing stays qualified between jobs. Owner of the qualification: Showcase (04b). 04c follows 04a-2 and 04b.
 
 ## Consequences
 
