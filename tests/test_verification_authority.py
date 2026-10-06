@@ -227,5 +227,23 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
         accept.assert_not_called()
 
 
+    def test_trusted_orchestrator_refuses_a_profile_outside_the_root(self):
+        feature_dir = self.root / 'docs/specs/SDD-OBS-001'
+        feature_dir.mkdir(parents=True)
+        roots = tempfile.TemporaryDirectory()
+        self.addCleanup(roots.cleanup)
+        linked = pathlib.Path(roots.name)
+        (linked / 'showcase.json').symlink_to(PROFILES / 'showcase.json')
+        state = {'feature_generation': 2, 'tasks': {'T-001': {'status': 'running', 'attempts': 1}}}
+        lifecycle = mock.Mock(load_validated=mock.Mock(return_value={'feature': 'SDD-OBS-001'}),
+                              load_state=mock.Mock(return_value=state))
+        with mock.patch('agent_harness.verification.candidate.seal_candidate') as seal, \
+             mock.patch.object(authority, 'publish_and_accept') as accept:
+            with self.assertRaisesRegex(StoreError, 'ACCEPTED_PLAN_UNAVAILABLE'):
+                authority.prepare_task_plan(self.root, feature_dir, 'T-001', 1, self.base, [],
+                                            lifecycle=lifecycle, profile_root=linked, profile_id='showcase')
+        seal.assert_not_called()
+        accept.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()

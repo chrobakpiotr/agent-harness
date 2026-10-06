@@ -53,3 +53,21 @@ without bypassing authority) belong to that packet.
 5. The planning benchmark (`benchmarks/verification_planning.py`, source map "with 04a") joins 04a-1. Its limits
    stay as in Showcase and it runs in CI only (`AGENT_HARNESS_BENCHMARK=1`): this development host misses them
    with the Showcase code too, so locally it reports skipped, not PASS.
+6. Python floor 3.13 (Showcase target): the moved modules keep their 3.10+ syntax and APIs verbatim; the
+   `v0.1.0` tag keeps 3.9 (CHANGELOG, Unreleased).
+
+## Independent evaluation (2026-10-06)
+
+Fresh-context evaluator verdict: **needs-human**, no code defect. Plan IDs, lifecycle accept calls and 11
+refusal codes match Showcase on one disposable repo; the guard holds; nothing is written at import or plan
+validation; new parameters fail closed. Follow-ups:
+
+- `test_verification_profile_applicability` had been dropped without a record: ported (3 tests, fixture
+  profile). `test_verification_profile_showcase` stays in Showcase (consumer policy, `verify.py`).
+- `prepare_task_plan` loaded a profile resolving outside `profile_root` (refused only at publish): now refused
+  before sealing; `test_trusted_orchestrator_refuses_a_profile_outside_the_root` fails without the check.
+- The floor change is recorded as decision 6.
+- Open for a human: the AC "completion-boundary tests pass unchanged" is met only in Showcase, which runs its
+  own copy; no test here drives the package authority through a real lifecycle (the port is mocked).
+- Known: `test_primary_repository_authority_resolution` needs a Git checkout (`check-wheel.sh` always runs
+  from one); from a `git archive` export it fails.

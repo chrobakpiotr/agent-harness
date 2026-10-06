@@ -157,7 +157,11 @@ def prepare_task_plan(repository: pathlib.Path, feature_dir: pathlib.Path, task_
             task_state.get('attempts') != task_attempt):
         raise StoreError('ACCEPTED_PLAN_UNAVAILABLE')
     _validate_component(profile_id, 'ACCEPTED_PLAN_UNAVAILABLE')
-    profile = load_profile(pathlib.Path(profile_root) / (profile_id + '.json'))
+    profile_root = pathlib.Path(profile_root)
+    profile_path = (profile_root / (profile_id + '.json')).resolve(strict=True)
+    if profile_path.parent != profile_root.resolve(strict=True):
+        raise StoreError('ACCEPTED_PLAN_UNAVAILABLE')
+    profile = load_profile(profile_path)
     family_id = f'{feature_dir.name.lower()}-{task_id.lower()}-attempt-{task_attempt}'
     policy_checkpoint = profile.content_hash
     origin_binding = 'task-completion'
