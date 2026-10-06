@@ -70,6 +70,19 @@ class WrapperBindingTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(expected[name], calls[name])
 
+    def test_authority_defaults_match_showcase(self):
+        calls = {}
+        for name in ('resolve_execution', 'validate_plan_record'):
+            patch = mock.patch.object(library_authority, name,
+                                      side_effect=lambda *a, _n=name, **k: calls.setdefault(_n, k))
+            patch.start()
+            self.addCleanup(patch.stop)
+        authority.resolve_execution('repo', 'plan')
+        authority.validate_plan_record({})
+        self.assertIsNone(calls['resolve_execution']['unit_id'])
+        self.assertEqual((None, False), (calls['validate_plan_record']['repository'],
+                                         calls['validate_plan_record']['reconstruct']))
+
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],
                              capture_output=True, text=True, check=True).stdout

@@ -18,9 +18,12 @@ harness_state() {
 before=$(harness_state)
 head_before=$(git -C "$showcase" rev-parse --short HEAD)
 
+# The committed library and shim, never uncommitted working-tree changes.
+library_sha=$(git -C "$repo" rev-parse HEAD)
+mkdir -p "$work/library" && git -C "$repo" archive HEAD | tar -x -C "$work/library"
 "$python" -m venv "$work/build-venv"
 "$work/build-venv/bin/pip" install --quiet build
-"$work/build-venv/bin/python" -m build --wheel --outdir "$work/dist" "$repo" >/dev/null
+"$work/build-venv/bin/python" -m build --wheel --outdir "$work/dist" "$work/library" >/dev/null
 wheel=$(ls "$work"/dist/agent_harness-*.whl)
 if [ "$(uname -sm)" = "Darwin x86_64" ]; then crypto="cryptography<49"; else crypto="cryptography==49.0.0"; fi
 # macOS /var -> /private/var: tests comparing resolved paths need a resolved temp root.
@@ -51,7 +54,7 @@ rehearse_side() {
   side=$1
   mkdir -p "$work/$side"
   git -C "$showcase" archive "$sha" | tar -x -C "$work/$side"
-  if [ "$side" = wrapped ]; then cp -R "$repo/migration/showcase-wrapper/." "$work/$side/tooling/agent-harness/"; fi
+  if [ "$side" = wrapped ]; then cp -R "$work/library/migration/showcase-wrapper/." "$work/$side/tooling/agent-harness/"; fi
   git -C "$work/$side" init -q
   git -C "$work/$side" add -A
   git -C "$work/$side" -c user.name=rehearsal -c user.email=rehearsal@example.invalid commit -qm export
@@ -110,9 +113,10 @@ diff "$work/base-ci-rc.txt" "$work/wrapped-ci-rc.txt" > "$work/ci-rc.diff" && ec
   || echo "ci exit codes differ: see $work/ci-rc.diff"
 diff "$work/base-ci.txt" "$work/wrapped-ci.txt" > "$work/ci.diff" && echo "ci output: identical" \
   || echo "ci output differs ($(grep -c '^[<>]' "$work/ci.diff") lines, timings included): see $work/ci.diff"
-# Durations, run ids and eval result directories vary per run; nothing else may differ.
-mask() { sed -E 's/[0-9]+(\.[0-9]+)?/N/g; s/[0-9a-f]{12,}/H/g; s#evals/[a-z-]+/[A-Za-z0-9]+/#evals/X/#g' "$1"; }
+# Only durations and eval result directories vary per run; every other number must match.
+mask() { sed -E 's/[0-9]+ms$/Nms/; s/("median_duration_ms": )[0-9.]+/\1N/g; s#evals/([a-z-]+)/[A-Za-z0-9]+/#evals/\1/ID/#g' "$1"; }
 diff <(mask "$work/base-ci.txt") <(mask "$work/wrapped-ci.txt") > "$work/ci-masked.diff" \
-  && echo "ci output after masking numbers and ids: identical" \
-  || echo "ci output after masking differs: see $work/ci-masked.diff"
+  && echo "ci output after masking durations and eval ids: identical" \
+  || echo "ci output after masking durations and eval ids differs: see $work/ci-masked.diff"
+echo "library: $library_sha (committed HEAD)"
 echo "results: $work"
