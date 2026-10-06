@@ -1,6 +1,8 @@
 """Offline launch/cancel API (AH5-05a). See docs/adr/0004-offline-launch-api.md.
 
-``launch(request, repo, backend)`` answers a contract v1 request with a contract v1 result. Two backends:
+``launch(request, backend, workspace=..., evidence_root=...)`` answers a contract v1 request with a contract v1
+result. It needs only those two absolute directories, no repository identity, so a trial without a Git base
+launches the same way. Two backends:
 ``ScriptedBackend`` (deterministic, ``isolation_level: fake``) and ``ProcessBackend`` (a real local process
 group, ``isolation_level: controlled``; no sandbox, never qualified). Nothing here qualifies isolation.
 
@@ -67,11 +69,11 @@ class Execution:
         self._done.set()
 
 
-def launch(request, repo, backend):
+def launch(request, backend, *, workspace, evidence_root):
     contract.validate_request(request)
-    contract.validate_repo_context(repo)
+    roots = {"workspace": _absolute(workspace, "workspace"), "evidence_root": _absolute(evidence_root, "evidence_root")}
     execution = Execution(request)
-    root = Path(repo["evidence_root"]).resolve() / "executions"
+    root = Path(roots["evidence_root"]).resolve() / "executions"
     slot = _slot(request["request_id"])
     key = (str(root), slot)
     with _RUNNING_LOCK:
@@ -83,8 +85,10 @@ def launch(request, repo, backend):
         if marker_path.exists():  # read-only: a reused ID is checked before anything else
             _check_binding(_marker_digest(marker_path), request)
         missing = [c for c in request["capabilities"] if c not in backend.capabilities]
-        if missing:  # never launched: no process, nothing written
+        code = getattr(backend, "rejection", None)
+        if missing:
             code = "NOT_QUALIFIED" if "qualified_isolation" in missing else "CAPABILITY_UNSUPPORTED"
+        if code:  # never launched: no process, nothing written
             execution._finish(_rejected(request, backend, code))
             return execution
         stored = _stored(root, slot, request, backend)
@@ -92,18 +96,18 @@ def launch(request, repo, backend):
             execution._finish(stored)
             return execution
         _RUNNING[key] = execution
-    threading.Thread(target=_run, args=(execution, repo, backend, root, slot, key), daemon=True).start()
+    threading.Thread(target=_run, args=(execution, roots, backend, root, slot, key), daemon=True).start()
     return execution
 
 
-def _run(execution, repo, backend, root, slot, key):
+def _run(execution, roots, backend, root, slot, key):
     request = execution.request
     started_at = _now()
     execution_id = f"{backend.kind}-{uuid.uuid4()}"
     result = None
     try:
         try:
-            body = backend.run(request, repo, execution._cancel, execution_id, started_at)
+            body = backend.run(request, roots, execution._cancel, execution_id, started_at)
             result = _envelope(request, backend, execution_id, execution._cancel.is_set(), body)
             contract.validate_result(result, request)
         except Exception:  # noqa: BLE001 - a broken backend or result never becomes success
@@ -118,6 +122,16 @@ def _run(execution, repo, backend, root, slot, key):
         if result is None:
             result = _unknown(request, backend, execution_id, execution._cancel.is_set(), started_at)
         execution._finish(result)
+
+
+def _absolute(value, name):
+    """An absolute directory path without ``.``/``..`` segments (as ``RepoContext`` paths)."""
+    if not isinstance(value, (str, os.PathLike)):
+        raise contract.ContractError("MALFORMED", name)
+    value = os.fspath(value)
+    if not value.startswith("/") or "\0" in value or any(part in (".", "..") for part in value.split("/")):
+        raise contract.ContractError("UNSAFE_PATH", name)
+    return value
 
 
 def _slot(request_id):
@@ -203,10 +217,10 @@ def _unknown(request, backend, execution_id, cancel_requested, started_at):
             "candidate": None, "artifacts": [], "usage_events": [], "usage_completeness": "unknown"}
 
 
-def _seal(source, repo, request):
+def _seal(source, roots, request):
     """Copy a candidate file into the evidence root and return its contract reference."""
     relative = f"executions/{_slot(request['request_id'])}/candidate"
-    target = Path(repo["evidence_root"]) / relative
+    target = Path(roots["evidence_root"]) / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(source, bytes):
         target.write_bytes(source)
@@ -226,7 +240,8 @@ class ScriptedBackend:
     """Deterministic answers: one entry per attempt, ``{"outcome": ..., "units": {...} | None}``.
 
     The last attempt's outcome is the execution outcome. ``duration`` seconds pass before answering, during
-    which a cancel turns the execution into ``cancel``.
+    which a cancel turns the execution into ``cancel``. ``rejection`` (a contract error code) refuses every
+    request without launching, e.g. ``BACKEND_UNAVAILABLE``.
     """
 
     kind = "scripted"
@@ -234,7 +249,10 @@ class ScriptedBackend:
     capabilities = ("cancel", "usage")
 
     def __init__(self, attempts=({"outcome": "completed", "units": None},), *, exit_code=0, completion=None,
-                 error_code=None, candidate=None, cache_semantics="separate", duration=0.0):
+                 error_code=None, candidate=None, cache_semantics="separate", duration=0.0, rejection=None):
+        if rejection is not None and rejection not in contract.ERROR_CODES:
+            raise ValueError("rejection must be a contract error code")
+        self.rejection = rejection  # e.g. BACKEND_UNAVAILABLE: answer `rejected` without launching
         self.attempts, self.exit_code, self.completion = list(attempts), exit_code, completion
         self.error_code, self.candidate, self.cache_semantics, self.duration = (
             error_code, candidate, cache_semantics, duration)
@@ -242,7 +260,7 @@ class ScriptedBackend:
     def report(self):
         return _report(self)
 
-    def run(self, request, repo, cancelled, execution_id, started_at):
+    def run(self, request, roots, cancelled, execution_id, started_at):
         cancelled.wait(self.duration)
         now = _now()
         if cancelled.is_set():
@@ -265,13 +283,13 @@ class ScriptedBackend:
                 "error_code": self.error_code if outcome == "error" else None,
                 "drain": "unconfirmed" if outcome in ("timeout", "unknown") else "confirmed",
                 "started_at": started_at, "ended_at": now, "attempts": attempts,
-                "candidate": _seal(self.candidate, repo, request) if self.candidate is not None else None,
+                "candidate": _seal(self.candidate, roots, request) if self.candidate is not None else None,
                 "artifacts": [], "usage_events": events,
                 "usage_completeness": "complete" if complete else ("partial" if events else "unknown")}
 
 
 class ProcessBackend:
-    """A real child process in ``repo["workspace"]``, in its own process group (POSIX).
+    """A real child process in the ``workspace`` directory, in its own process group (POSIX).
 
     Timeout and cancel terminate the group (SIGTERM, then SIGKILL after ``grace`` seconds). ``drain:
     confirmed`` means the group was observed empty; a descendant that leaves the group (``setsid``) is not
@@ -291,8 +309,8 @@ class ProcessBackend:
     def report(self):
         return _report(self)
 
-    def run(self, request, repo, cancelled, execution_id, started_at):
-        workspace = Path(repo["workspace"])
+    def run(self, request, roots, cancelled, execution_id, started_at):
+        workspace = Path(roots["workspace"])
         try:
             child = subprocess.Popen(self.argv, cwd=workspace, env=self.env, start_new_session=True,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -319,7 +337,7 @@ class ProcessBackend:
         if outcome == "completed" and self.candidate is not None:
             source = (workspace / self.candidate).resolve()  # a symlink out of the workspace is not sealed
             if source.is_file() and workspace.resolve() in source.parents:
-                candidate = _seal(source, repo, request)
+                candidate = _seal(source, roots, request)
         return self._body(outcome, child.returncode if outcome == "completed" else None,
                           "confirmed" if drained else "unconfirmed", started_at, ended, candidate=candidate)
 

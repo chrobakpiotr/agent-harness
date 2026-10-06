@@ -26,9 +26,7 @@ class ExecutionTest(unittest.TestCase):
         self.root = Path(tmp.name).resolve()
         for name in ("workspace", "authority", "evidence"):
             (self.root / name).mkdir()
-        self.repo = {"contract_version": 1, "repo_id": "repo", "base_sha": "a" * 40,
-                     "workspace": str(self.root / "workspace"), "authority_root": str(self.root / "authority"),
-                     "evidence_root": str(self.root / "evidence")}
+        self.repo = {"workspace": str(self.root / "workspace"), "evidence_root": str(self.root / "evidence")}
 
     def request(self, request_id="req-1", capabilities=(), timeout=30, max_attempts=3):
         return contract.validate_request({
@@ -37,9 +35,12 @@ class ExecutionTest(unittest.TestCase):
             "capabilities": list(capabilities), "timeout_seconds": timeout, "max_attempts": max_attempts,
             "input_bindings": []})
 
+    def launch(self, request, backend):
+        return execution.launch(request, backend, **self.repo)
+
     def run_to_end(self, backend, request=None):
         request = request or self.request()
-        result = execution.launch(request, self.repo, backend).result(timeout=60)
+        result = self.launch(request, backend).result(timeout=60)
         contract.validate_result(result, request)
         return result
 
@@ -64,7 +65,7 @@ class ExecutionTest(unittest.TestCase):
                 self.assertEqual("unconfirmed" if outcome != "error" else "confirmed", result["drain"])
 
     def test_scripted_cancel_while_running(self):
-        launched = execution.launch(self.request(), self.repo, execution.ScriptedBackend(duration=30))
+        launched = self.launch(self.request(), execution.ScriptedBackend(duration=30))
         launched.cancel()
         result = launched.result(timeout=10)
         self.assertEqual(("cancel", True, "confirmed"), (result["outcome"], result["cancel_requested"], result["drain"]))
@@ -75,7 +76,7 @@ class ExecutionTest(unittest.TestCase):
                 "g = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
                 f"open({str(pid_file)!r}, 'w').write(str(g.pid))\n"
                 "time.sleep(60)\n")
-        launched = execution.launch(self.request(), self.repo, self.process(code))
+        launched = self.launch(self.request(), self.process(code))
         for _ in range(200):
             if pid_file.exists() and pid_file.read_text():
                 break
@@ -91,7 +92,7 @@ class ExecutionTest(unittest.TestCase):
 
     def test_surviving_descendant_leaves_drain_unconfirmed(self):
         with mock.patch.object(execution, "_group_alive", return_value=True):
-            launched = execution.launch(self.request(), self.repo, self.process("import time; time.sleep(60)"))
+            launched = self.launch(self.request(), self.process("import time; time.sleep(60)"))
             launched.cancel()
             result = launched.result(timeout=30)
         self.assertEqual(("cancel", "unconfirmed"), (result["outcome"], result["drain"]))
@@ -115,7 +116,7 @@ class ExecutionTest(unittest.TestCase):
         for capabilities, code in ((["qualified_isolation"], "NOT_QUALIFIED"), (["usage"], "CAPABILITY_UNSUPPORTED")):
             with self.subTest(capabilities=capabilities):
                 request = self.request(capabilities=capabilities)
-                result = execution.launch(request, self.repo,
+                result = self.launch(request,
                                           self.process(f"open({str(marker)!r}, 'w')")).result(timeout=10)
                 contract.validate_result(result, request)
                 self.assertEqual(("rejected", code), (result["outcome"], result["error_code"]))
@@ -124,10 +125,10 @@ class ExecutionTest(unittest.TestCase):
 
     def test_relaunch_returns_the_stored_result_and_refuses_another_request(self):
         first = self.run_to_end(execution.ScriptedBackend())
-        again = execution.launch(self.request(), self.repo, execution.ScriptedBackend()).result(timeout=10)
+        again = self.launch(self.request(), execution.ScriptedBackend()).result(timeout=10)
         self.assertEqual(first, again)
         with self.assertRaises(contract.ContractError) as caught:
-            execution.launch(self.request(timeout=99), self.repo, execution.ScriptedBackend())
+            self.launch(self.request(timeout=99), execution.ScriptedBackend())
         self.assertEqual("BINDING_MISMATCH", caught.exception.code)
 
     def test_start_without_result_reconciles_to_unknown_and_never_reruns(self):
@@ -136,7 +137,7 @@ class ExecutionTest(unittest.TestCase):
         (root / (execution._slot("req-1") + ".started")).write_text(json.dumps(
             {"contract_version": 1, "request_id": "req-1", "request_digest": contract.request_digest(self.request())}))
         marker = self.root / "workspace" / "ran"
-        result = execution.launch(self.request(), self.repo,
+        result = self.launch(self.request(),
                                   self.process(f"open({str(marker)!r}, 'w')")).result(timeout=10)
         contract.validate_result(result, self.request())
         self.assertEqual(("unknown", "unconfirmed"), (result["outcome"], result["drain"]))
@@ -168,10 +169,10 @@ class ExecutionTest(unittest.TestCase):
         self.assertFalse(any(p.name.startswith("ESCAPED") for p in self.root.rglob("*")))
 
     def test_a_relaunch_racing_a_running_launch_never_hangs_it(self):
-        first = execution.launch(self.request(), self.repo, execution.ScriptedBackend(duration=1))
+        first = self.launch(self.request(), execution.ScriptedBackend(duration=1))
         other_process_view = dict(self.repo, evidence_root=self.repo["evidence_root"] + "/")  # same root, other key
         with mock.patch.dict(execution._RUNNING, clear=True):
-            second = execution.launch(self.request(), other_process_view, execution.ScriptedBackend()).result(10)
+            second = execution.launch(self.request(), execution.ScriptedBackend(), **other_process_view).result(10)
         self.assertEqual("unknown", second["outcome"])
         self.assertEqual(second, first.result(timeout=10))  # the first record wins; nothing hangs
         self.assertEqual({}, {k: v for k, v in execution._RUNNING.items() if v is first})
@@ -188,7 +189,7 @@ class ExecutionTest(unittest.TestCase):
 
         def launch_together():
             barrier.wait()
-            executions.append(execution.launch(self.request(), self.repo, backend))
+            executions.append(self.launch(self.request(), backend))
         threads = [threading.Thread(target=launch_together) for _ in range(20)]
         for thread in threads:
             thread.start()
@@ -215,7 +216,7 @@ class ExecutionTest(unittest.TestCase):
                 f"open({str(stubborn_pid)!r}, 'w').write(str(s.pid))\n"
                 f"signal.signal(signal.SIGTERM, lambda *_: (open({str(graceful)!r}, 'w'), sys.exit(0)))\n"
                 "time.sleep(60)\n")
-        launched = execution.launch(self.request(), self.repo, self.process(code))
+        launched = self.launch(self.request(), self.process(code))
         for _ in range(200):
             if stubborn_pid.exists() and stubborn_pid.read_text():
                 break
@@ -236,10 +237,10 @@ class ExecutionTest(unittest.TestCase):
 
     def test_broken_backend_after_cancel_keeps_cancel_requested(self):
         class BrokenAfterCancel(execution.ScriptedBackend):
-            def run(self, request, repo, cancelled, *args):
+            def run(self, request, roots, cancelled, *args):
                 cancelled.wait(10)
                 raise RuntimeError("backend lost")
-        launched = execution.launch(self.request(), self.repo, BrokenAfterCancel())
+        launched = self.launch(self.request(), BrokenAfterCancel())
         launched.cancel()
         result = launched.result(timeout=10)
         self.assertEqual(("unknown", True, "unconfirmed"),
@@ -253,8 +254,9 @@ class ExecutionTest(unittest.TestCase):
         driver.write_text(
             "import os, sys, time\n"
             "from agent_harness import execution\n"
-            f"execution.launch({self.request()!r}, {self.repo!r},\n"
-            f"                 execution.ProcessBackend([sys.executable, {str(child)!r}], grace=1.0))\n"
+            f"execution.launch({self.request()!r},\n"
+            f"                 execution.ProcessBackend([sys.executable, {str(child)!r}], grace=1.0),\n"
+            f"                 **{self.repo!r})\n"
             "for _ in range(200):\n"
             f"    if os.path.exists({str(pid_file)!r}):\n"
             "        break\n"
@@ -281,25 +283,41 @@ class ExecutionTest(unittest.TestCase):
         execution._publish(root / f"{slot}.json", execution._unknown(other, execution.ScriptedBackend(), None,
                                                                      False, None))
         with self.assertRaises(contract.ContractError) as caught:
-            execution.launch(self.request(), self.repo, execution.ScriptedBackend())
+            self.launch(self.request(), execution.ScriptedBackend())
         self.assertEqual("MALFORMED", caught.exception.code)
         (root / f"{slot}.started").write_text("{")
         with self.assertRaises(contract.ContractError) as caught:
-            execution.launch(self.request(), self.repo, execution.ScriptedBackend())
+            self.launch(self.request(), execution.ScriptedBackend())
         self.assertEqual("MALFORMED", caught.exception.code)
 
     def test_changed_request_while_running_is_refused(self):
-        running = execution.launch(self.request(), self.repo, execution.ScriptedBackend(duration=5))
+        running = self.launch(self.request(), execution.ScriptedBackend(duration=5))
         with self.assertRaises(contract.ContractError) as caught:
-            execution.launch(self.request(timeout=99), self.repo, execution.ScriptedBackend())
+            self.launch(self.request(timeout=99), execution.ScriptedBackend())
         self.assertEqual("BINDING_MISMATCH", caught.exception.code)
         running.cancel()
         running.result(timeout=10)
 
+    def test_launch_needs_only_absolute_workspace_and_evidence_roots(self):
+        for bad in ("relative/dir", str(self.root / "evidence" / ".." / "x"), 7):
+            with self.subTest(bad=bad), self.assertRaises(contract.ContractError):
+                execution.launch(self.request(), execution.ScriptedBackend(), workspace=self.repo["workspace"],
+                                 evidence_root=bad)
+        with self.assertRaises(TypeError):  # no repository identity, base SHA or authority root involved
+            execution.launch(self.request(), execution.ScriptedBackend(), **self.repo, base_sha="a" * 40)
+
+    def test_scripted_rejection_is_a_never_launched_result(self):
+        result = self.launch(self.request(), execution.ScriptedBackend(rejection="BACKEND_UNAVAILABLE")).result(10)
+        contract.validate_result(result, self.request())
+        self.assertEqual(("rejected", "BACKEND_UNAVAILABLE"), (result["outcome"], result["error_code"]))
+        self.assertEqual([], list(Path(self.repo["evidence_root"]).iterdir()))
+        with self.assertRaises(ValueError):
+            execution.ScriptedBackend(rejection="NOT_A_CODE")
+
     def test_changed_request_reusing_an_id_is_refused_before_capability_checks(self):
         self.run_to_end(execution.ScriptedBackend())
         with self.assertRaises(contract.ContractError) as caught:
-            execution.launch(self.request(capabilities=["qualified_isolation"]), self.repo,
+            self.launch(self.request(capabilities=["qualified_isolation"]),
                              execution.ScriptedBackend())
         self.assertEqual("BINDING_MISMATCH", caught.exception.code)
 

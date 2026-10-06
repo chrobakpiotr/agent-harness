@@ -23,23 +23,20 @@ request = contract.validate_request({
 })
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp).resolve()
-    for name in ("workspace", "authority", "evidence"):
+    for name in ("workspace", "evidence"):
         (root / name).mkdir()
-    repo = contract.validate_repo_context({
-        "contract_version": contract.CONTRACT_VERSION, "repo_id": "demo", "base_sha": "0" * 40,
-        "workspace": str(root / "workspace"), "authority_root": str(root / "authority"),
-        "evidence_root": str(root / "evidence")})
+    roots = {"workspace": str(root / "workspace"), "evidence_root": str(root / "evidence")}
     units = {"input_tokens": 10, "output_tokens": 5, "cache_read_tokens": 0, "cache_write_tokens": 0}
     backend = execution.ScriptedBackend([{"outcome": "completed", "units": units}], candidate=b"patch")
-    result = execution.launch(request, repo, backend).result(timeout=30)
+    result = execution.launch(request, backend, **roots).result(timeout=30)
 
     grade = "NOT_GRADED"  # owned by the consumer, never derived from outcome or completion
     print(f"outcome={result['outcome']} completion={result['completion']} grade={grade} "
           f"usage={result['usage_completeness']} isolation={result['isolation_level']} "
           f"candidate={result['candidate']['sha256'][:15]}")
 
-    cancelled = execution.launch({**request, "request_id": "demo-2", "capabilities": ["cancel"]}, repo,
-                                 execution.ProcessBackend(["sleep", "30"]))
+    cancelled = execution.launch({**request, "request_id": "demo-2", "capabilities": ["cancel"]},
+                                 execution.ProcessBackend(["sleep", "30"]), **roots)
     cancelled.cancel()
     stopped = cancelled.result(timeout=30)
     print(f"cancel: outcome={stopped['outcome']} drain={stopped['drain']} isolation={stopped['isolation_level']}")
