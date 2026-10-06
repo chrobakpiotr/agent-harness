@@ -56,3 +56,13 @@ report digest without the review, reviewer ≠ author, evidence distinct); the e
 report (its review now fails and its evidence is not shipped). Each new rule has a test whose mutation fails it
 (job binding, evidence verification, shared evidence, author self-review, unbound review, check set, image digest,
 review reusing check evidence). Remaining limits are listed in ADR 0002.
+
+## Re-check (2026-10-06)
+
+Verdict on `bb2cf18`: **fail** — the review and job bindings were satisfiable by the report's author (a passing
+report could be relabelled for another job and re-signed with the same evidence). Fixed: each passing check's
+evidence must name the `job_id` and the review evidence must name its `subject`, so relabelling needs new
+evidence; the remaining authenticity limit is stated in ADR 0002 instead of claimed closed. Also: reviewer vs
+author compared case-insensitively; `--job-id` without `--capability-report` is misuse (2); a missing evidence
+root is blamed on the root; tampered or missing evidence is documented as 2. Isolated tests catch the job,
+subject and case-folding mutations.

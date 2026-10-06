@@ -80,15 +80,19 @@ def _load_json(path):
 
 def _qualification(args):
     """Exit 0: valid and passing; 1: valid but not passing or not bindable; 2: invalid or unreadable."""
-    current = args.check
+    if (args.job_id is None) != (args.capability_report is None):
+        print("agent-harness qualification: --job-id and --capability-report go together", file=sys.stderr)
+        return 2
+    current = args.evidence_root
     try:
+        if not Path(args.evidence_root).is_dir():
+            raise FileNotFoundError(2, "evidence root is not a directory")
+        current = args.check
         doc = contract.validate_qualification_report(_load_json(args.check))
         passes = contract.qualification_passes(doc, args.evidence_root)
         report = None
         if args.capability_report is not None:
             current = args.capability_report
-            if args.job_id is None:
-                raise ValueError("--job-id is required with --capability-report")
             report = contract.validate_capability_report(_load_json(args.capability_report))
     except (OSError, ValueError, RecursionError) as error:  # ContractError and JSON errors are ValueErrors
         print(f"{current}: invalid ({type(error).__name__}: {str(error)[:200]})", file=sys.stderr)

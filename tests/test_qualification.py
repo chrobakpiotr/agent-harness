@@ -38,14 +38,16 @@ class QualificationReportTest(unittest.TestCase):
 
     def evidence(self, name, text=None):
         path = self.root / "evidence" / f"{name}.log"
-        path.write_text(text or f"raw output of {name}\n")
+        path.write_text(text or f"raw output of {name} in job {JOB}\n")
         data = path.read_bytes()
         return {"path": f"evidence/{name}.log", "sha256": "sha256:" + hashlib.sha256(data).hexdigest(),
                 "size": len(data)}
 
     def review(self, doc, verdict="pass", reviewer="security-reviewer"):
-        return {"reviewer": reviewer, "subject": contract.review_subject(doc), "verdict": verdict,
-                "evidence": self.evidence("review")}
+        subject = contract.review_subject(doc)
+        return {"reviewer": reviewer, "subject": subject, "verdict": verdict,
+                "evidence": self.evidence(f"review-{reviewer}-{verdict}-{subject[-12:]}",
+                                          f"review of {subject}: {verdict}\n")}
 
     def invalid(self, doc, resign=True):
         """Invalid for the reason under test: the review is re-signed for the edited report first."""
@@ -93,6 +95,29 @@ class QualificationReportTest(unittest.TestCase):
         other_report["checks"][0]["result"] = "fail"  # the review still names the old subject
         self.invalid(other_report, resign=False)
 
+    def test_a_report_cannot_be_relabelled_or_rereviewed_without_new_evidence(self):
+        relabelled = copy.deepcopy(self.doc)
+        relabelled["tuple"]["job_id"] = "github-run-999-attempt-1"
+        relabelled["independent_review"] = self.review(relabelled)  # even a fresh review: the checks name job 42
+        with self.assertRaises(contract.ContractError) as caught:
+            contract.qualification_passes(relabelled, self.root)
+        self.assertIn("does not name the job", str(caught.exception))
+        resigned = copy.deepcopy(self.doc)
+        resigned["tuple"]["host"] = "another-host"
+        resigned["independent_review"]["subject"] = contract.review_subject(resigned)  # author re-signs, same evidence
+        with self.assertRaises(contract.ContractError) as caught:
+            contract.qualification_passes(resigned, self.root)
+        self.assertIn("does not name the subject", str(caught.exception))
+        target, policy = self.doc["target"], self.doc["policy_digest"]
+        with self.assertRaises(contract.ContractError):
+            contract.validate_capability_binding(capability(target, policy, True), relabelled, self.root,
+                                                 "github-run-999-attempt-1")
+        for case in ("Qualifier", "QUALIFIER"):
+            by_author = copy.deepcopy(self.doc)
+            by_author["independent_review"] = self.review(by_author, reviewer=case)
+            with self.subTest(reviewer=case):
+                self.invalid(by_author, resign=False)
+
     def test_a_failing_check_or_review_does_not_pass(self):
         failing = copy.deepcopy(self.doc)
         failing["checks"][-1]["result"] = "fail"
@@ -113,7 +138,7 @@ class QualificationReportTest(unittest.TestCase):
         outside_dir = tempfile.TemporaryDirectory()
         self.addCleanup(outside_dir.cleanup)
         outside = Path(outside_dir.name)
-        (outside / "x.log").write_text("raw output of B1\n")
+        (outside / "x.log").write_text(f"raw output of B1 in job {JOB}\n")
         (self.root / "evidence" / "B1.log").symlink_to(outside / "x.log")
         with self.assertRaises(contract.ContractError) as caught:
             contract.qualification_passes(self.doc, self.root)
@@ -153,6 +178,12 @@ class QualificationReportTest(unittest.TestCase):
         capability_path.write_text(json.dumps(capability("other-target", self.doc["policy_digest"], True)))
         self.assertEqual(1, run(self.doc, "--capability-report", str(capability_path), "--job-id", JOB).returncode)
         self.assertEqual(2, run(self.doc, "--capability-report", str(capability_path)).returncode)  # no job id
+        self.assertEqual(2, run(self.doc, "--job-id", JOB).returncode)  # a job id without a report is misuse
+        missing_root = subprocess.run([sys.executable, "-m", "agent_harness", "qualification", "--check",
+                                       str(self.root / "report.json"), "--evidence-root", str(self.root / "nope")],
+                                      capture_output=True, text=True, check=False)
+        self.assertEqual(2, missing_root.returncode)
+        self.assertIn("nope", missing_root.stderr)
         capability_path.write_text("{")
         broken = run(self.doc, "--capability-report", str(capability_path), "--job-id", JOB)
         self.assertEqual(2, broken.returncode)

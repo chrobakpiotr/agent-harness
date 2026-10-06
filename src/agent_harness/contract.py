@@ -193,7 +193,7 @@ def validate_qualification_report(doc):
         where = "qualification.independent_review"
         _fields(review, where, {"reviewer", "subject", "verdict", "evidence"})
         _id(review["reviewer"], where + ".reviewer")
-        _check(review["reviewer"] != doc["author"], where + ".reviewer: must not be the author")
+        _check(review["reviewer"].casefold() != doc["author"].casefold(), where + ".reviewer: must not be the author")
         _check(review["subject"] == review_subject(doc), where + ".subject: must be this report's review_subject")
         _enum(review["verdict"], ("pass", "fail"), where + ".verdict")
         _ref(review["evidence"], where + ".evidence", named=False)
@@ -220,7 +220,9 @@ def qualification_digest(doc):
 
 
 def verify_qualification_evidence(doc, evidence_root):
-    """Every evidence file exists inside ``evidence_root`` with the recorded size and digest."""
+    """Every evidence file exists inside ``evidence_root`` with the recorded size and digest; the evidence of each
+    passing check names the report's ``job_id`` and the review evidence names the review ``subject``, so a
+    report cannot be relabelled for another job or reviewed under another subject without new evidence."""
     validate_qualification_report(doc)
     root = Path(evidence_root).resolve(strict=True)
     refs = [ref for check in doc["checks"] for ref in check["evidence"]]
@@ -238,7 +240,18 @@ def verify_qualification_evidence(doc, evidence_root):
                 digest.update(chunk)
         if "sha256:" + digest.hexdigest() != ref["sha256"]:
             raise ContractError("BINDING_MISMATCH", f"qualification evidence {ref['path']}")
+    job = doc["tuple"]["job_id"].encode()
+    for check in doc["checks"]:
+        if check["result"] == "pass" and not any(job in _evidence_bytes(root, r) for r in check["evidence"]):
+            raise ContractError("BINDING_MISMATCH", f"qualification.checks[{check['id']}]: evidence does not name the job")
+    review = doc["independent_review"]
+    if review is not None and review["subject"].encode() not in _evidence_bytes(root, review["evidence"]):
+        raise ContractError("BINDING_MISMATCH", "qualification.independent_review: evidence does not name the subject")
     return doc
+
+
+def _evidence_bytes(root, ref):
+    return (root / ref["path"]).resolve().read_bytes()  # size and digest already verified
 
 
 def validate_capability_binding(report, qualification, evidence_root, job_id):

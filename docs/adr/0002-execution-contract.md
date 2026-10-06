@@ -85,19 +85,28 @@ shared with another check), `independent_review` (nullable; `reviewer` ≠ `auth
 `review_subject(report)` — the report digest without the review — and evidence distinct from check evidence) and
 `created_at`.
 
-- `qualification_passes(report, evidence_root)` re-hashes every evidence file inside the root and is true only
-  when every check passes and the review passes. There is no unverified "passes".
+- `qualification_passes(report, evidence_root)` re-hashes every evidence file inside the root, requires the
+  evidence of each passing check to name the report's `job_id` and the review evidence to name its `subject`, and
+  is true only when every check passes and the review passes. There is no unverified "passes". `reviewer` and
+  `author` are compared case-insensitively.
 - `validate_capability_binding(report, qualification, evidence_root, job_id)`: same target and policy digest,
   the caller's own job (`tuple.job_id`; a GitHub-hosted job is a fresh VM, so nothing stays qualified between
   jobs), and `qualified` only with a passing qualification. `validate_capability_report` alone checks shape only
   and does not make `qualified` meaningful; neither does `isolation_level: qualified` in a v1 result (ADR 0005
   proposes a result `target`). Consumers that rely on qualification call the binding.
 - CLI: `agent-harness qualification --check FILE --evidence-root DIR [--capability-report FILE --job-id ID]`:
-  0 passing, 1 not passing or not bindable, 2 invalid or unreadable (any JSON error, duplicate keys or excessive
-  nesting); the message names the file at fault.
+  0 passing, 1 not passing or not bindable, 2 invalid or unreadable — any JSON error, duplicate keys, excessive
+  nesting, missing or tampered evidence, or misuse (`--job-id` and `--capability-report` only together); the
+  message names the file at fault. Only the exit code is authoritative.
 - `qualification_digest` is the value ADR 0005 proposes for results. Showcase owns the probes, runs and raw
   evidence; `contract_fixtures/qualification-example.json` is a format example of a fictitious target whose
   review fails and whose evidence is not shipped.
+- **Authenticity is out of scope.** The report, its review and its `job_id` are claims of whoever produces the
+  files: binding to the job and subject makes accidental carry-over to another job or report fail, but an author
+  who regenerates the evidence can still produce a passing report, and distinct but fabricated evidence cannot be
+  told apart from real evidence. Trust comes from where the report is produced (the qualifying CI job and an
+  independent reviewer agent); signed reviews (e.g. Ed25519, as the `grants` extra already verifies) are a future
+  option, not part of this version.
 - Limits: the digest covers the parsed document (the CLI rejects duplicate keys); evidence paths are compared as
   given (no Unicode normalisation); evidence files are resolved and then opened, so a swap between the two
   checks is not excluded on a writable evidence root.
