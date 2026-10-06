@@ -13,14 +13,13 @@ Verification-v2 launch and completion are deliberately blocked.
 ## Decision
 
 1. **Ownership.** Showcase is the single implementation owner of each **moved** module until the AH5-06
-   cutover; afterwards the library is. New capability with no Showcase source (the offline launch API, the
-   constitution CLI, the qualified backend of AH5-04b as an `agent_harness.execution` backend) is
-   library-owned from creation and aligned with the accepted Showcase specs (SDD-OBS) rather than invented.
-   **Per-module handover:** when the library has to change a moved module before the cutover (origin
-   admission in `verification/authority.py` for 04a-2; `supervisor`/`executor` for 04b), ownership of that
-   module moves to the library first: Showcase freezes its copy by agreement with its owner, records the
-   freeze, and consumes the library module through the compatibility shim from then on. A module never has two
-   actively developed copies; the full cutover (06b) switches whatever is still Showcase-owned.
+   cutover; afterwards the library is. New behaviour in or around moved modules — origin admission (04a-2),
+   backend qualification (04b), source/output path (04c) — is implemented in Showcase by its owner (Showcase
+   handoff `docs/reviews/showcase-agent-harness-prerequisites-2026-10-06.md`, `8c7a251`); Harness reviews it
+   against the shared contract and ports accepted changes with parity before a release. Ownership of a moved
+   module transfers only at the cutover checkpoint. Capability entirely outside moved modules (the offline
+   launch API, the constitution CLI) is library-owned from creation. A per-module handover before the cutover
+   (recorded 2026-10-06) is superseded by this rule.
    After the cutover ownership stays per module: Showcase keeps `harness.py`, `orchestrate.py`, `runner.py`,
    `verify.py`, executor, supervisor, workspace, sandbox, its profiles and issuer registry until a packet
    moves them; the moved modules become the compatibility shim of `docs/migration/cutover.md`.
@@ -61,8 +60,10 @@ Verification-v2 launch and completion are deliberately blocked.
 
 - Owners for `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `eval.py` and
   `verify.py`: they stay in Showcase until a packet moves them (`verify.py` needs the executor).
-- AH5-04b needs a qualified Linux host; origin admission (04a-2) needs 04b's physical execution. Each needs a
-  per-module handover (decision 1) agreed with Showcase before its first change to a moved module.
+- 04a-2 waits for an accepted, registered Showcase task under SDD-OBS-001 (the task DAG has none yet).
+- 04b waits for a qualification target: the local Docker Desktop Linux guest is a candidate only; if it fails
+  the full qualification, a dedicated supported Linux runner is an external prerequisite. 04c follows 04a-2
+  and 04b.
 
 ## Consequences
 
