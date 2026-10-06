@@ -1,6 +1,6 @@
 # AH5-07 — Versioned agent practices and a measured eval
 
-- Status: **accepted**; implemented, awaiting independent evaluation (constitution rule 7).
+- Status: **accepted** and **done** (re-evaluated 2026-10-06: pass).
 - Source: master plan AH5-07 (develops H-06); depends on AH5-00. Inputs: `mattpocock/skills` at
   `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` (MIT, © 2026 Matt Pocock): `engineering/diagnosing-bugs`,
   `engineering/retro`, `productivity/writing-for-agents`; Showcase roles at `50c18f9` (read-only).
@@ -116,3 +116,13 @@ not evidence of a process gain; the only clear difference is the recorded hypoth
 asks for. The packet's "passes only if" wording now says the checks are heuristics. The run artifacts
 (`.agent-runs/` is ignored by Git) are kept as `evidence/live-run-20261005T211008Z.tar.gz`; regrade with
 `python3.13 evals/diagnosing/grade.py <run>/<arm-i> <run>/<arm-i>.jsonl` after extracting it.
+
+## Re-evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `052ed10`: **pass**. The four findings are closed, AC2 holds, and the six
+runs regrade to the AC3 table. Remaining, accepted as the documented heuristic limit (none affects the saved
+runs): deliberate gaming still passes (`patch`/`python3 fix.py` edits, `print(1997+1)` as "repro", step lists
+worded with "if"/"confirmed"); honest shapes still fail (a base repro via `git stash`, heredoc text naming
+`invoice.py`, read-only `awk`/`python3 invoice.py`, `skipped=` in the base summary, hypotheses in a table or
+prose). Follow-up when the eval is reused: compare `invoice.py` content before and after each tool call instead
+of inferring edits from commands, and drop heredoc bodies from command scanning.
