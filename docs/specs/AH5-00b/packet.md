@@ -34,3 +34,13 @@
   the `v0.1.0`/`v0.2.0` trees differs, and a version names exactly one text.
 - agent-benchmark's `docs/constitution.md` reports drifted (hand-condensed, not a copy); adopting a verbatim copy
   is its change, after a tag that ships this command.
+
+## Independent evaluation (2026-10-06)
+
+Fresh-context evaluator verdict on `2780fc2`: **fail** — `--check ""` (an unset CI variable) skipped the check
+and exited 0. Fix: an empty path is opened like any other and fails with 2; a directory is 2; the file's size is
+compared before reading it (a large file is not read whole); `--help` and `consumers.md` say 2 also means a
+usage error; `consumers.md` says the command needs a release after `0.2.0`. Tests cover the empty path, a
+directory and a larger file; restoring the truthy check (mutation) fails them. Everything else held (wheel
+contents byte-identical, byte-exact checks for CRLF/BOM/symlinks, print without added newline, 1.0.1 bump
+consistent, benchmark copy truthfully drifted).

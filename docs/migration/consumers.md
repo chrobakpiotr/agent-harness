@@ -14,12 +14,12 @@ backend (AH5-04b/04c). Until then no consumer execution is qualified, and result
 
 ## Shared agent contract copies (AH5-00b)
 
-Each consumer keeps a verbatim copy of the constitution of the agent-harness version it pins, and its own
+Needs a release after `0.2.0` (the command is not in `v0.2.0`). Each consumer keeps a verbatim copy of the constitution of the agent-harness version it pins, and its own
 rules in a separate file (Showcase-specific rules stay in Showcase's constitution). In CI, with the pinned
 package installed:
 
 ```text
-agent-harness constitution --check <path of the copy>   # 0 = exact copy, 1 = drifted, 2 = unreadable
+agent-harness constitution --check <path of the copy>   # 0 = exact copy, 1 = drifted, 2 = unreadable/usage
 ```
 
 Create or refresh the copy with `agent-harness constitution > <path>` after re-pinning, through review;

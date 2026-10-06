@@ -37,6 +37,9 @@ class ConstitutionCopyTest(unittest.TestCase):
             with self.subTest(drifted=drifted[:0]):
                 self.assertEqual(1, self.check(drifted))
         self.assertEqual(2, cli("--check", str(self.dir / "missing.md")).returncode)
+        self.assertEqual((2, b""), (cli("--check", "").returncode, cli("--check", "").stdout))  # empty: never skipped
+        self.assertEqual(1, self.check(CANONICAL + b"x" * 10_000))
+        self.assertEqual(2, cli("--check", str(self.dir)).returncode)  # a directory is unreadable, not drifted
 
     def test_repository_copy_is_the_shipped_text(self):
         proc = cli("--check", str(ROOT / "docs" / "agentic-sdd" / "constitution.md"))
