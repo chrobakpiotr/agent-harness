@@ -1,12 +1,15 @@
 # Showcase cutover guide (AH5-06)
 
-For Showcase operators. Status: the cutover is **rehearsed** (AH5-06a); the real switch (AH5-06b) waits
+For Showcase operators. Here "shim" means the Python compatibility modules below; it is unrelated to the
+S30 DR restore wrapper (inhibit, issuer acknowledgements, audited RESUME), which this cutover does not touch.
+
+Status: the cutover is **rehearsed** (AH5-06a); the real switch (AH5-06b) waits
 for the qualified backend (AH5-04b/04c). Until then Showcase stays the implementation owner (ADR 0001).
 
 ## What changes
 
 The modules already in the library stop being implemented in Showcase. Each Showcase file is replaced by
-the wrapper in [`migration/showcase-wrapper/`](../../migration/showcase-wrapper/):
+the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showcase-wrapper/):
 
 | Showcase file | After the cutover |
 |---|---|
@@ -25,13 +28,18 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    `agent-harness[grants] @ git+https://github.com/chrobakpiotr/agent-harness.git@<tag SHA>` (a tag SHA,
    never a branch).
 2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`.
-3. In the same change, remove only these five Showcase tests, which patch Showcase names that calls inside the
-   library cannot see; their behaviour is tested in the library (`tests/test_verification_authority.py`) and
-   the Showcase bindings by `test_cutover_wrapper.py`:
-   `test_verification_authority.AcceptedPlanResolutionTest.` `test_exact_accepted_plan_reconstructs_current_units_without_running_them`,
-   `test_origin_authority_is_v2_and_execution_fails_closed`, `test_post_seal_candidate_mutation_rejects_before_execution`,
-   `test_trusted_orchestrator_plan_creation_binds_running_attempt_and_candidate`,
-   `test_unknown_execution_unit_rejects_before_execution`. Every other Showcase test stays.
+3. In the same change, remove only the five Showcase tests below. They patch Showcase names that calls inside
+   the library cannot see. Each runs under the same name in the library's normal suite
+   (`agent-harness/tests/test_verification_authority.py`, run by `scripts/check-wheel.sh` and CI), and
+   `test_cutover_wrapper.py` covers what Showcase passes in. Every other Showcase test stays.
+
+   | Showcase `tooling/agent-harness/tests/test_verification_authority.py::AcceptedPlanResolutionTest` | Library assertions |
+   |---|---|
+   | `test_exact_accepted_plan_reconstructs_current_units_without_running_them` | identical (1) |
+   | `test_origin_authority_is_v2_and_execution_fails_closed` | identical (3) |
+   | `test_post_seal_candidate_mutation_rejects_before_execution` | identical (1) |
+   | `test_trusted_orchestrator_plan_creation_binds_running_attempt_and_candidate` | identical (6); the accept call additionally asserts `lifecycle=` and `profile_root=` |
+   | `test_unknown_execution_unit_rejects_before_execution` | identical (1) |
 4. Add `tooling/agent-harness/requirements.txt` to `harness.protocol_files`: after the cutover `trust.py` and
    `telemetry.py` are wrappers, so the library pin must be part of the protocol fingerprint (a re-pin changes
    the trust classifier).
