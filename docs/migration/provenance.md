@@ -3,7 +3,7 @@
 Source: Showcase `tooling/agent-harness/` at `50c18f947031f1b7bd8e8c6276b2a98b9b46ab98`
 (unchanged in that directory through `52e1837`). Same licence (MIT) and copyright holder.
 Until cutover (AH5-06) Showcase remains the implementation owner of these moved modules; changes go there
-first, except fail-closed seams created by explicit roots (ADR 0001 decision 3), listed in the table below.
+first, except fail-closed seams created by explicit roots (ADR 0001 decision 3), marked **[seam]** below.
 
 | Package module | Source path | Source blob | Changes from source |
 |---|---|---|---|
@@ -19,8 +19,8 @@ first, except fail-closed seams created by explicit roots (ADR 0001 decision 3),
 | `agent_harness/verification/human_grants.py` | `verification/human_grants.py` | `f221ec36` | none |
 | `agent_harness/verification/planner.py` | `verification/planner.py` | `b8038d0b` | none |
 | `agent_harness/verification/candidate.py` | `verification/candidate.py` | `2b5fd4e4` | `resolve_control_root` from `agent_harness.repository` |
-| `agent_harness/verification/store.py` | `verification/store.py` | `597ace86` | `_git`/`_worktrees`/`resolve_control_root` body replaced by `agent_harness.repository`, `RepositoryError` re-raised as `StoreError` with the same code; no default issuer registry (`__file__`), missing registry fails `FAILURE_GRANT_ISSUER_UNAVAILABLE`; new `profile_root` parameter passed to `validate_plan_record` |
-| `agent_harness/verification/authority.py` | `verification/authority.py` | `4ac59537` | no `import harness`: `publish_and_accept`, `resolve_accepted`, `resolve_execution`, `prepare_task_plan` take an injected `lifecycle` port (the Showcase `harness` module fits it); profile root is an explicit `profile_root` parameter instead of `__file__`; `prepare_task_plan` takes `profile_id` (no built-in `showcase`) and refuses a profile resolving outside `profile_root` (`ACCEPTED_PLAN_UNAVAILABLE`), as `resolve_execution` does; `resolve_execution` guard unchanged |
+| `agent_harness/verification/store.py` | `verification/store.py` | `597ace86` | `_git`/`_worktrees`/`resolve_control_root` body replaced by `agent_harness.repository`, `RepositoryError` re-raised as `StoreError` with the same code; no default issuer registry (`__file__`), **[seam]** missing registry fails `FAILURE_GRANT_ISSUER_UNAVAILABLE`; new `profile_root` parameter passed to `validate_plan_record` |
+| `agent_harness/verification/authority.py` | `verification/authority.py` | `4ac59537` | no `import harness`: `publish_and_accept`, `resolve_accepted`, `resolve_execution`, `prepare_task_plan` take an injected `lifecycle` port (the Showcase `harness` module fits it); profile root is an explicit `profile_root` parameter instead of `__file__`; `prepare_task_plan` takes `profile_id` (no built-in `showcase`) and **[seam]** refuses a profile resolving outside `profile_root` (`ACCEPTED_PLAN_UNAVAILABLE`, `f756e42`), as `resolve_execution` does; `resolve_execution` guard unchanged |
 | `benchmarks/verification_planning.py` (repo, not in the wheel) | `benchmarks/verification_planning.py` | `50690851` | imports from `agent_harness.verification`, unused `sys` import removed; recorded Showcase baseline JSON not copied |
 | `agent_harness/schemas/verification-profile.schema.json` | `schemas/verification-profile.schema.json` | `375b2f5e` | none |
 
@@ -39,7 +39,8 @@ lifecycle acceptance stays with the Showcase lifecycle module; the lifecycle is 
 `test_verification_benchmark` (verbatim, limits unchanged; runs only with `AGENT_HARNESS_BENCHMARK=1`, set in CI:
 on a 1.4 GHz i5 the Showcase code itself measures an 11.9–13.6 s median against the 10 s limit).
 `test_verification_completion_boundary` drives the Showcase lifecycle CLI and stays there;
-`test_verification_profile_showcase` checks Showcase policy and drives `verify.py` (moves with 04b), so it stays too.
+`test_verification_profile_showcase` checks Showcase policy and drives `verify.py` (stays in Showcase until a
+packet moves it), so it stays too.
 
 Parity (AH5-04a-1): on one disposable repository Showcase `50c18f9` (Python 3.13) and the package
 (Python 3.13) produce byte-identical plan records, with and without a task command, and the same

@@ -1,7 +1,9 @@
 import argparse
+import errno
 import hashlib
 import os
 import re
+import stat
 import sys
 from importlib import resources
 
@@ -34,17 +36,18 @@ def main(argv=None):
     text, version, digest = constitution()
     if args.digest:
         print(f"constitution {version} {digest}")
-    elif args.check is not None:  # an empty PATH fails to open (2); it is never skipped
+    elif args.check is not None:  # an empty PATH is unreadable (2); it is never skipped
         try:
+            # Only a regular file is a copy: a FIFO or device could block or never end.
+            if not stat.S_ISREG(os.stat(args.check).st_mode):
+                raise OSError(errno.EINVAL, "not a regular file")
             with open(args.check, "rb") as handle:
-                size = os.fstat(handle.fileno()).st_size
-                # A copy of another size has drifted; don't read an arbitrarily large file to find out.
-                copy = handle.read() if size == len(text) else None
+                copy = handle.read(len(text) + 1)  # bounded: anything longer has drifted
         except OSError as error:
             print(f"{args.check}: unreadable ({error.strerror})", file=sys.stderr)
             return 2
         if copy != text:
-            found = f"sha256:{hashlib.sha256(copy).hexdigest()}" if copy is not None else f"{size} bytes"
+            found = f"sha256:{hashlib.sha256(copy).hexdigest()}" if len(copy) <= len(text) else "longer"
             print(f"{args.check}: drifted from constitution {version} ({digest}; copy {found})", file=sys.stderr)
             return 1
         print(f"{args.check}: matches constitution {version} {digest}")

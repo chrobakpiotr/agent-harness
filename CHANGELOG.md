@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Unreleased (0.3.0.dev0)
 
 - CLI `agent-harness constitution [--digest | --check PATH]`: the shared agent contract ships in the wheel;
   consumers check their verbatim copy for drift (AH5-00b). Constitution 1.0.1 (adds the check command to the

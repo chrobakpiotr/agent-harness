@@ -5,8 +5,8 @@
 - Ownership rule (ADR 0001, accepted): until cutover (AH5-06) Showcase is the only implementation owner of
   every module below that is moved; afterwards the "Owner after cutover" column becomes the single owner, the
   moved copy is replaced by the compatibility shim, never kept as a second active implementation.
-- Status of this map: survey of `50c18f9`; "Owner after cutover" entries are proposals until a packet moves the
-  module ("undecided" rows stay in Showcase).
+- Status of this map: survey of `50c18f9`. The target owner of a row becomes binding when a packet moves the
+  module (ADR 0001 decision 1); rows not yet moved stay in Showcase.
 
 ## Execution modules (15,525 lines total)
 
@@ -32,7 +32,7 @@ Wave = AH5 task that may first move the module.
 | `verification/supervisor.py`, `executor.py` | 532/372 | `.store`, `.planner`, `.model`, `.serialization`, `machine_outcomes`, `verification_command` | per-start identity, terminal/drain records | `test_verification_supervisor`, `_executor`, `_noncacheable`, `_phase_d` | library | 04b |
 | `verification/workspace.py` | 220 | `.serialization` | **diagnostic-only** records | `test_verification_workspace` | library | 04c |
 | `verification/human_grants.py` | 73 | `.serialization` | issuer registry JSON | `human_grant_fixture` | library | 04a (moved) |
-| `verify.py` | 128 | `verification.*`, `machine_outcomes` | profile root via `__file__` | `test_verify` | library CLI | 04a |
+| `verify.py` | 128 | `verification.*`, `machine_outcomes` | profile root via `__file__` | `test_verify` | library CLI | stays in Showcase until a packet moves it (needs the executor, 04b) |
 | `runner.py` | 670 | `machine_outcomes`, `telemetry`, `trust`, `verification_sandbox` | provider CLIs (codex/claude); `REPO = __file__.parents[1]`; `.agent-runs` | `test_runner` | library (provider adapters) | not before 04b; packet needed |
 | `harness.py` (lifecycle CLI, rest) | 5,307 | `trust`, `verification_contract` | `docs/specs/<feature>`; `protocol_files` hard-codes `tooling/agent-harness/*`, `.claude/agents`, `.github/workflows/agentic-sdd.yml`; `fcntl` | `test_harness`, `test_replan`, `test_packet_identity_bridge` | library, split by packet | not scheduled; too large for one move |
 | `orchestrate.py` | 529 | `harness`, `machine_outcomes`, `telemetry`, `verification.authority` | `REPO = __file__.parents[1]`; threads | `test_orchestrate` | library | after `harness.py` split |

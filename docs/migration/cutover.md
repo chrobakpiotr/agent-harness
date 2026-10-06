@@ -40,7 +40,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    | `test_post_seal_candidate_mutation_rejects_before_execution` | identical (1) |
    | `test_trusted_orchestrator_plan_creation_binds_running_attempt_and_candidate` | identical (6); the accept call additionally asserts `lifecycle=` and `profile_root=` |
    | `test_unknown_execution_unit_rejects_before_execution` | identical (1) |
-4. Add `tooling/agent-harness/requirements.txt` to `harness.protocol_files`: after the cutover `trust.py` and
+4. Done in Showcase (`4fd9abe`, with a test): `tooling/agent-harness/requirements.txt` is in `harness.protocol_files`: after the cutover `trust.py` and
    `telemetry.py` are wrappers, so the library pin must be part of the protocol fingerprint (a re-pin changes
    the trust classifier).
 5. Run every step of the `agentic-sdd` workflow and the harness test suite.

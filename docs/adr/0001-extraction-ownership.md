@@ -14,8 +14,11 @@ Verification-v2 launch and completion are deliberately blocked.
 
 1. **Ownership.** Showcase is the single implementation owner of each **moved** module until the AH5-06
    cutover; afterwards the library is. New capability with no Showcase source (the offline launch API, the
-   constitution CLI, and verification-v2 origin admission and qualified backend, AH5-04a-2/04b) is
-   library-owned from creation and aligned with the accepted Showcase specs (SDD-OBS) rather than invented.
+   constitution CLI, verification-v2 origin admission AH5-04a-2, and the qualified backend of AH5-04b as a new
+   `agent_harness.execution` backend) is library-owned from creation and aligned with the accepted Showcase
+   specs (SDD-OBS) rather than invented. It never modifies a moved copy: the Showcase modules mapped to 04b
+   (`verification_sandbox`, `verification_command`, `supervisor`, `executor`) stay Showcase-owned and move only
+   with parity, so no module has two actively developed copies.
    After the cutover ownership stays per module: Showcase keeps `harness.py`, `orchestrate.py`, `runner.py`,
    `verify.py`, executor, supervisor, workspace, sandbox, its profiles and issuer registry until a packet
    moves them; the moved modules become the compatibility shim of `docs/migration/cutover.md`.
@@ -40,7 +43,8 @@ Verification-v2 launch and completion are deliberately blocked.
    `.agent-runs/control/verification-v2`). Before the cutover the library writes no Showcase state; consumers
    run either the Showcase scripts or the pinned shim against a repository, never both. The library writes no
    state at import.
-7. **Rollback.** Before the cutover nothing changes in Showcase. After it, rollback is re-pinning the previous
+7. **Rollback.** Before the cutover Showcase changes only through its own owners' tasks (e.g. `4fd9abe` put
+   the library pin into `protocol_files` in advance); nothing in Showcase depends on the library yet. After it, rollback is re-pinning the previous
    library tag or restoring the pre-cutover files (`git checkout <pre-cutover SHA> -- tooling/agent-harness/`),
    after finishing or releasing in-flight tasks (an accepted plan is bound to the exact tree; rehearsed in
    AH5-06a). A state format change needs its own ADR, backup and downgrade path (ADR 0003).
@@ -51,6 +55,12 @@ Verification-v2 launch and completion are deliberately blocked.
 9. **Shared contract.** This repository owns the shared constitution text; consumers keep verbatim copies
    checked with `agent-harness constitution --check` (AH5-00b); Showcase-specific rules stay in Showcase.
 
+## Open
+
+- Owners for `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `eval.py` and
+  `verify.py`: they stay in Showcase until a packet moves them (`verify.py` needs the executor).
+- AH5-04b needs a qualified Linux host; origin admission (04a-2) needs 04b's physical execution.
+
 ## Consequences
 
 - Each wave needs its own packet, provenance notice (source SHA) and parity tests.
@@ -58,5 +68,3 @@ Verification-v2 launch and completion are deliberately blocked.
 - `verification/workspace.py` records carry `authority: diagnostic-only`;
   `verification_sandbox.doctor()` always reports `qualified: False`, `launch_ready: False`; Docker discovery
   is not qualification.
-- `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py` and `eval.py` stay in
-  Showcase until a packet decides their owner (source map: undecided).

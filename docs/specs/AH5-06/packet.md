@@ -18,7 +18,7 @@
 - Allowed paths: `docs/specs/AH5-06/`, `docs/migration/cutover.md`, `migration/showcase-wrapper/`,
   `scripts/rehearse-cutover.sh`, `scripts/rehearse-rollback.sh`, `CHANGELOG.md`, `AGENTS.md`, `pyproject.toml`.
 - Method: export Showcase with `git archive` into a temporary directory, replace each moved module with a
-  thin wrapper over the installed library wheel (Showcase bindings: profile root, issuer registry, lifecycle
+  thin wrapper (later: compatibility shim) over the installed library wheel (Showcase bindings: profile root, issuer registry, lifecycle
   = `harness`), and run the same checks on the unmodified export (baseline) and the wrapped one.
 - AC1: the Showcase harness test suite gives the same pass/fail set on both; every difference is listed with
   its cause.

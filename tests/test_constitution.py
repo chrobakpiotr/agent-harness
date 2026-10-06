@@ -1,6 +1,7 @@
 """Versioned copies of the shared agent contract: `agent-harness constitution --check` detects any drift."""
 
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -40,6 +41,14 @@ class ConstitutionCopyTest(unittest.TestCase):
         self.assertEqual((2, b""), (cli("--check", "").returncode, cli("--check", "").stdout))  # empty: never skipped
         self.assertEqual(1, self.check(CANONICAL + b"x" * 10_000))
         self.assertEqual(2, cli("--check", str(self.dir)).returncode)  # a directory is unreadable, not drifted
+
+    def test_only_regular_files_are_read(self):
+        fifo = self.dir / "fifo"
+        os.mkfifo(fifo)
+        proc = subprocess.run([sys.executable, "-m", "agent_harness", "constitution", "--check", str(fifo)],
+                              capture_output=True, check=False, timeout=30)  # no writer: must not block
+        self.assertEqual(2, proc.returncode)
+        self.assertEqual(2, cli("--check", "/dev/zero").returncode)
 
     def test_repository_copy_is_the_shipped_text(self):
         proc = cli("--check", str(ROOT / "docs" / "agentic-sdd" / "constitution.md"))

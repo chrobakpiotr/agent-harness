@@ -44,3 +44,11 @@ usage error; `consumers.md` says the command needs a release after `0.2.0`. Test
 directory and a larger file; restoring the truthy check (mutation) fails them. Everything else held (wheel
 contents byte-identical, byte-exact checks for CRLF/BOM/symlinks, print without added newline, 1.0.1 bump
 consistent, benchmark copy truthfully drifted).
+
+## Re-check (2026-10-06)
+
+Fresh-context verdict on `bc79e22`: **fail** — a FIFO with no writer hung `--check` forever, and the read was
+unbounded for a pipe or a growing file. Fix: only a regular file is a copy (FIFOs, devices → 2), and the read is
+capped at the canonical length + 1; a FIFO test with a timeout fails if the regular-file guard is removed.
+`/dev/stdin` is now refused (2) instead of timing-dependent. Builds from `main` are `0.3.0.dev0`, so a wheel with
+this command is distinguishable from `0.2.0`.
