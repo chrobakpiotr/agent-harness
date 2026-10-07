@@ -3,7 +3,7 @@
 | Consumer | agent-harness version / SHA | API used | Capability track | Authority store | Status |
 |---|---|---|---|---|---|
 | `examples/minimal-consumer` | built from the checkout in `scripts/check-wheel.sh` | `agent_harness.contract`, `agent_harness.execution` | fake (scripted) and controlled (local process) | evidence root in a temp dir | runs outside the checkout on every check |
-| agent-benchmark | `v0.1.0` = `e57fda8477675fd0722878e4993b19651a6aedc4` (pinned in its `pyproject.toml`) | `agent_harness.contract` only (guarded by its `test_harness_port`) | fake-offline | none | AB5-06a done (its `784319d`); ADR 0004 reviewed and accepted; AB5-06b (launch through `agent_harness.execution`) pins the `v0.2.0` tag once it exists |
+| agent-benchmark | `v0.3.0` = `0ef88c5b5751e18b88a9f7b454823c7bf3012e0b` (pinned in its `pyproject.toml`, its `10a3cc5`) | `agent_harness.contract`, `agent_harness.execution`, CLI `constitution --check` | fake-offline | none | constitution 1.0.1 verbatim, checked in its CI; AB5-05b grading waits for a qualified target (AH5-04b) |
 | Showcase | — | — | — | own (`.agent-state`, `.agent-runs/control`) | does not consume the library before AH5-06; default entrypoint unchanged |
 
 No consumer holds a second authority store: the library resolves Showcase's roots read-only (ADR 0003) and
@@ -24,4 +24,5 @@ agent-harness constitution --check <path of the copy>   # 0 = exact copy, 1 = dr
 
 Create or refresh the copy with `agent-harness constitution > <path>` after re-pinning, through review;
 `agent-harness constitution --digest` prints the version and sha256 to record next to the pin. Status:
-agent-benchmark's `docs/constitution.md` is a hand-condensed copy, not yet verbatim; Showcase has no copy yet.
+agent-benchmark keeps a verbatim 1.0.1 copy in `docs/constitution.md`, checked by a unit test in CI (its `10a3cc5`;
+its repo rules live in `AGENTS.md`); Showcase has no copy yet.

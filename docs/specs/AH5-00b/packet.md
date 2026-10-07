@@ -1,6 +1,6 @@
 # AH5-00b — Versioned shared-contract copies with a drift check
 
-- Status: **accepted** (ordered 2026-10-06).
+- Status: **accepted** and **done**; first consumer adopted (agent-benchmark `10a3cc5`, verbatim 1.0.1, checked in CI).
 - Source: constitution "Ownership" rule (consumers receive versioned copies: version + digest + drift check;
   updates by review, never auto-following `main`); AH5-00. Consumers: agent-benchmark (`docs/constitution.md`,
   today a hand-condensed copy), Showcase (its own constitution stays authoritative for Showcase-specific rules).
