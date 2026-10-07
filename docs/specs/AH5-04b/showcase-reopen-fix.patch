@@ -1,0 +1,70 @@
+--- a/tooling/agent-harness/harness.py
++++ b/tooling/agent-harness/harness.py
+@@ -4596,6 +4596,23 @@
+     print(f'HUMAN_RESOLVED {args.task_id} -> retry authorized; artifact={artifact}')
+ 
+ 
++def reopen_dependency_graph(feature_dir: pathlib.Path, doc: dict[str, Any],
++                            state: dict[str, Any]) -> dict[str, dict[str, Any]]:
++    """Dependencies for descendant invalidation without validating unrelated legacy packets.
++
++    A replanned task's active revision may change its dependencies, so it must resolve (fail closed). A legacy task
++    has no revision: its dependencies are the validated current DAG, which is what its active contract would return;
++    its historical packet file is not needed to find descendants and is left untouched.
++    """
++    graph = {}
++    for tid, task in task_index(doc).items():
++        if state['tasks'].get(tid, {}).get('active_packet_revision') is not None:
++            graph[tid] = active_task_contract(feature_dir, doc, tid, state=state)
++        else:
++            graph[tid] = task
++    return graph
++
++
+ def cmd_reopen(args: argparse.Namespace) -> None:
+     doc = load_validated(args.feature_dir)
+     idx = task_index(doc)
+@@ -4608,9 +4625,7 @@
+     # the state lock before deleting any task-local workspace, otherwise a racing worker can lose a
+     # live worktree even though the reopen itself is rejected.
+     with locked_state(args.feature_dir, doc) as state:
+-        active_idx = {tid: active_task_contract(args.feature_dir, doc, tid, state=state)
+-                      for tid in idx}
+-        stale = sorted(descendants(active_idx, args.task_id))
++        stale = sorted(descendants(reopen_dependency_graph(args.feature_dir, doc, state), args.task_id))
+         target = state['tasks'][args.task_id]
+         if target.get('status') != 'completed':
+             die(f'{args.task_id} must be completed before it can be reopened')
+--- a/tooling/agent-harness/tests/test_harness.py
++++ b/tooling/agent-harness/tests/test_harness.py
+@@ -2095,7 +2095,30 @@
+         self.assertEqual('deadbeef', archived['last_attempt_commit'])
+         self.assertEqual('evidence/result.json', archived['completion_evidence'])
+ 
++    def test_reopen_ignores_unrelated_legacy_packets(self):
++        from unittest import mock
++        feature = self.feature()
++        doc = harness.load_json(feature / 'tasks.json')
++        state = harness.load_state(feature, doc)
++        state['tasks']['T-001'].update({'status': 'completed', 'attempts': 1})
++        state['tasks']['T-900'].update({'status': 'completed', 'attempts': 1})
++        harness.save_state(feature, state)
++        # T-001 is not a descendant of T-900; its historical legacy packet must not block the reopen.
++        legacy = feature / 'packets' / 'T-001.json'
++        legacy.parent.mkdir(exist_ok=True)
++        legacy.write_text('{"task": "unrelated historical packet"}\n', encoding='utf-8')
++        before = legacy.read_bytes()
+ 
++        with mock.patch.object(harness, 'prune_task_workspace'):
++            harness.cmd_reopen(argparse.Namespace(feature_dir=feature, task_id='T-900',
++                                                  reason='B9 fix', evidence=None))
++
++        updated = harness.load_state(feature, doc)
++        self.assertEqual('failed', updated['tasks']['T-900']['status'])
++        self.assertEqual('completed', updated['tasks']['T-001']['status'])
++        self.assertEqual(before, legacy.read_bytes())
++
++
+     def test_evidence_contract(self):
+         evidence = self.root / 'result.json'
+         evidence.write_text(json.dumps({

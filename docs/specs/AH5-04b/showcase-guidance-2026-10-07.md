@@ -58,3 +58,21 @@ Proposed Showcase-owned transition (a Showcase task with tests; Harness does not
 4. Tests (red first): a replan of a failed task without a human resolution, a stale revision/fingerprint/attempt
    count/feature generation, a completed task and a concurrent second replan are refused; a valid replan leaves the
    legacy packet byte-identical and the attempt count unchanged; claim/start then use the new revision.
+
+## 4. Safe reopen: descendants from the validated DAG (T-003)
+
+Cause (Showcase `harness.py` at `dbe3c91`, read-only): `cmd_reopen` builds
+`{tid: active_task_contract(...) for tid in idx}` for **every** task only to compute descendants; `active_task_contract`
+validates each legacy packet file, so one unrelated completed task whose historical packet does not resolve aborts
+the reopen (`ACTIVE_PACKET_AMBIGUOUS`).
+
+Fix: [`showcase-reopen-fix.patch`](showcase-reopen-fix.patch) (applies cleanly to `dbe3c91`; Showcase applies it
+through its own task — Harness does not change `harness.py`). New `reopen_dependency_graph`: a task with a replanned
+revision (`active_packet_revision` set) still resolves its active contract, because a revision may change
+`depends_on` (fail closed); a legacy task uses the validated current DAG entry, which is what `active_task_contract`
+already returns for it — its packet file is not read. Packet bytes, completion evidence and attempt histories are
+untouched; descendants are invalidated exactly as before.
+
+Evidence on throwaway exports: new test `test_reopen_ignores_unrelated_legacy_packets` (reopen T-900 while the
+unrelated completed T-001 has a malformed legacy packet) fails on `dbe3c91` with `ACTIVE_PACKET_AMBIGUOUS` and passes
+with the patch, leaving T-001's packet byte-identical; the three existing reopen tests pass on both.
