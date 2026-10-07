@@ -59,3 +59,12 @@ limits, missing limits when requested, `output_truncated` type, target fields/id
 applied `True`/float/extra key, usage-event version, request limits ≥ 1 and exact keys, qualified request without
 limits — each of the 13 mutations fails the suite. Consumer note: agent-benchmark checks `error_code` against
 `ERROR_CODES`, which deliberately excludes `LIMIT_EXCEEDED`; it adds the v2 code when it adopts v2.
+
+## Re-check (2026-10-07)
+
+Verdict on `b29dfdf`: **fail** on two narrow points, both fixed: (1) "limits only when the request sets limits"
+had no isolated test — added (removing the rule now fails the suite); (2) a backend claiming `qualified` without a
+`target` could publish an invalid `unknown` result that broke every later launch of that request ID — `launch` now
+refuses such a backend before anything is written (tested; removing the guard fails the suite). Confirmed fixed:
+exact applied limits (bool, float, 2**64, missing/extra keys, non-dict), v1 `missing-qualification` still valid,
+qualified v2 requests need limits, a non-qualified backend cannot inject a target (falls back to `unknown`).

@@ -141,6 +141,8 @@ class ContractV2Test(unittest.TestCase):
             "applied float": (lambda r: r["limits"]["applied"].update(memory_bytes=536870912.0), None),
             "applied timeout float": (lambda r: r["limits"]["applied"].update(timeout_seconds=30.0), None),
             "applied extra key": (lambda r: r["limits"]["applied"].update(gpus=1), None),
+            "limits without requested limits": (lambda r: r.update(isolation_level="fake", target=None),
+                                                lambda q: (unlimited_request(q), q.update(capabilities=[]))),
         }
         for name, (change, request_change) in cases.items():
             result, request = variant(change, request_change)
@@ -226,6 +228,12 @@ class OfflineBackendsV2Test(unittest.TestCase):
         broken.target = target
         fallback = self.run_scripted({**request, "request_id": "req-q2"}, broken)
         self.assertEqual(("unknown", target), (fallback["outcome"], fallback["target"]))  # still a valid result
+        nameless = Qualified.__new__(Qualified)
+        execution.ScriptedBackend.__init__(nameless)
+        with self.assertRaises(ValueError):  # refused before anything is written
+            execution.launch({**request, "request_id": "req-q3"}, nameless, **self.roots)
+        self.assertFalse(any(p.name.startswith(execution._slot("req-q3"))
+                             for p in Path(self.roots["evidence_root"]).rglob("*")))
 
     def test_v2_without_limits_and_inconsistent_scripts(self):
         unlimited = {**self.request, "request_id": "req-u", "limits": None}

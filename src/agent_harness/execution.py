@@ -71,6 +71,8 @@ class Execution:
 
 def launch(request, backend, *, workspace, evidence_root):
     contract.validate_request(request)
+    if backend.isolation_level == "qualified" and getattr(backend, "target", None) is None:
+        raise ValueError("a qualified backend must state its target (id, qualification and image digests)")
     roots = {"workspace": _absolute(workspace, "workspace"), "evidence_root": _absolute(evidence_root, "evidence_root")}
     execution = Execution(request)
     root = Path(roots["evidence_root"]).resolve() / "executions"
