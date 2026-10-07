@@ -58,8 +58,9 @@ Verification-v2 launch and completion are deliberately blocked.
 
 ## Open
 
-- Owners for `control_plane.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `eval.py` and
-  `verify.py`: they stay in Showcase until a packet moves them (`verify.py` needs the executor).
+- Owners decided 2026-10-07 (`docs/migration/ownership-proposal-2026-10-07.md`): library later for the `eval.py`
+  engine, `verification_contract.py`, `design.py`, `wayfinder.py`; Showcase keeps eval suites and `control_plane.py`.
+  All stay in Showcase until a packet moves them; `verify.py` needs the executor.
 - 04a-2 waits for an accepted, registered Showcase task under SDD-OBS-001 (the task DAG has none yet).
 - 04b waits for a qualification target: the local Docker Desktop Linux guest is a candidate only. Fallback
   (2026-10-06): a GitHub-hosted `ubuntu` runner in Showcase CI (free, `sudo` and Docker available). Each job is a
