@@ -1,6 +1,6 @@
 # Contract v2 — target evidence and resource limits (ADR 0005)
 
-- Status: **accepted** (ordered 2026-10-07): B10 of the 04b qualification cannot pass without per-grade target and
+- Status: **accepted** and **done** (executed confirmation 2026-10-07: 150/150 mutants killed). B10 of the 04b qualification cannot pass without per-grade target and
   limit evidence, so implementation no longer waits for a qualified target.
 - Source: ADR 0005 (shape agreed in the agent-benchmark review); Showcase review
   `docs/specs/AH5-04b/review-showcase-qualification-2026-10-07.md`.
@@ -90,3 +90,11 @@ on the current code: 122 of 124 killed; the two survivors drop docstrings.
 - Confirmation attempt (2026-10-07): incomplete — the evaluator's tools were blocked (safety classifier
   unavailable), so it traced 52 mutants statically; one likely survivor (a v1 result carrying `target`/`limits`) is
   now tested and that mutation fails the suite. An executed independent confirmation is still pending.
+
+## Executed confirmation (2026-10-07)
+
+Fresh-context evaluator, own AST sweep (150 mutants over the v2 code and the qualified-backend guard): 148 killed.
+Survivors: a result `contract_version` of `True` passed when `_doc_version` was removed (`True == 1`), and the
+dropped `return target` of the public `validate_target`. Fixed with tests only (no source change): a result
+version of `True`, `1.0` or missing is refused; `validate_target` returns its argument. The evaluator's sweep
+script, re-run unchanged on the current code: **150 of 150 killed**. `scripts/check-wheel.sh` green.

@@ -46,6 +46,13 @@ class ContractV2Test(unittest.TestCase):
         v1_answer = {k: v for k, v in self.result.items() if k not in ("target", "limits")}
         self.assertEqual("VERSION_MISMATCH", self.bad({**v1_answer, "contract_version": 1}))
         self.assertEqual("VERSION_MISMATCH", code_of(self, contract.validate_request, {**self.request, "contract_version": 3}))
+        v1 = json.loads((resources.files("agent_harness") / "contract_fixtures" / "success.json").read_text())
+        for version in (True, 1.0):  # equal to 1 in Python, but not the integer 1
+            with self.subTest(version=version):
+                self.assertEqual("VERSION_MISMATCH", code_of(self, contract.validate_result,
+                                                             {**v1["result"], "contract_version": version}, v1["request"]))
+        missing = {k: v for k, v in v1["result"].items() if k != "contract_version"}
+        self.assertEqual("MALFORMED", code_of(self, contract.validate_result, missing, v1["request"]))
 
     def test_limit_exceeded_iff_a_non_timeout_limit_fired(self):
         no_code = copy.deepcopy(self.result)
@@ -183,6 +190,9 @@ class ContractV2Test(unittest.TestCase):
         finished.update(outcome="finished", error_code=None)
         finished["limits"]["fired"] = None
         self.assertEqual("MALFORMED", self.bad(finished))
+
+    def test_validate_target_returns_the_target(self):
+        self.assertIs(self.result["target"], contract.validate_target(self.result["target"]))
 
     def test_usage_events_carry_the_result_version(self):
         result = copy.deepcopy(self.result)
