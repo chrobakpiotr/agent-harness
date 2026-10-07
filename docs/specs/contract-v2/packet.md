@@ -98,3 +98,13 @@ Survivors: a result `contract_version` of `True` passed when `_doc_version` was 
 dropped `return target` of the public `validate_target`. Fixed with tests only (no source change): a result
 version of `True`, `1.0` or missing is refused; `validate_target` returns its argument. The evaluator's sweep
 script, re-run unchanged on the current code: **150 of 150 killed**. `scripts/check-wheel.sh` green.
+
+## Amendment: candidate targets (2026-10-07)
+
+Showcase evidence `b10-contract-v2-blocker-2026-10-07.json`: B10 was circular for the first qualification. Decided:
+candidate targets (ADR 0005 amendment). Rules: `qualified` ⇒ target with a `qualification_digest`; `unqualified` ⇒
+optional candidate target with `qualification_digest: null`; `fake`/`controlled` ⇒ no target. Tests: the candidate
+fixture validates; a candidate claiming a digest, a qualified target without one, a target on `fake`/`controlled`
+are refused; an unqualified result without a target is valid; `validate_target` defaults to qualified. Statement
+sweep: 0 survivors; AST sweep over `validate_target` and `_target_and_limits`: all killed (remaining survivors lie in
+the capability/qualification-report validators, covered by `test_qualification`, outside this sweep's test set).

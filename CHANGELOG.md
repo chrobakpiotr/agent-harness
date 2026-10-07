@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (0.5.0.dev0)
+
+- Contract v2 amendment (ADR 0005): candidate targets — an `unqualified` result may carry `target` with
+  `qualification_digest: null`, so a target's first qualification can record B10 without its own digest;
+  `validate_target(target, qualified=False)`; golden fixture `v2-candidate-target.json`. v0.4 documents stay valid.
+
 ## 0.4.0 — 2026-10-07
 
 - Contract v2 (ADR 0005): request `limits`; result `target` (qualified target id, qualification digest, workload

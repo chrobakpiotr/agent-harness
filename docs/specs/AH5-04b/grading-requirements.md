@@ -20,7 +20,7 @@ qualification later.
 | B7 | Non-root, no capabilities, `no_new_privs`, default seccomp | setuid, `mount`, raw socket attempts fail | none needed |
 | B8 | Limits enforced by the target: wall = `timeout_seconds`, 1 vCPU, 512 MiB no swap, 64 PIDs, 256 MiB writable disk; on a timeout/memory/PID breach the sandbox is killed and the result names the limit; disk exhaustion is observed and named; output beyond 1 MiB is dropped (not a kill) | payload exceeds each limit in turn; result names it; a large-output payload still completes with output truncated | **gap**: v1 `outcome` has only `timeout`; no applied limits, no `oom`/`pids`/`disk`, no truncation flag (ADR 0005) |
 | B9 | One bounded output file (≤ 1 MiB) returned after the sandbox is gone; verdict computed outside | payload writes the file; caller receives exactly those bytes | `artifacts[]` (named, sealed by digest) |
-| B10 | Evidence per grade: target ID, qualification report digest, image digest, applied limits, limit fired, exit code | present in every result | **gap**: v1 result has `isolation_level` and `exit_code` only; target ID and digests are in `CapabilityReport` / free-form `versions` |
+| B10 | Evidence per grade: target ID, qualification report digest, image digest, applied limits, limit fired, exit code | during qualification, every candidate grading result (`isolation_level: unqualified`, `target.qualification_digest: null`) carries target id, image digest, applied limits, fired, exit code; once the report passes, qualified results carry its digest | contract v2 `target`/`limits` (ADR 0005, candidate-target amendment) |
 
 Notes for the qualification owner:
 
