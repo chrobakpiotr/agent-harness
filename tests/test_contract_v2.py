@@ -37,6 +37,10 @@ class ContractV2Test(unittest.TestCase):
         failed = copy.deepcopy(v1["result"])
         failed.update(outcome="error", error_code="LIMIT_EXCEEDED", completion=None)
         self.assertEqual("MALFORMED", code_of(self, contract.validate_result, failed, v1["request"]))
+        for extra in ({"target": None}, {"limits": None}):  # v2 fields never belong to a v1 result
+            with self.subTest(extra=extra):
+                self.assertEqual("MALFORMED", code_of(self, contract.validate_result, {**v1["result"], **extra},
+                                                      v1["request"]))
 
     def test_versions_must_match_and_be_known(self):
         v1_answer = {k: v for k, v in self.result.items() if k not in ("target", "limits")}

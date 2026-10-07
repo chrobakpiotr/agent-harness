@@ -87,3 +87,6 @@ check (its test was also caught by the LIMIT_EXCEEDED rule) and the qualified-li
 did not assert the `completed` outcome). Fixed with isolated tests; the dead `or {}` was removed; v1 rules shared
 by v2 results (a rejected result was never launched, the outcome value) are now pinned too. Re-running that sweep
 on the current code: 122 of 124 killed; the two survivors drop docstrings.
+- Confirmation attempt (2026-10-07): incomplete — the evaluator's tools were blocked (safety classifier
+  unavailable), so it traced 52 mutants statically; one likely survivor (a v1 result carrying `target`/`limits`) is
+  now tested and that mutation fails the suite. An executed independent confirmation is still pending.
