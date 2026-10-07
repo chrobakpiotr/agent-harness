@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.4.0.dev0)
+## 0.4.0 — 2026-10-07
 
 - Contract v2 (ADR 0005): request `limits`; result `target` (qualified target id, qualification digest, workload
   image digest) and `limits` (applied, fired, output_truncated); `LIMIT_EXCEEDED`. v1 documents unchanged and
