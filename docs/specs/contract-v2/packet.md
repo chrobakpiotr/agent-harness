@@ -108,3 +108,7 @@ fixture validates; a candidate claiming a digest, a qualified target without one
 are refused; an unqualified result without a target is valid; `validate_target` defaults to qualified. Statement
 sweep: 0 survivors; AST sweep over `validate_target` and `_target_and_limits`: all killed (remaining survivors lie in
 the capability/qualification-report validators, covered by `test_qualification`, outside this sweep's test set).
+Independent check (2026-10-07): **pass** — circularity broken without weakening (candidate claiming a digest,
+qualified without a digest, target on fake/controlled, candidate answering a qualified request, rejected with a target:
+all refused); v0.4 fixtures valid; own AST sweep 109/112 killed, the 3 survivors equivalent (docstrings, `fired`
+default). Noted in ADR 0005: an `unknown` terminal of an unqualified launch carries no target.

@@ -57,4 +57,6 @@ during the target's own qualification run). `qualification_digest` is required e
 `fake`/`controlled` launches have no target. B10 checks candidate grading results for target id, image digest,
 applied limits, fired limit and exit code; once the report passes, qualified launches carry its
 `qualification_digest` and consumers bind them with `validate_capability_binding`. Every v0.4 document stays valid;
-`contract.validate_target(target, qualified=False)` checks a candidate.
+`contract.validate_target(target, qualified=False)` checks a candidate. An `unknown` terminal of an unqualified launch
+may carry no target (the launch state is unknown), so B10 evidence comes from grades that reached a terminal state; an
+unknown grade is itself a qualification failure to investigate, not evidence.
