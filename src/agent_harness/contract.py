@@ -183,7 +183,7 @@ def _target_and_limits(doc, request, outcome, level):
     fired = None
     if limits is not None:
         _fields(limits, "result.limits", {"applied", "fired", "output_truncated"})
-        expected = {**(requested or {}), "timeout_seconds": request["timeout_seconds"]}
+        expected = {**requested, "timeout_seconds": request["timeout_seconds"]}  # requested set: checked above
         _fields(limits["applied"], "result.limits.applied", set(expected))
         for key, value in expected.items():  # equal and an int: True == 1 and 1.0 == 1 must not pass
             _int(limits["applied"][key], value, value, f"result.limits.applied.{key}")

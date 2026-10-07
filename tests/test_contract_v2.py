@@ -137,7 +137,9 @@ class ContractV2Test(unittest.TestCase):
             "target id": (lambda r: r["target"].update(id="bad id"), None),
             "target image digest": (lambda r: r["target"].update(image_digest="latest"), None),
             "target qualification digest": (lambda r: r["target"].update(qualification_digest="nope"), None),
-            "fired value": (lambda r: r["limits"].update(fired="bogus"), None),
+            "fired value": (lambda r: (r.update(outcome="completed", error_code=None, exit_code=0),
+                                       r["attempts"][0].update(outcome="completed"),
+                                       r["limits"].update(fired="bogus")), None),
             "limits extra field": (lambda r: r["limits"].update(note="x"), None),
             "applied cpus True": (lambda r: r["limits"]["applied"].update(cpus=True), None),
             "applied float": (lambda r: r["limits"]["applied"].update(memory_bytes=536870912.0), None),
@@ -157,6 +159,26 @@ class ContractV2Test(unittest.TestCase):
             result, request = variant(change, request_change)
             with self.subTest(rule=name):
                 self.assertEqual("MALFORMED", self.bad(result, request))
+
+    def test_a_rejected_result_was_never_launched(self):
+        rejected = {**self.result, "outcome": "rejected", "error_code": "NOT_QUALIFIED", "execution_id": None,
+                    "drain": None, "started_at": None, "ended_at": None, "attempts": [], "artifacts": [],
+                    "limits": None, "target": None, "candidate": None, "usage_events": []}
+        contract.validate_result(rejected, self.request)
+        traces = {"execution_id": "exec-1", "started_at": "2026-10-07T10:00:00Z", "ended_at": "2026-10-07T10:00:00Z",
+                  "drain": "confirmed", "candidate": {"path": "c", "sha256": "sha256:" + "a" * 64, "size": 1},
+                  "attempts": self.result["attempts"], "artifacts": self.result["artifacts"],
+                  "usage_events": [{"contract_version": 2, "event_id": "u", "attempt_id": "att-1", "source": "harness",
+                                    "kind": "summary", "cache_semantics": "separate",
+                                    "units": dict.fromkeys(("input_tokens", "output_tokens", "cache_read_tokens",
+                                                            "cache_write_tokens"), 0)}]}
+        for key, value in traces.items():
+            with self.subTest(trace=key):
+                self.assertEqual("MALFORMED", self.bad({**rejected, key: value}))
+        finished = copy.deepcopy(self.result)  # nothing but an unknown outcome value is wrong here
+        finished.update(outcome="finished", error_code=None)
+        finished["limits"]["fired"] = None
+        self.assertEqual("MALFORMED", self.bad(finished))
 
     def test_usage_events_carry_the_result_version(self):
         result = copy.deepcopy(self.result)
@@ -250,7 +272,8 @@ class OfflineBackendsV2Test(unittest.TestCase):
     def test_v2_without_limits_and_inconsistent_scripts(self):
         unlimited = {**self.request, "request_id": "req-u", "limits": None}
         result = self.run_scripted(unlimited, execution.ScriptedBackend())
-        self.assertEqual((2, None, None), (result["contract_version"], result["limits"], result["target"]))
+        self.assertEqual((2, "completed", None, None),
+                         (result["contract_version"], result["outcome"], result["limits"], result["target"]))
         broken = self.run_scripted({**self.request, "request_id": "req-b"},
                                    execution.ScriptedBackend([{"outcome": "completed"}], fired="oom"))
         self.assertEqual("unknown", broken["outcome"])  # an inconsistent script never becomes a success

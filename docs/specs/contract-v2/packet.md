@@ -78,3 +78,12 @@ before writing anything (tested for `None`, `{}` and a bad digest); tests for th
 value, timeout-only limits without requested limits and the v1 `versions` map. A sweep that turns each validator
 call of the v2 code into a no-op, one at a time, against `test_contract_v2`, `test_contract` and `test_execution`
 leaves **0 survivors**.
+
+## Fourth check (2026-10-07)
+
+Verdict on `e831e99`: **fail** — the evaluator's AST sweep (124 mutants: dropped statements, forced conditions,
+dropped `and`/`or` operands, negated comparisons, unwrapped validators) left two v2 survivors: the `fired` value
+check (its test was also caught by the LIMIT_EXCEEDED rule) and the qualified-limits condition (the no-limits test
+did not assert the `completed` outcome). Fixed with isolated tests; the dead `or {}` was removed; v1 rules shared
+by v2 results (a rejected result was never launched, the outcome value) are now pinned too. Re-running that sweep
+on the current code: 122 of 124 killed; the two survivors drop docstrings.
