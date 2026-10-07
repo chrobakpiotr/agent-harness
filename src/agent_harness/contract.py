@@ -156,14 +156,20 @@ def validate_result(doc, request):
     return doc
 
 
+def validate_target(target, where="result.target"):
+    """A v2 qualified target: its id, the passing qualification's digest and the workload image digest."""
+    _fields(target, where, {"id", "qualification_digest", "image_digest"})
+    _id(target["id"], where + ".id")
+    _match(_DIGEST, target["qualification_digest"], where + ".qualification_digest")
+    _match(_DIGEST, target["image_digest"], where + ".image_digest")
+    return target
+
+
 def _target_and_limits(doc, request, outcome, level):
     """Contract v2 (ADR 0005): which qualified target ran the launch and which resource limit, if any, ended it."""
     target, limits, requested = doc["target"], doc["limits"], request["limits"]
     if target is not None:
-        _fields(target, "result.target", {"id", "qualification_digest", "image_digest"})
-        _id(target["id"], "result.target.id")
-        _match(_DIGEST, target["qualification_digest"], "result.target.qualification_digest")
-        _match(_DIGEST, target["image_digest"], "result.target.image_digest")
+        validate_target(target)
     if outcome == "rejected":
         _check(target is None and limits is None, "result: a rejected request has no target or limits")
     else:
@@ -177,7 +183,7 @@ def _target_and_limits(doc, request, outcome, level):
     fired = None
     if limits is not None:
         _fields(limits, "result.limits", {"applied", "fired", "output_truncated"})
-        expected = {**requested, "timeout_seconds": request["timeout_seconds"]}
+        expected = {**(requested or {}), "timeout_seconds": request["timeout_seconds"]}
         _fields(limits["applied"], "result.limits.applied", set(expected))
         for key, value in expected.items():  # equal and an int: True == 1 and 1.0 == 1 must not pass
             _int(limits["applied"][key], value, value, f"result.limits.applied.{key}")

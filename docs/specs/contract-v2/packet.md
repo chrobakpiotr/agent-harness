@@ -68,3 +68,13 @@ had no isolated test — added (removing the rule now fails the suite); (2) a ba
 refuses such a backend before anything is written (tested; removing the guard fails the suite). Confirmed fixed:
 exact applied limits (bool, float, 2**64, missing/extra keys, non-dict), v1 `missing-qualification` still valid,
 qualified v2 requests need limits, a non-qualified backend cannot inject a target (falls back to `unknown`).
+
+## Final sweep (2026-10-07)
+
+Verdict on `54c21c9`: **fail** — the qualification-digest and `fired`-value checks had no test, and the qualified
+guard accepted a malformed target (an invalid `unknown` could still be published). Fixed: `contract.validate_target`
+is shared by the validator and `launch`, which refuses a qualified backend whose target is missing or malformed
+before writing anything (tested for `None`, `{}` and a bad digest); tests for the qualification digest, `fired`
+value, timeout-only limits without requested limits and the v1 `versions` map. A sweep that turns each validator
+call of the v2 code into a no-op, one at a time, against `test_contract_v2`, `test_contract` and `test_execution`
+leaves **0 survivors**.
