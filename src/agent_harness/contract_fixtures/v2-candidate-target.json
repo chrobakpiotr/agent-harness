@@ -1,0 +1,88 @@
+{
+  "description": "Contract v2: a grading launch during its own qualification run (fictitious candidate target, unqualified, qualification_digest null); output truncated at the cap, no limit fired.",
+  "request": {
+    "contract_version": 2,
+    "request_id": "req-v2-candidate",
+    "trial_id": "trial-001",
+    "task_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider": "grader",
+    "model": "patch-unittest",
+    "settings": {},
+    "capabilities": [],
+    "timeout_seconds": 30,
+    "max_attempts": 1,
+    "input_bindings": [
+      {
+        "name": "candidate",
+        "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      {
+        "name": "test-inputs",
+        "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "limits": {
+      "cpus": 1,
+      "memory_bytes": 536870912,
+      "pids": 64,
+      "disk_bytes": 268435456,
+      "output_bytes": 1048576
+    }
+  },
+  "result": {
+    "contract_version": 2,
+    "request_id": "req-v2-candidate",
+    "request_digest": "sha256:84c76680f1621cd6564b4a4ca50244a2fe0157e7481f6e528239e26cffd42285",
+    "execution_id": "exec-v2-candidate",
+    "outcome": "completed",
+    "exit_code": 0,
+    "completion": null,
+    "error_code": null,
+    "drain": "confirmed",
+    "cancel_requested": false,
+    "isolation_level": "unqualified",
+    "resolved_model": null,
+    "versions": {
+      "backend": "example-0.0.0"
+    },
+    "started_at": "2026-10-07T10:00:00Z",
+    "ended_at": "2026-10-07T10:00:02Z",
+    "attempts": [
+      {
+        "attempt_id": "att-1",
+        "outcome": "completed",
+        "started_at": "2026-10-07T10:00:00Z",
+        "ended_at": "2026-10-07T10:00:02Z"
+      }
+    ],
+    "candidate": null,
+    "artifacts": [
+      {
+        "name": "verdict-input",
+        "path": "grades/req-v2-candidate/output.json",
+        "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "size": 512
+      }
+    ],
+    "usage_events": [],
+    "usage_completeness": "unknown",
+    "target": {
+      "id": "example-not-a-real-target",
+      "qualification_digest": null,
+      "image_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "limits": {
+      "applied": {
+        "cpus": 1,
+        "memory_bytes": 536870912,
+        "pids": 64,
+        "disk_bytes": 268435456,
+        "output_bytes": 1048576,
+        "timeout_seconds": 30
+      },
+      "fired": null,
+      "output_truncated": true
+    }
+  }
+}

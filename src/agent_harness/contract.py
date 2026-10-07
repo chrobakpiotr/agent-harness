@@ -156,11 +156,16 @@ def validate_result(doc, request):
     return doc
 
 
-def validate_target(target, where="result.target"):
-    """A v2 qualified target: its id, the passing qualification's digest and the workload image digest."""
+def validate_target(target, where="result.target", qualified=True):
+    """A v2 target: its id, the workload image digest and, for a qualified launch, the passing qualification's
+    digest. A candidate target (an `unqualified` launch, e.g. grading during its own qualification run) has
+    `qualification_digest: null`, so the first qualification never needs its own digest."""
     _fields(target, where, {"id", "qualification_digest", "image_digest"})
     _id(target["id"], where + ".id")
-    _match(_DIGEST, target["qualification_digest"], where + ".qualification_digest")
+    if qualified:
+        _match(_DIGEST, target["qualification_digest"], where + ".qualification_digest")
+    else:
+        _check(target["qualification_digest"] is None, where + ".qualification_digest: null for a candidate target")
     _match(_DIGEST, target["image_digest"], where + ".image_digest")
     return target
 
@@ -169,11 +174,13 @@ def _target_and_limits(doc, request, outcome, level):
     """Contract v2 (ADR 0005): which qualified target ran the launch and which resource limit, if any, ended it."""
     target, limits, requested = doc["target"], doc["limits"], request["limits"]
     if target is not None:
-        validate_target(target)
+        validate_target(target, qualified=level == "qualified")
     if outcome == "rejected":
         _check(target is None and limits is None, "result: a rejected request has no target or limits")
     else:
-        _check((target is not None) == (level == "qualified"), "result.target: required exactly for qualified isolation")
+        _check(level != "qualified" or target is not None, "result.target: required for qualified isolation")
+        _check(target is None or level in ("qualified", "unqualified"),
+               "result.target: only a qualified launch or a candidate (unqualified) target has one")
         _check(level != "qualified" or limits is not None or outcome == "unknown",
                "result.limits: a qualified launch states its limits")
         _check(limits is None or requested is not None, "result.limits: only when the request sets limits")

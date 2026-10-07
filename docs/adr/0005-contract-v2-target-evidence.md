@@ -47,3 +47,14 @@ free-form `versions` map, which carries no meaning). v1 schemas are closed, so a
 4. Gaps adopted above: one wall limit (`timeout_seconds`), output truncation instead of an output kill, `fired`
    as observed cause, explicit limits required for qualified launches, `applied` equal to the request.
 5. Consumer side when v2 ships: agent-benchmark carries `target` and `limits` in its trial and grade records.
+
+## Amendment: candidate targets (2026-10-07)
+
+Showcase found the first qualification circular: B10 requires per-grade target evidence, a qualified result must
+carry the digest of a passing report, and that report must contain the B10 evidence. Resolution: a result `target`
+may also appear on an `unqualified` launch as a **candidate** target with `qualification_digest: null` (e.g. grading
+during the target's own qualification run). `qualification_digest` is required exactly for `qualified` launches;
+`fake`/`controlled` launches have no target. B10 checks candidate grading results for target id, image digest,
+applied limits, fired limit and exit code; once the report passes, qualified launches carry its
+`qualification_digest` and consumers bind them with `validate_capability_binding`. Every v0.4 document stays valid;
+`contract.validate_target(target, qualified=False)` checks a candidate.

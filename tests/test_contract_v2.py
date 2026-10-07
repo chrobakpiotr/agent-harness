@@ -191,6 +191,29 @@ class ContractV2Test(unittest.TestCase):
         finished["limits"]["fired"] = None
         self.assertEqual("MALFORMED", self.bad(finished))
 
+    def test_a_candidate_target_has_no_qualification_digest(self):
+        candidate = json.loads((resources.files("agent_harness") / "contract_fixtures" /
+                                "v2-candidate-target.json").read_text())
+        request, result = candidate["request"], candidate["result"]
+        contract.validate_result(result, request)
+        self.assertIsNone(result["target"]["qualification_digest"])
+        claims_qualification = copy.deepcopy(result)
+        claims_qualification["target"]["qualification_digest"] = "sha256:" + "f" * 64
+        self.assertEqual("MALFORMED", code_of(self, contract.validate_result, claims_qualification, request))
+        no_target = copy.deepcopy(result)
+        no_target["target"] = None
+        contract.validate_result(no_target, request)  # an unqualified launch may also have no target
+        for level in ("fake", "controlled"):
+            with self.subTest(level=level):
+                self.assertEqual("MALFORMED", code_of(self, contract.validate_result,
+                                                      {**result, "isolation_level": level}, request))
+        qualified_without_digest = copy.deepcopy(self.result)
+        qualified_without_digest["target"]["qualification_digest"] = None
+        self.assertEqual("MALFORMED", self.bad(qualified_without_digest))
+        self.assertIs(result["target"], contract.validate_target(result["target"], qualified=False))
+        with self.assertRaises(contract.ContractError):
+            contract.validate_target(result["target"])  # a qualified target needs the digest
+
     def test_validate_target_returns_the_target(self):
         self.assertIs(self.result["target"], contract.validate_target(self.result["target"]))
 
