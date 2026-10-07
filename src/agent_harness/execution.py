@@ -189,9 +189,9 @@ def _publish(path, doc):
         tmp.unlink(missing_ok=True)
 
 
-def _v2(request, limits=None):
-    """v2 fields of an offline result: never a qualified target; limits only as the backend states them."""
-    return {"target": None, "limits": limits} if request["contract_version"] == 2 else {}
+def _v2(request, limits=None, target=None):
+    """v2 fields: the target and limits as the backend states them (offline backends state no target)."""
+    return {"target": target, "limits": limits} if request["contract_version"] == 2 else {}
 
 
 def _applied(request, fired=None, output_truncated=False):
@@ -203,11 +203,12 @@ def _applied(request, fired=None, output_truncated=False):
 
 
 def _envelope(request, backend, execution_id, cancel_requested, body):
-    limits = body.pop("limits", None)
+    limits, target = body.pop("limits", None), body.pop("target", None)
     return {"contract_version": request["contract_version"], "request_id": request["request_id"],
             "request_digest": contract.request_digest(request), "execution_id": execution_id,
             "cancel_requested": cancel_requested, "isolation_level": backend.isolation_level,
-            "resolved_model": None, "versions": {"agent-harness": __version__}, **body, **_v2(request, limits)}
+            "resolved_model": None, "versions": {"agent-harness": __version__}, **body,
+            **_v2(request, limits, target)}
 
 
 def _rejected(request, backend, code):
@@ -222,7 +223,10 @@ def _rejected(request, backend, code):
 def _unknown(request, backend, execution_id, cancel_requested, started_at):
     now = _now()
     started_at = started_at or now
-    return {"contract_version": request["contract_version"], "request_id": request["request_id"], **_v2(request),
+    # A qualified backend names its target even when the launch state is unknown.
+    target = getattr(backend, "target", None) if backend.isolation_level == "qualified" else None
+    return {"contract_version": request["contract_version"], "request_id": request["request_id"],
+            **_v2(request, target=target),
             "request_digest": contract.request_digest(request), "execution_id": execution_id or "unknown",
             "outcome": "unknown", "exit_code": None, "completion": None, "error_code": None, "drain": "unconfirmed",
             "cancel_requested": cancel_requested,

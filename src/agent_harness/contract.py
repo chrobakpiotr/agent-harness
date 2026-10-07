@@ -82,6 +82,9 @@ def validate_request(doc):
         _fields(doc["limits"], "request.limits", set(LIMIT_KEYS))
         for key in LIMIT_KEYS:
             _int(doc["limits"][key], 1, 2**53, f"request.limits.{key}")
+    if version == 2:  # no hidden defaults: a qualified launch is only ever asked for with explicit limits
+        _check("qualified_isolation" not in doc["capabilities"] or doc["limits"] is not None,
+               "request.limits: required with qualified_isolation")
     return doc
 
 
@@ -174,8 +177,10 @@ def _target_and_limits(doc, request, outcome, level):
     fired = None
     if limits is not None:
         _fields(limits, "result.limits", {"applied", "fired", "output_truncated"})
-        _check(limits["applied"] == {**requested, "timeout_seconds": request["timeout_seconds"]},
-               "result.limits.applied: must equal the requested limits and timeout_seconds")
+        expected = {**requested, "timeout_seconds": request["timeout_seconds"]}
+        _fields(limits["applied"], "result.limits.applied", set(expected))
+        for key, value in expected.items():  # equal and an int: True == 1 and 1.0 == 1 must not pass
+            _int(limits["applied"][key], value, value, f"result.limits.applied.{key}")
         fired = _enum(limits["fired"], FIRED_LIMITS, "result.limits.fired", nullable=True)
         _check(type(limits["output_truncated"]) is bool, "result.limits.output_truncated")
         _check((fired == "timeout") == (outcome == "timeout"), "result.limits.fired: timeout iff outcome timeout")

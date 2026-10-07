@@ -103,6 +103,68 @@ class ContractV2Test(unittest.TestCase):
         contract.validate_result(rejected, self.request)
         self.assertEqual("MALFORMED", self.bad({**rejected, "target": self.result["target"]}))
 
+    def test_each_rule_on_its_own(self):
+        """One change per case, so only the rule under test can refuse it."""
+        def variant(change, request_change=None):
+            result, request = copy.deepcopy(self.result), copy.deepcopy(self.request)
+            change(result)
+            if request_change:
+                request_change(request)
+            return result, request
+
+        def unlimited_request(r):
+            r["limits"] = None
+
+        def no_limits_qualified(r):  # qualified, no limits requested or stated, plain error
+            r.update(limits=None, error_code="PROVIDER_ERROR")
+
+        def fake_without_stated_limits(r):  # limits requested, none stated, not qualified, not unknown
+            r.update(limits=None, error_code="PROVIDER_ERROR", target=None, isolation_level="fake")
+
+        def drop_qualified(r):
+            r["capabilities"] = []
+
+        cases = {
+            "rejected with limits": (lambda r: r.update(
+                outcome="rejected", error_code="NOT_QUALIFIED", execution_id=None, drain=None, started_at=None,
+                ended_at=None, attempts=[], artifacts=[], target=None,
+                limits={**r["limits"], "fired": None}), None),
+            "qualified states limits": (no_limits_qualified, lambda q: (unlimited_request(q),
+                                                                        q.update(capabilities=[]))),
+            "limits when requested": (fake_without_stated_limits, drop_qualified),
+            "output_truncated bool": (lambda r: r["limits"].update(output_truncated=1), None),
+            "target extra field": (lambda r: r["target"].update(region="x"), None),
+            "target id": (lambda r: r["target"].update(id="bad id"), None),
+            "target image digest": (lambda r: r["target"].update(image_digest="latest"), None),
+            "limits extra field": (lambda r: r["limits"].update(note="x"), None),
+            "applied cpus True": (lambda r: r["limits"]["applied"].update(cpus=True), None),
+            "applied float": (lambda r: r["limits"]["applied"].update(memory_bytes=536870912.0), None),
+            "applied timeout float": (lambda r: r["limits"]["applied"].update(timeout_seconds=30.0), None),
+            "applied extra key": (lambda r: r["limits"]["applied"].update(gpus=1), None),
+        }
+        for name, (change, request_change) in cases.items():
+            result, request = variant(change, request_change)
+            with self.subTest(rule=name):
+                self.assertEqual("MALFORMED", self.bad(result, request))
+
+    def test_usage_events_carry_the_result_version(self):
+        result = copy.deepcopy(self.result)
+        result["usage_events"] = [{"contract_version": 1, "event_id": "u-1", "attempt_id": "att-1",
+                                   "source": "harness", "kind": "summary", "cache_semantics": "separate",
+                                   "units": {"input_tokens": 1, "output_tokens": 1, "cache_read_tokens": 0,
+                                             "cache_write_tokens": 0}}]
+        result["usage_completeness"] = "complete"
+        self.assertEqual("VERSION_MISMATCH", self.bad(result))
+
+    def test_request_limits_are_positive_exact_integers(self):
+        for change in ({"cpus": 0}, {"memory_bytes": -1}, {"pids": True}, {"gpus": 1}):
+            request = copy.deepcopy(self.request)
+            request["limits"].update(change)
+            with self.subTest(change=change):
+                self.assertEqual("MALFORMED", code_of(self, contract.validate_request, request))
+        qualified_without_limits = {**self.request, "limits": None}
+        self.assertEqual("MALFORMED", code_of(self, contract.validate_request, qualified_without_limits))
+
 
 class OfflineBackendsV2Test(unittest.TestCase):
     def setUp(self):
@@ -142,6 +204,28 @@ class OfflineBackendsV2Test(unittest.TestCase):
                 self.assertIsNone(result["target"])
         self.assertTrue(self.run_scripted({**self.request, "request_id": "req-t"},
                                           execution.ScriptedBackend(output_truncated=True))["limits"]["output_truncated"])
+
+    def test_a_backend_can_state_its_qualified_target(self):
+        target = {"id": "example-not-a-real-target", "qualification_digest": "sha256:" + "f" * 64,
+                  "image_digest": "sha256:" + "1" * 64}
+
+        class Qualified(execution.ScriptedBackend):
+            isolation_level = "qualified"
+            capabilities = ("cancel", "usage", "qualified_isolation")
+
+            def run(self, *args):
+                return {**super().run(*args), "target": target}
+        qualified = Qualified.__new__(Qualified)
+        execution.ScriptedBackend.__init__(qualified, [{"outcome": "error"}], fired="oom")
+        qualified.target = target
+        request = {**self.request, "request_id": "req-q", "capabilities": ["qualified_isolation"]}
+        result = self.run_scripted(request, qualified)
+        self.assertEqual(("error", "LIMIT_EXCEEDED", target), (result["outcome"], result["error_code"], result["target"]))
+        broken = Qualified.__new__(Qualified)
+        execution.ScriptedBackend.__init__(broken, [{"outcome": "completed"}], fired="oom")  # inconsistent script
+        broken.target = target
+        fallback = self.run_scripted({**request, "request_id": "req-q2"}, broken)
+        self.assertEqual(("unknown", target), (fallback["outcome"], fallback["target"]))  # still a valid result
 
     def test_v2_without_limits_and_inconsistent_scripts(self):
         unlimited = {**self.request, "request_id": "req-u", "limits": None}

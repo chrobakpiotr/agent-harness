@@ -47,3 +47,15 @@
 - AC4: `scripts/check-wheel.sh`: 159 tests OK, 1 skipped; the minimal consumer runs.
 - AC3: `contract_fixtures/v2-limit-exceeded.json` (qualified grading launch on `example-not-a-real-target`, oom,
   verdict input in `artifacts[]`) is pinned in the golden fixture set.
+
+## Independent evaluation (2026-10-07)
+
+Fresh-context verdict on `f2eeda2`: **fail** — `applied` compared with `==`, so `cpus: True` and float values
+passed; ten rules were enforced but not pinned by an isolated test (their mutations survived). Fixed: each applied
+value must be an `int` equal to the request's; a v2 request with `qualified_isolation` needs explicit limits;
+backends can state their qualified target (an `unknown` fallback of a qualified backend keeps it), so the execution
+layer can produce valid qualified results. One isolated test per rule now: rejected with limits, qualified without
+limits, missing limits when requested, `output_truncated` type, target fields/id/image digest, result-limits fields,
+applied `True`/float/extra key, usage-event version, request limits ≥ 1 and exact keys, qualified request without
+limits — each of the 13 mutations fails the suite. Consumer note: agent-benchmark checks `error_code` against
+`ERROR_CODES`, which deliberately excludes `LIMIT_EXCEEDED`; it adds the v2 code when it adopts v2.
