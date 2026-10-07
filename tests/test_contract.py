@@ -8,7 +8,7 @@ from importlib import resources
 from agent_harness import contract
 
 FIXTURES = resources.files("agent_harness") / "contract_fixtures"
-NAMES = ("success", "fail", "timeout", "unknown-terminal", "missing-qualification")
+NAMES = ("success", "fail", "timeout", "unknown-terminal", "missing-qualification", "v2-limit-exceeded")
 
 
 def fixture(name):

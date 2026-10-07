@@ -75,6 +75,13 @@ later wants harness-managed reports for them, each is its own `CapabilityReport.
 digest and qualification; one target's report never qualifies another, and parent-spec completion stays
 Showcase lifecycle, outside this contract.
 
+## Version 2 (2026-10-07)
+
+Requests and results may also be `contract_version: 2` (ADR 0005): request `limits`, result `target` and
+`limits`, error code `LIMIT_EXCEEDED`. A result carries its request's version; v1 documents are validated by the
+v1 rules unchanged, and `CONTRACT_VERSION` stays 1 as the default consumers build. Capability and qualification
+reports keep version 1.
+
 ## Qualification report (2026-10-06, AH5-04b-r)
 
 An additive v1 document; no existing schema changes. `validate_qualification_report` covers one exact target

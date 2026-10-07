@@ -13,11 +13,15 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 1  # the default version consumers build; requests and results may also use version 2
+CONTRACT_VERSIONS = (1, 2)  # v2 (ADR 0005): request `limits`, result `target` and `limits`
 
 OUTCOMES = ("completed", "error", "timeout", "cancel", "unknown", "rejected")
 ERROR_CODES = ("CAPABILITY_UNSUPPORTED", "NOT_QUALIFIED", "BACKEND_UNAVAILABLE", "LAUNCH_FAILED",
                "PROVIDER_ERROR", "INTERNAL_ERROR")
+LIMIT_EXCEEDED = "LIMIT_EXCEEDED"  # error code of v2 results only: a limit other than the wall time fired
+LIMIT_KEYS = ("cpus", "memory_bytes", "pids", "disk_bytes", "output_bytes")
+FIRED_LIMITS = ("timeout", "oom", "pids", "disk")
 CAPABILITIES = ("cancel", "usage", "qualified_isolation")
 ISOLATION_LEVELS = ("fake", "controlled", "unqualified", "qualified")
 # Mandatory checks of a target qualification: Showcase Q01-Q16 and the grading boundary B1-B10
@@ -49,10 +53,10 @@ def request_digest(request):
 
 
 def validate_request(doc):
+    version = _doc_version(doc, "request", CONTRACT_VERSIONS)
     _fields(doc, "request", {"contract_version", "request_id", "trial_id", "task_digest", "config_digest",
                              "provider", "model", "settings", "capabilities", "timeout_seconds",
-                             "max_attempts", "input_bindings"})
-    _version(doc, "request")
+                             "max_attempts", "input_bindings"} | ({"limits"} if version == 2 else set()))
     _id(doc["request_id"], "request.request_id")
     _id(doc["trial_id"], "request.trial_id", nullable=True)
     _match(_DIGEST, doc["task_digest"], "request.task_digest")
@@ -74,21 +78,29 @@ def validate_request(doc):
         _match(_DIGEST, binding["sha256"], where + ".sha256")
         names.append(binding["name"])
     _check(len(names) == len(set(names)), "request.input_bindings: duplicate name")
+    if version == 2 and doc["limits"] is not None:
+        _fields(doc["limits"], "request.limits", set(LIMIT_KEYS))
+        for key in LIMIT_KEYS:
+            _int(doc["limits"][key], 1, 2**53, f"request.limits.{key}")
     return doc
 
 
 def validate_result(doc, request):
     """Validate ``doc`` and bind it to the exact ``request`` it answers."""
     validate_request(request)
+    version = _doc_version(doc, "result", CONTRACT_VERSIONS)
+    if version != request["contract_version"]:
+        raise ContractError("VERSION_MISMATCH", "result.contract_version: must be the request's version")
     _fields(doc, "result", {"contract_version", "request_id", "request_digest", "execution_id", "outcome",
                             "exit_code", "completion", "error_code", "drain", "cancel_requested",
                             "isolation_level", "resolved_model", "versions", "started_at", "ended_at",
-                            "attempts", "candidate", "artifacts", "usage_events", "usage_completeness"})
-    _version(doc, "result")
+                            "attempts", "candidate", "artifacts", "usage_events", "usage_completeness"}
+            | ({"target", "limits"} if version == 2 else set()))
     if doc["request_id"] != request["request_id"] or doc["request_digest"] != request_digest(request):
         raise ContractError("BINDING_MISMATCH", "result.request_id/request_digest")
     outcome = _enum(doc["outcome"], OUTCOMES, "result.outcome")
-    _enum(doc["error_code"], ERROR_CODES, "result.error_code", nullable=True)
+    _enum(doc["error_code"], ERROR_CODES + ((LIMIT_EXCEEDED,) if version == 2 else ()), "result.error_code",
+          nullable=True)
     _check((doc["error_code"] is not None) == (outcome in ("rejected", "error")), "result.error_code")
     _check(doc["completion"] is None or (outcome == "completed" and doc["completion"] in ("accepted", "rejected")),
            "result.completion: only a completed execution can carry a completion decision")
@@ -104,6 +116,8 @@ def validate_result(doc, request):
     attempts = _list(doc["attempts"], "result.attempts")
     artifacts = _list(doc["artifacts"], "result.artifacts")
     usage = _list(doc["usage_events"], "result.usage_events")
+    if version == 2:
+        _target_and_limits(doc, request, outcome, level)
 
     if outcome == "rejected":
         _check(doc["execution_id"] is None and doc["started_at"] is None and doc["ended_at"] is None
@@ -130,13 +144,45 @@ def validate_result(doc, request):
         _ref(doc["candidate"], "result.candidate", named=False)
     for i, ref in enumerate(artifacts):
         _ref(ref, f"result.artifacts[{i}]", named=True)
-    summaries = _usage(usage, set(attempt_ids))
+    summaries = _usage(usage, set(attempt_ids), version)
     _check(usage or doc["usage_completeness"] == "unknown", "result.usage_completeness: no events means unknown")
     if doc["usage_completeness"] == "complete":
         _check(set(summaries) == set(attempt_ids)
                and all(v is not None for e in summaries.values() for v in e["units"].values()),
                "result.usage_completeness: complete needs a summary with integer units for every attempt")
     return doc
+
+
+def _target_and_limits(doc, request, outcome, level):
+    """Contract v2 (ADR 0005): which qualified target ran the launch and which resource limit, if any, ended it."""
+    target, limits, requested = doc["target"], doc["limits"], request["limits"]
+    if target is not None:
+        _fields(target, "result.target", {"id", "qualification_digest", "image_digest"})
+        _id(target["id"], "result.target.id")
+        _match(_DIGEST, target["qualification_digest"], "result.target.qualification_digest")
+        _match(_DIGEST, target["image_digest"], "result.target.image_digest")
+    if outcome == "rejected":
+        _check(target is None and limits is None, "result: a rejected request has no target or limits")
+    else:
+        _check((target is not None) == (level == "qualified"), "result.target: required exactly for qualified isolation")
+        _check(level != "qualified" or limits is not None or outcome == "unknown",
+               "result.limits: a qualified launch states its limits")
+        _check(limits is None or requested is not None, "result.limits: only when the request sets limits")
+        # An unknown terminal cannot state what was applied; every other launch with requested limits does.
+        _check(limits is not None or requested is None or outcome == "unknown",
+               "result.limits: required when the request sets limits")
+    fired = None
+    if limits is not None:
+        _fields(limits, "result.limits", {"applied", "fired", "output_truncated"})
+        _check(limits["applied"] == {**requested, "timeout_seconds": request["timeout_seconds"]},
+               "result.limits.applied: must equal the requested limits and timeout_seconds")
+        fired = _enum(limits["fired"], FIRED_LIMITS, "result.limits.fired", nullable=True)
+        _check(type(limits["output_truncated"]) is bool, "result.limits.output_truncated")
+        _check((fired == "timeout") == (outcome == "timeout"), "result.limits.fired: timeout iff outcome timeout")
+    # LIMIT_EXCEEDED is an error code, and error codes exist only on `error` (rejected results have no limits),
+    # so a fired limit other than timeout always ends as outcome `error`.
+    _check((doc["error_code"] == LIMIT_EXCEEDED) == (fired in ("oom", "pids", "disk")),
+           "result.error_code: LIMIT_EXCEEDED iff a limit other than timeout fired")
 
 
 def validate_capability_report(doc):
@@ -284,13 +330,13 @@ def validate_repo_context(doc):
     return doc
 
 
-def _usage(events, attempt_ids):
+def _usage(events, attempt_ids, version):
     event_ids, summaries = set(), {}
     for i, event in enumerate(events):
         where = f"result.usage_events[{i}]"
         _fields(event, where, {"contract_version", "event_id", "attempt_id", "source", "kind", "units",
                                "cache_semantics"})
-        _version(event, where)
+        _version(event, where, (version,))
         event_id = _id(event["event_id"], where + ".event_id")
         _check(event_id not in event_ids, where + ".event_id: duplicate")
         event_ids.add(event_id)
@@ -337,9 +383,15 @@ def _fields(doc, where, expected):
     _check(isinstance(doc, dict) and set(doc) == expected, f"{where}: fields must be exactly {sorted(expected)}")
 
 
-def _version(doc, where):
-    if type(doc["contract_version"]) is not int or doc["contract_version"] != CONTRACT_VERSION:
+def _version(doc, where, allowed=(CONTRACT_VERSION,)):
+    if type(doc["contract_version"]) is not int or doc["contract_version"] not in allowed:
         raise ContractError("VERSION_MISMATCH", f"{where}.contract_version")
+
+
+def _doc_version(doc, where, allowed):
+    _check(isinstance(doc, dict) and "contract_version" in doc, f"{where}.contract_version")
+    _version(doc, where, allowed)
+    return doc["contract_version"]
 
 
 def _id(value, where, nullable=False):

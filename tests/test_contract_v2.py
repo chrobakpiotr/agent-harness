@@ -1,0 +1,158 @@
+"""Contract v2 (ADR 0005): per-launch target evidence and resource limits, enforced in both directions."""
+
+import copy
+import json
+import tempfile
+import unittest
+from importlib import resources
+from pathlib import Path
+
+from agent_harness import contract, execution
+
+FIXTURE = json.loads((resources.files("agent_harness") / "contract_fixtures" / "v2-limit-exceeded.json").read_text())
+
+
+def code_of(test, func, *args):
+    with test.assertRaises(contract.ContractError) as caught:
+        func(*args)
+    return caught.exception.code
+
+
+class ContractV2Test(unittest.TestCase):
+    def setUp(self):
+        self.request = copy.deepcopy(FIXTURE["request"])
+        self.result = copy.deepcopy(FIXTURE["result"])
+
+    def bad(self, result=None, request=None):
+        request = request or self.request
+        result = result or self.result
+        result["request_digest"] = contract.request_digest(request)
+        return code_of(self, contract.validate_result, result, request)
+
+    def test_fixture_validates_and_v1_documents_stay_v1(self):
+        contract.validate_result(self.result, self.request)
+        v1 = json.loads((resources.files("agent_harness") / "contract_fixtures" / "success.json").read_text())
+        contract.validate_result(v1["result"], v1["request"])
+        self.assertEqual("MALFORMED", code_of(self, contract.validate_request, {**v1["request"], "limits": None}))
+        failed = copy.deepcopy(v1["result"])
+        failed.update(outcome="error", error_code="LIMIT_EXCEEDED", completion=None)
+        self.assertEqual("MALFORMED", code_of(self, contract.validate_result, failed, v1["request"]))
+
+    def test_versions_must_match_and_be_known(self):
+        v1_answer = {k: v for k, v in self.result.items() if k not in ("target", "limits")}
+        self.assertEqual("VERSION_MISMATCH", self.bad({**v1_answer, "contract_version": 1}))
+        self.assertEqual("VERSION_MISMATCH", code_of(self, contract.validate_request, {**self.request, "contract_version": 3}))
+
+    def test_limit_exceeded_iff_a_non_timeout_limit_fired(self):
+        no_code = copy.deepcopy(self.result)
+        no_code["error_code"] = "PROVIDER_ERROR"
+        self.assertEqual("MALFORMED", self.bad(no_code))
+        code_without_fired = copy.deepcopy(self.result)
+        code_without_fired["limits"]["fired"] = None
+        self.assertEqual("MALFORMED", self.bad(code_without_fired))
+        completed = copy.deepcopy(self.result)
+        completed.update(outcome="completed", error_code=None, exit_code=0)
+        completed["attempts"][0]["outcome"] = "completed"
+        self.assertEqual("MALFORMED", self.bad(completed))  # oom fired but outcome completed
+
+    def test_timeout_fired_iff_outcome_timeout(self):
+        timeout = copy.deepcopy(self.result)
+        timeout.update(outcome="timeout", error_code=None, drain="unconfirmed")
+        timeout["attempts"][0]["outcome"] = "timeout"
+        timeout["limits"]["fired"] = "timeout"
+        contract.validate_result(timeout, self.request)
+        unnamed = copy.deepcopy(timeout)
+        unnamed["limits"]["fired"] = None
+        self.assertEqual("MALFORMED", self.bad(unnamed))
+        named_without_timeout = copy.deepcopy(self.result)
+        named_without_timeout.update(error_code=None)
+        named_without_timeout["limits"]["fired"] = "timeout"
+        self.assertEqual("MALFORMED", self.bad(named_without_timeout))
+
+    def test_applied_limits_equal_the_request(self):
+        for key, value in (("memory_bytes", 536870913), ("timeout_seconds", 31)):
+            rounded = copy.deepcopy(self.result)
+            rounded["limits"]["applied"][key] = value
+            with self.subTest(key=key):
+                self.assertEqual("MALFORMED", self.bad(rounded))
+        unlimited = copy.deepcopy(self.request)
+        unlimited["limits"] = None
+        self.assertEqual("MALFORMED", self.bad(copy.deepcopy(self.result), unlimited))  # limits only when requested
+
+    def test_qualified_needs_target_and_limits_and_only_qualified_has_a_target(self):
+        no_target = copy.deepcopy(self.result)
+        no_target["target"] = None
+        self.assertEqual("MALFORMED", self.bad(no_target))
+        no_limits = copy.deepcopy(self.result)
+        no_limits.update(limits=None, error_code="PROVIDER_ERROR")
+        self.assertEqual("MALFORMED", self.bad(no_limits))
+        request = copy.deepcopy(self.request)
+        request["capabilities"] = []
+        fake_with_target = copy.deepcopy(self.result)
+        fake_with_target["isolation_level"] = "fake"
+        self.assertEqual("MALFORMED", self.bad(fake_with_target, request))
+
+    def test_unknown_may_omit_limits_and_rejected_has_neither(self):
+        unknown = copy.deepcopy(self.result)
+        unknown.update(outcome="unknown", error_code=None, drain="unconfirmed", limits=None)
+        unknown["attempts"][0]["outcome"] = "unknown"
+        contract.validate_result(unknown, self.request)
+        rejected = {**self.result, "outcome": "rejected", "error_code": "NOT_QUALIFIED", "execution_id": None,
+                    "drain": None, "started_at": None, "ended_at": None, "attempts": [], "artifacts": [],
+                    "limits": None, "target": None}
+        contract.validate_result(rejected, self.request)
+        self.assertEqual("MALFORMED", self.bad({**rejected, "target": self.result["target"]}))
+
+
+class OfflineBackendsV2Test(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name).resolve()
+        (root / "workspace").mkdir()
+        (root / "evidence").mkdir()
+        self.roots = {"workspace": str(root / "workspace"), "evidence_root": str(root / "evidence")}
+        self.request = {**copy.deepcopy(FIXTURE["request"]), "capabilities": []}
+
+    def run_scripted(self, request, backend):
+        result = execution.launch(request, backend, **self.roots).result(timeout=10)
+        contract.validate_result(result, request)
+        return result
+
+    def test_process_backend_rejects_limits_without_side_effects(self):
+        marker = Path(self.roots["workspace"]) / "ran"
+        result = execution.launch(self.request, execution.ProcessBackend(["touch", str(marker)]), **self.roots)
+        result = result.result(timeout=10)
+        contract.validate_result(result, self.request)
+        self.assertEqual(("rejected", "CAPABILITY_UNSUPPORTED"), (result["outcome"], result["error_code"]))
+        self.assertFalse(marker.exists())
+        self.assertEqual([], list(Path(self.roots["evidence_root"]).iterdir()))
+
+    def test_scripted_backend_scripts_each_fired_limit(self):
+        cases = {"oom": ("error", "LIMIT_EXCEEDED"), "pids": ("error", "LIMIT_EXCEEDED"),
+                 "disk": ("error", "LIMIT_EXCEEDED"), "timeout": ("timeout", None), None: ("completed", None)}
+        for i, (fired, (outcome, code)) in enumerate(cases.items()):
+            request = {**self.request, "request_id": f"req-{i}"}
+            backend = execution.ScriptedBackend([{"outcome": outcome}], fired=fired, output_truncated=fired is None)
+            with self.subTest(fired=fired):
+                result = self.run_scripted(request, backend)
+                self.assertEqual((outcome, code, fired), (result["outcome"], result["error_code"],
+                                                          result["limits"]["fired"]))
+                self.assertEqual({**request["limits"], "timeout_seconds": 30}, result["limits"]["applied"])
+                self.assertIsNone(result["target"])
+        self.assertTrue(self.run_scripted({**self.request, "request_id": "req-t"},
+                                          execution.ScriptedBackend(output_truncated=True))["limits"]["output_truncated"])
+
+    def test_v2_without_limits_and_inconsistent_scripts(self):
+        unlimited = {**self.request, "request_id": "req-u", "limits": None}
+        result = self.run_scripted(unlimited, execution.ScriptedBackend())
+        self.assertEqual((2, None, None), (result["contract_version"], result["limits"], result["target"]))
+        broken = self.run_scripted({**self.request, "request_id": "req-b"},
+                                   execution.ScriptedBackend([{"outcome": "completed"}], fired="oom"))
+        self.assertEqual("unknown", broken["outcome"])  # an inconsistent script never becomes a success
+        with self.assertRaises(ValueError):
+            execution.ScriptedBackend(fired="output")
+
+
+if __name__ == "__main__":
+    unittest.main()

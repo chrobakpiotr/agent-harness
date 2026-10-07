@@ -1,0 +1,90 @@
+{
+  "description": "Contract v2: a qualified grading launch (fictitious target) ended by its memory limit; the verdict input returns through artifacts[].",
+  "request": {
+    "contract_version": 2,
+    "request_id": "req-v2-grade",
+    "trial_id": "trial-001",
+    "task_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "provider": "grader",
+    "model": "patch-unittest",
+    "settings": {},
+    "capabilities": [
+      "qualified_isolation"
+    ],
+    "timeout_seconds": 30,
+    "max_attempts": 1,
+    "input_bindings": [
+      {
+        "name": "candidate",
+        "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      {
+        "name": "test-inputs",
+        "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "limits": {
+      "cpus": 1,
+      "memory_bytes": 536870912,
+      "pids": 64,
+      "disk_bytes": 268435456,
+      "output_bytes": 1048576
+    }
+  },
+  "result": {
+    "contract_version": 2,
+    "request_id": "req-v2-grade",
+    "request_digest": "sha256:fd7109f9b77baf5b730bc0ac0bf21a31e02066cbfb241e2db589d9a4ecfb86c6",
+    "execution_id": "exec-v2-grade",
+    "outcome": "error",
+    "exit_code": null,
+    "completion": null,
+    "error_code": "LIMIT_EXCEEDED",
+    "drain": "confirmed",
+    "cancel_requested": false,
+    "isolation_level": "qualified",
+    "resolved_model": null,
+    "versions": {
+      "backend": "example-0.0.0"
+    },
+    "started_at": "2026-10-07T10:00:00Z",
+    "ended_at": "2026-10-07T10:00:02Z",
+    "attempts": [
+      {
+        "attempt_id": "att-1",
+        "outcome": "error",
+        "started_at": "2026-10-07T10:00:00Z",
+        "ended_at": "2026-10-07T10:00:02Z"
+      }
+    ],
+    "candidate": null,
+    "artifacts": [
+      {
+        "name": "verdict-input",
+        "path": "grades/req-v2-grade/output.json",
+        "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "size": 512
+      }
+    ],
+    "usage_events": [],
+    "usage_completeness": "unknown",
+    "target": {
+      "id": "example-not-a-real-target",
+      "qualification_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "image_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "limits": {
+      "applied": {
+        "cpus": 1,
+        "memory_bytes": 536870912,
+        "pids": 64,
+        "disk_bytes": 268435456,
+        "output_bytes": 1048576,
+        "timeout_seconds": 30
+      },
+      "fired": "oom",
+      "output_truncated": false
+    }
+  }
+}

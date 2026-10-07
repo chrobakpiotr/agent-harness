@@ -86,6 +86,8 @@ def launch(request, backend, *, workspace, evidence_root):
             _check_binding(_marker_digest(marker_path), request)
         missing = [c for c in request["capabilities"] if c not in backend.capabilities]
         code = getattr(backend, "rejection", None)
+        if request.get("limits") is not None and not getattr(backend, "supports_limits", False):
+            code = "CAPABILITY_UNSUPPORTED"  # never run a limited request without enforcing its limits
         if missing:
             code = "NOT_QUALIFIED" if "qualified_isolation" in missing else "CAPABILITY_UNSUPPORTED"
         if code:  # never launched: no process, nothing written
@@ -187,15 +189,29 @@ def _publish(path, doc):
         tmp.unlink(missing_ok=True)
 
 
+def _v2(request, limits=None):
+    """v2 fields of an offline result: never a qualified target; limits only as the backend states them."""
+    return {"target": None, "limits": limits} if request["contract_version"] == 2 else {}
+
+
+def _applied(request, fired=None, output_truncated=False):
+    """v2 limits of a scripted answer: the request's limits echoed exactly, or None without requested limits."""
+    if request["contract_version"] != 2 or request["limits"] is None:
+        return None
+    return {"applied": {**request["limits"], "timeout_seconds": request["timeout_seconds"]}, "fired": fired,
+            "output_truncated": output_truncated}
+
+
 def _envelope(request, backend, execution_id, cancel_requested, body):
-    return {"contract_version": contract.CONTRACT_VERSION, "request_id": request["request_id"],
+    limits = body.pop("limits", None)
+    return {"contract_version": request["contract_version"], "request_id": request["request_id"],
             "request_digest": contract.request_digest(request), "execution_id": execution_id,
             "cancel_requested": cancel_requested, "isolation_level": backend.isolation_level,
-            "resolved_model": None, "versions": {"agent-harness": __version__}, **body}
+            "resolved_model": None, "versions": {"agent-harness": __version__}, **body, **_v2(request, limits)}
 
 
 def _rejected(request, backend, code):
-    return {"contract_version": contract.CONTRACT_VERSION, "request_id": request["request_id"],
+    return {"contract_version": request["contract_version"], "request_id": request["request_id"], **_v2(request),
             "request_digest": contract.request_digest(request), "execution_id": None, "outcome": "rejected",
             "exit_code": None, "completion": None, "error_code": code, "drain": None, "cancel_requested": False,
             "isolation_level": backend.isolation_level, "resolved_model": None,
@@ -206,7 +222,7 @@ def _rejected(request, backend, code):
 def _unknown(request, backend, execution_id, cancel_requested, started_at):
     now = _now()
     started_at = started_at or now
-    return {"contract_version": contract.CONTRACT_VERSION, "request_id": request["request_id"],
+    return {"contract_version": request["contract_version"], "request_id": request["request_id"], **_v2(request),
             "request_digest": contract.request_digest(request), "execution_id": execution_id or "unknown",
             "outcome": "unknown", "exit_code": None, "completion": None, "error_code": None, "drain": "unconfirmed",
             "cancel_requested": cancel_requested,
@@ -247,11 +263,16 @@ class ScriptedBackend:
     kind = "scripted"
     isolation_level = "fake"
     capabilities = ("cancel", "usage")
+    supports_limits = True  # scripts a v2 limit outcome; enforces nothing
 
     def __init__(self, attempts=({"outcome": "completed", "units": None},), *, exit_code=0, completion=None,
-                 error_code=None, candidate=None, cache_semantics="separate", duration=0.0, rejection=None):
+                 error_code=None, candidate=None, cache_semantics="separate", duration=0.0, rejection=None,
+                 fired=None, output_truncated=False):
         if rejection is not None and rejection not in contract.ERROR_CODES:
             raise ValueError("rejection must be a contract error code")
+        if fired is not None and fired not in contract.FIRED_LIMITS:
+            raise ValueError("fired must be one of contract.FIRED_LIMITS")
+        self.fired, self.output_truncated = fired, output_truncated  # v2 requests with limits only
         self.rejection = rejection  # e.g. BACKEND_UNAVAILABLE: answer `rejected` without launching
         self.attempts, self.exit_code, self.completion = list(attempts), exit_code, completion
         self.error_code, self.candidate, self.cache_semantics, self.duration = (
@@ -267,20 +288,25 @@ class ScriptedBackend:
             attempt = {"attempt_id": "attempt-1", "outcome": "cancel", "started_at": started_at, "ended_at": now}
             return {"outcome": "cancel", "exit_code": None, "completion": None, "error_code": None,
                     "drain": "confirmed", "started_at": started_at, "ended_at": now, "attempts": [attempt],
-                    "candidate": None, "artifacts": [], "usage_events": [], "usage_completeness": "unknown"}
+                    "candidate": None, "artifacts": [], "usage_events": [], "usage_completeness": "unknown",
+                    "limits": _applied(request)}
         attempts, events = [], []
         for i, step in enumerate(self.attempts, 1):
             attempts.append({"attempt_id": f"attempt-{i}", "outcome": step["outcome"], "started_at": started_at,
                              "ended_at": now})
             if step.get("units") is not None:
-                events.append({"contract_version": contract.CONTRACT_VERSION, "event_id": f"usage-{i}",
+                events.append({"contract_version": request["contract_version"], "event_id": f"usage-{i}",
                                "attempt_id": f"attempt-{i}", "source": "harness", "kind": "summary",
                                "units": step["units"], "cache_semantics": self.cache_semantics})
         outcome = attempts[-1]["outcome"]
         complete = len(events) == len(attempts) and all(v is not None for e in events for v in e["units"].values())
+        limits = _applied(request, self.fired, self.output_truncated)
+        error_code = self.error_code if outcome == "error" else None
+        if limits is not None and self.fired in ("oom", "pids", "disk"):
+            error_code = contract.LIMIT_EXCEEDED
         return {"outcome": outcome, "exit_code": self.exit_code if outcome == "completed" else None,
                 "completion": self.completion if outcome == "completed" else None,
-                "error_code": self.error_code if outcome == "error" else None,
+                "error_code": error_code, "limits": limits,
                 "drain": "unconfirmed" if outcome in ("timeout", "unknown") else "confirmed",
                 "started_at": started_at, "ended_at": now, "attempts": attempts,
                 "candidate": _seal(self.candidate, roots, request) if self.candidate is not None else None,

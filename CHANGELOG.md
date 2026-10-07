@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (0.4.0.dev0)
+
+- Contract v2 (ADR 0005): request `limits`; result `target` (qualified target id, qualification digest, workload
+  image digest) and `limits` (applied, fired, output_truncated); `LIMIT_EXCEEDED`. v1 documents unchanged and
+  still valid. Offline launch: `ProcessBackend` rejects limits; `ScriptedBackend(fired=…, output_truncated=…)`.
+  Golden fixture `v2-limit-exceeded.json`.
+
 ## 0.3.0 — 2026-10-06
 
 - Contract v1 qualification report (`validate_qualification_report`, `qualification_passes`,

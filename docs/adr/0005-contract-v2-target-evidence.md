@@ -1,7 +1,8 @@
 # ADR 0005 — Contract v2: target evidence and resource limits in results
 
-- Status: **Proposed** — shape agreed in the agent-benchmark consumer review (2026-10-06, below); to be
-  implemented after a target qualifies (AH5-04b). Nothing implemented.
+- Status: **Accepted** and implemented (2026-10-07, `docs/specs/contract-v2/packet.md`). The shape was agreed in
+  the agent-benchmark review below; implementation was moved ahead of qualification because B10 of the 04b
+  qualification cannot pass without it.
 - Date: 2026-10-06
 - Inputs: agent-benchmark AB5-05b B8/B10 (`29889c2`); `docs/specs/AH5-04b/grading-requirements.md`; ADR 0002.
 
@@ -29,7 +30,8 @@ free-form `versions` map, which carries no meaning). v1 schemas are closed, so a
 - The validator enforces both directions: `error_code: LIMIT_EXCEEDED` (new code) iff `fired` is non-null and not
   `timeout` (with `outcome: error`); `fired: timeout` iff `outcome: timeout`.
 - `isolation_level: qualified` requires a non-null `target` and non-null `limits` (no hidden defaults); other
-  levels require `target: null`.
+  levels require `target: null`. Exception (implementation, 2026-10-07): an `unknown` outcome may have
+  `limits: null` even when limits were requested — an unknown terminal cannot state what was applied.
 - Grading is a launch like any other: a grading request binds the candidate and test-input digests in
   `input_bindings`, and its verdict file returns through `artifacts[]`; a target's qualification covers grading
   launches as well as agent execution.
