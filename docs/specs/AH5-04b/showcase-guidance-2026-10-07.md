@@ -76,3 +76,27 @@ untouched; descendants are invalidated exactly as before.
 Evidence on throwaway exports: new test `test_reopen_ignores_unrelated_legacy_packets` (reopen T-900 while the
 unrelated completed T-001 has a malformed legacy packet) fails on `dbe3c91` with `ACTIVE_PACKET_AMBIGUOUS` and passes
 with the patch, leaving T-001's packet byte-identical; the three existing reopen tests pass on both.
+
+## 5. Stale task worktree on retry (AH5-04B-QUAL-001 T-002, 2026-10-08)
+
+State (Showcase `harness.py` at `ba483a4`, read-only): T-002 is `failed`, attempts 3, active revision
+`sha256:163acaae…7c`; its worktree is clean at `097c960` with feature fingerprint `7b1b5377…`, while the root
+feature is `e67ff091…`, so `start` refuses (`existing task worktree contains stale spec/plan/tasks`) before consuming
+the retry grant. `097c960` is reachable from the T-003…T-900 branches, so removing the T-002 branch loses no history.
+
+Gap: `worktree-remove` then `start` is the only existing path, and it is not safe. `prepare_task_worktree` creates
+the new worktree from the dependency checkpoint (T-001 `218bfa1`, fingerprint `7b1b5377…`, the old spec) and runs
+`assert_worktree_protocol_current` only when reusing an existing worktree, never on a fresh one. The retry would
+silently run against the stale spec.
+
+Proposed Showcase task (red first; Harness does not change `harness.py`):
+
+1. Fail closed: call `assert_worktree_protocol_current` on a freshly created worktree too; on failure remove the
+   worktree and branch it just created. Test: dependency checkpoint with an old feature fingerprint → refused, no
+   attempt consumed.
+2. Supported refresh: when the base's feature fingerprint differs from the root, add one commit on the new task
+   branch that sets the protocol and feature paths to the root's versioned content (the same path set
+   `execution_base` uses), then assert freshness. Test: the worktree matches the root fingerprint, dependency code
+   is unchanged, and the dependency checkpoints are ancestors of the branch.
+3. Then for T-002: `worktree-remove docs/specs/AH5-04B-QUAL-001 T-002`, then `start`, which consumes the existing
+   grant on the new revision. No `.agent-state` edits.
