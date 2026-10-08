@@ -100,3 +100,27 @@ Proposed Showcase task (red first; Harness does not change `harness.py`):
    is unchanged, and the dependency checkpoints are ancestors of the branch.
 3. Then for T-002: `worktree-remove docs/specs/AH5-04B-QUAL-001 T-002`, then `start`, which consumes the existing
    grant on the new revision. No `.agent-state` edits.
+
+## 6. T-006 / T-900 ordering after the rerun (AH5-04B-QUAL-001, 2026-10-08)
+
+Rerun report (T-005 `0d9deda`, `evidence/docker-desktop/local-20261008T205033Z-7939417fefb5/`), checked with Harness
+`v0.5.0`: valid, 26/26 checks `pass`, `independent_review` null → does not pass; qualification digest and review subject
+`sha256:64e41e36…4170e`; capability `qualified: false`, refusal `NOT_QUALIFIED`. The top-level
+`evidence/docker-desktop/{report,capability}.json` and `job-id.txt` (job `…-2026-10-07-run1`) are stale and do not
+verify; do not cite them.
+
+Recommendation: keep the DAG. Reordering T-900 before T-006 is a feature-level change to `tasks.json`; it changes the
+feature fingerprint and puts the completed T-001…T-005 packets through replan again.
+
+1. T-006 decides the fallback on the target's checks only: all 26 pass on Docker Desktop, so it records
+   `NOT_REQUIRED_PENDING_REVIEW` bound to the report digest above, and states that neither Docker nor GitHub is
+   qualified by it. This is the reading the first run used. Interpreting "Docker passes" this way is Showcase's
+   decision; record it in the T-006 evidence.
+2. T-900 reviews the Docker report and writes `independent_review`; Harness then runs
+   `agent-harness qualification --check … --job-id local-20261008T205033Z-7939417fefb5`.
+3. If T-900 rejects the Docker report, `reopen` T-006 (this invalidates T-900) and run the GitHub fallback in a fresh
+   job. Dispatching it needs the workflow pushed, which needs an explicit human push decision.
+4. T-900's registered verification still names the missing `check_selected_report.py`. `replan-task` accepts only
+   `running`/`failed` tasks, so the existing supported path is the first run's: start T-900, its verification fails,
+   `human-resolve`, `replan-task --expected-status failed` with the recorded proposal (pinned Harness CLI), then
+   `authorize-retry` and retry.
