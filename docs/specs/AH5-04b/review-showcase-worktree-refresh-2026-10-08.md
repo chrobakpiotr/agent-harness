@@ -2,8 +2,8 @@
 
 - Scope: read-only review of `c6809f2` (worktree refresh, spec `c53aa40`) and `27f5cd6` (T-002 Q11–Q16 probes,
   branch `agent/AH5-04B-QUAL-001/T-002`, refresh commit `6829309`). Experiments ran in throwaway clones only.
-- Verdict: `c6809f2` fails AC-002/AC-004; `27f5cd6` passes its tests with three conditions. T-002 may complete;
-  dependent reruns wait for the refresh fix.
+- Verdict: `c6809f2` fails AC-002/AC-004; `27f5cd6` passes its tests with three conditions. T-002 completes after
+  conditions 1–2 are fixed in the running attempt; dependent reruns wait for the refresh fix.
 
 ## c6809f2 — worktree refresh
 
