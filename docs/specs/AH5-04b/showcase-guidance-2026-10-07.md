@@ -124,3 +124,30 @@ feature fingerprint and puts the completed T-001…T-005 packets through replan 
    `running`/`failed` tasks, so the existing supported path is the first run's: start T-900, its verification fails,
    `human-resolve`, `replan-task --expected-status failed` with the recorded proposal (pinned Harness CLI), then
    `authorize-retry` and retry.
+
+## 7. SDD-OBS-001 T-004 / T-005 escalations (2026-10-09)
+
+Ownership: `harness.py`, `orchestrate.py`, `telemetry.py` and the SDD-OBS-001 DAG are Showcase-owned (ADR 0001).
+Harness does not author or authorize these tasks. The owner authorizes through `human-resolve`; the lifecycle carries
+it out. State (read-only): T-004 escalated (attempt 1, last commit `890b48b`); T-005 escalated (attempt 1, last commit
+`946b663`); T-006 waits for both, so the DAG reports `NO_READY_TASKS`.
+
+The existing commands cover this; no new task or feature replan is needed.
+
+1. T-004 already owns the files: its `allowed_paths` include `harness.py`, `orchestrate.py` and their tests. The three
+   open fixes are inside that scope:
+   - fail closed on the malformed gate that crashes;
+   - make repository admission and claim one CAS under the same lock, which removes the ownership TOCTOU;
+   - add a durable same-family resume path for verification blockages.
+
+   Add the lifecycle CAS API T-005 needs (trusted history metrics and manual-review registration) to T-004's
+   objective. Path: `human-resolve` (escalated → failed) with that decision, then `replan-task --expected-status failed`
+   with a proposed T-004 revision stating the four items (criteria must already exist in the spec or verification
+   contract), then `authorize-retry`, then `start`; the retry continues from `890b48b`.
+2. T-005 consumes that API instead of reaching into the lifecycle. Path: `human-resolve`, then `replan-task
+   --expected-status failed` with a revision whose `depends_on` adds `T-004` (task replan accepts dependency changes;
+   no cycle, since T-006 already depends on both), with `allowed_paths` still limited to `telemetry.py` and its tests,
+   then `authorize-retry` once T-004 completes; the retry continues from `946b663`.
+3. Keep the four untracked root evidence files out of these tasks; commit them in a separate docs change.
+
+Harness reviews the T-004 checkpoint (API shape, lock scope, malformed-gate tests) before T-005 starts on it.
