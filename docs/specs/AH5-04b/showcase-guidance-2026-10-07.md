@@ -151,3 +151,32 @@ The existing commands cover this; no new task or feature replan is needed.
 3. Keep the four untracked root evidence files out of these tasks; commit them in a separate docs change.
 
 Harness reviews the T-004 checkpoint (API shape, lock scope, malformed-gate tests) before T-005 starts on it.
+
+## 8. Second replan of SDD-OBS-001 T-004 (2026-10-09)
+
+State (read-only): T-004 escalated, attempt 4, active revision `sha256:f975478f…100f` (first replan, committed
+2026-10-09T11:30Z); malformed-gate fix preserved in `2cb6162`. Its scope is still `harness.py`, `orchestrate.py` and
+their tests, but VC-037/038/039 need verifier-side admission/reservation changes in `verification/*` (T-001/T-002
+files). T-005 failed, revision `sha256:98697cc9…de1`, depends on T-004.
+
+Cause (`harness.py` at `78ea4dd`, `cmd_replan_task`): `if prior_requests: … die('REPLAN_CONCURRENT_CONFLICT: a
+different replan request is already recorded')`. Any recorded replan blocks every later one, so a task can be
+replanned once in its lifetime. The rest of the ledger already supports chains: `resolve_active_packet` checks
+`len(replan_requests) == len(packet_lineage) - 1` and a connected lineage.
+
+Recommended: a separate Showcase protocol feature (as `WORKTREE-PROTOCOL-REFRESH-001` was) that allows successive
+replans:
+1. A new request is accepted only when `expected_active_revision` equals the active revision and the lineage's last
+   request produced that revision; the concurrency guard stays (a racing replan built on the same active revision
+   loses the CAS).
+2. A failed-task replan needs a human resolution newer than the last committed replan.
+3. Tests (red first): a second replan after a fresh human resolution succeeds and extends the lineage; a stale
+   expected revision, a reused human resolution and two concurrent second replans are refused; `resolve_active_packet`
+   accepts the three-entry lineage; idempotent replay still prints `ALREADY_REPLANNED`.
+
+Then T-004: `human-resolve`, then `replan-task --expected-status failed --expected-active-revision sha256:f975478f…` with a
+revision adding the verifier admission/reservation files, then `authorize-retry`, then `start` from `2cb6162`.
+
+Alternative without a protocol change: `reopen` T-002 (owner of `verification/store.py`, `executor.py`,
+`supervisor.py`) to add verifier-side admission there. That invalidates T-003, T-004 and T-005 and still needs a T-002
+contract change, so it costs more than the protocol fix.
