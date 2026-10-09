@@ -36,3 +36,26 @@
 
 Path: `human-resolve`, then `replan-task --expected-status failed --expected-active-revision sha256:ed77124f…` with the
 two amendments, then `authorize-retry`, then `start`. Harness reviews the implementation before completion.
+
+## Follow-up: revision `sha256:3b24bbfa…93bb` (2026-10-10)
+
+Aligned; no further replan needed. Compared with `ed77124f…`, the only semantic changes are:
+
+- `allowed_paths` adds `verification/admission.py` and `tests/test_verification_admission.py` (amendment 2).
+- `test_seam` adds coverage tests: a valid plan- and obligation-carrying attestation is re-verified inside the same
+  `.agent-state` transaction that binds plan, obligation, candidate and surface; a mismatch in any of them fails closed;
+  a failed verification leaves no partial claim (amendment 1, partly).
+
+The remaining amendment-1 cases are already bound by the packet's criteria. AC-OBS-058 and AC-OBS-060 name MANUAL-M1–M10
+as deterministic, and AC-OBS-048 is listed. The implementation review will therefore require:
+
+- the MANUAL-M1–M10 and MANUAL-AUTH-1–6 cases;
+- a superseded or historical plan and a dirty candidate (`MANUAL_EVIDENCE_CANDIDATE_BINDING_REQUIRED`, exit 5, no
+  mutation);
+- stored bytes changed between registration and coverage;
+- exact and conflicting replay;
+- coverage racing a replan or completion;
+- separation of manual evidence from grants.
+
+Process note: the T-009 worktree already has 14 changed files (+1336/−54) under attempt 4 although the packet said not
+to implement before this review. Reconcile that diff against this revision; Harness reviews the result before completion.
