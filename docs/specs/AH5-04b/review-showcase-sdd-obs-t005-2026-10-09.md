@@ -50,3 +50,9 @@ T-006.
 
 `verify_manual_observation_for_coverage` today verifies only telemetry-only attestations (`plan_id` null,
 `obligation_ids` empty); the coverage path must verify coverage-bearing envelopes and call it inside the coverage CAS.
+
+## Follow-up: checkpoint `38042d5` (lifecycle-complete)
+
+`test_telemetry.py` 22 OK. The same mutations rerun against the checkpoint: signature, committed registry, revoked
+issuer, scope comparison (5 failing tests), `manual-review` action and canonical bytes are now all caught. The BOM and
+newline literals are fixed. Both conditions are met; T-005 is accepted. Coverage acceptance remains with T-009.
