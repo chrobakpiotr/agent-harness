@@ -44,3 +44,22 @@ A sequential replan of the running T-009 adds:
 T-001 and T-006 checkpoints remain history; T-900 evaluates the combined result. Then implementation review, with the
 cases listed in the follow-up of `review-showcase-sdd-obs-t009-replan-2026-10-09.md` plus safe prelaunch-abort
 terminalization.
+
+## Follow-up: revision `sha256:c8badc31…7bc2` (packet `sha256:53e19458…6296`, contract `sha256:1418cba9…a949`)
+
+Aligned; accepted. The digests match the stored revision. Against `3b24bbfa…` it adds:
+
+- `allowed_paths`: `verification/model.py`, `profile.py`, `planner.py`, `schemas/verification-profile.schema.json`,
+  `tests/test_verification_profile.py`, `verification-profiles/showcase.json` and
+  `tests/test_verification_profile_showcase.py`; nothing removed.
+- `objective`: the profile source for `required_manual_reviewer_principal` and the per-gate origin policy (AC-OBS-043),
+  bound into `profile_hash`, obligation, family and final-plan identity; cross-principal signatures and untrusted
+  origin upgrades are refused.
+- `test_seam`: every case from this answer and from the 2026-10-09 follow-up, plus safe prelaunch-abort terminalization
+  (exact reservation/consumption only, terminal receipt bound to plan/attempt/generation/candidate/surface, no launch,
+  no stranding or double consumption on retry/replay).
+- `verification`: the profile and Showcase-profile suites plus `py_compile` of the three modules.
+
+For the implementation review, also include `tests/test_verification_parity.py` and `tests/test_verification_benchmark.py`
+(T-006) in the completion evidence. A profile-identity change can affect them, and they are not in T-009's verification
+list.
