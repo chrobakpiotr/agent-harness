@@ -530,10 +530,9 @@ class AgentCliBackend(ProcessBackend):
 
 
 def _default_probe(provider):
-    system = "macos" if sys.platform == "darwin" else "linux"
-    if provider == "codex":  # the same sandbox the run uses; `codex sandbox <os>` runs one command in it
-        return ["codex", "sandbox", system, "--full-auto", "--", "true"]
-    if system == "linux":  # Claude Code's Linux sandbox needs bubblewrap and socat; macOS uses Seatbelt
+    if provider == "codex":  # one command in the sandbox mode the run uses (codex-cli 0.160: `codex sandbox -- cmd`)
+        return ["codex", "sandbox", "-c", f'sandbox_mode="{_CODEX_SANDBOX}"', "--", "true"]
+    if sys.platform != "darwin":  # Claude Code's Linux sandbox needs bubblewrap and socat; macOS uses Seatbelt
         return ["sh", "-c", "command -v bwrap >/dev/null && command -v socat >/dev/null && bwrap --ro-bind / / true"]
     return ["claude", "--version"]
 
@@ -557,7 +556,8 @@ def _claude_report(data):
 
 def _codex_report(data):
     """(units, failed, model) summed over ``turn.completed`` events of ``codex exec --json``."""
-    totals, turns, failed = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0}, 0, False
+    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    turns, failed = 0, False
     for line in data.splitlines():
         try:
             event = json.loads(line)
@@ -568,15 +568,18 @@ def _codex_report(data):
             failed = True
         elif kind == "turn.completed":
             usage = event.get("usage") or {}
-            values = (usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cached_input_tokens", 0))
-            if any(type(v) is not int or v < 0 for v in values):
+            # cache writes are reported by newer CLIs only (codex-cli 0.160: cache_write_input_tokens)
+            values = (usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cached_input_tokens", 0),
+                      usage.get("cache_write_input_tokens"))
+            if any(type(v) is not int or v < 0 for v in values[:3]) or (
+                    values[3] is not None and (type(values[3]) is not int or values[3] < 0)):
                 return None, True, None
             for key, value in zip(totals, values):
-                totals[key] += value
+                totals[key] = None if value is None or totals[key] is None else totals[key] + value
             turns += 1
     if not turns:
         return None, True, None
-    return {**totals, "cache_write_tokens": None}, failed, None
+    return totals, failed, None
 
 
 def _group_alive(pgid):

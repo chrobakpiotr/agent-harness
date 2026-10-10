@@ -115,9 +115,18 @@ class AgentCliTest(unittest.TestCase):
         self.assertEqual("fix the bug", run["stdin"])
         self.assertEqual([], run["billing"])
         self.assertEqual({"input_tokens": 1000, "output_tokens": 75, "cache_read_tokens": 400,
-                          "cache_write_tokens": None}, result["usage_events"][0]["units"])
+                          "cache_write_tokens": None}, result["usage_events"][0]["units"])  # older CLI: no writes
         self.assertEqual(("partial", "included_in_input"),
                          (result["usage_completeness"], result["usage_events"][0]["cache_semantics"]))
+
+    def test_codex_cache_writes_make_usage_complete(self):
+        turn = {"type": "turn.completed", "usage": {"input_tokens": 34144, "cached_input_tokens": 29056,
+                                                     "cache_write_input_tokens": 0, "output_tokens": 142}}
+        self.fake("codex", json.dumps(turn) + "\n")
+        result = self.run_backend(execution.AgentCliBackend("codex", "x", env=self.env), self.request("codex", "m"))
+        self.assertEqual(({"input_tokens": 34144, "output_tokens": 142, "cache_read_tokens": 29056,
+                           "cache_write_tokens": 0}, "complete"),
+                         (result["usage_events"][0]["units"], result["usage_completeness"]))
 
     def test_codex_sandbox_unavailable_is_rejected_without_running_the_agent(self):
         self.fake("codex", json.dumps(CODEX_OK[-1]), probe_exit=1)
@@ -179,12 +188,12 @@ class AgentCliTest(unittest.TestCase):
         self.assertEqual("--dangerously-skip-permissions", run["stdin"])
 
     def test_default_probes_use_the_run_sandbox(self):
+        self.assertEqual(["codex", "sandbox", "-c", 'sandbox_mode="workspace-write"', "--", "true"],
+                         execution._default_probe("codex"))
         with unittest.mock.patch.object(execution.sys, "platform", "linux"):
-            self.assertEqual(["codex", "sandbox", "linux", "--full-auto", "--", "true"],
-                             execution._default_probe("codex"))
             self.assertIn("bwrap", execution._default_probe("claude")[-1])
         with unittest.mock.patch.object(execution.sys, "platform", "darwin"):
-            self.assertEqual("macos", execution._default_probe("codex")[2])
+            self.assertEqual(["claude", "--version"], execution._default_probe("claude"))
 
     def test_constructor_rejects_unknown_provider_and_empty_prompt(self):
         with self.assertRaises(ValueError):

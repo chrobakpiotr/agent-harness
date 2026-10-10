@@ -1,6 +1,6 @@
 # AH5-05b — Coding-agent CLI backend (subscription login, no spend)
 
-- Status: **implemented**, pending independent evaluation and a human smoke test.
+- Status: **implemented**; human smoke test passed 2026-10-10 (both CLIs); independent evaluation pending.
 - Source: agent-benchmark AB5-07 (no-spend pilot): a backend that runs a coding-agent CLI on its own login and
   reports the CLI's usage. Extends AH5-05a (ADR 0004); contract v1/v2 unchanged. Independent of Showcase.
 
@@ -27,14 +27,15 @@ output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process 
 - Refusal before launch (`rejected`, nothing started, nothing written; `backend.rejection_reason` says why):
   - provider mismatch → `CAPABILITY_UNSUPPORTED`;
   - CLI not on `PATH` → `BACKEND_UNAVAILABLE`;
-  - sandbox probe fails → `CAPABILITY_UNSUPPORTED`. Codex is probed with `codex sandbox <macos|linux> --full-auto --
+  - sandbox probe fails → `CAPABILITY_UNSUPPORTED`. Codex is probed with `codex sandbox -c sandbox_mode="workspace-write" --
     true`; on Linux, Claude is probed for bubblewrap and socat. There is no fallback mode.
 - Output: stdout up to `output_limit` is kept as the named artifact `agent-output` (by digest). Usage becomes one
   `provider` summary:
   - Claude `usage.input_tokens/output_tokens/cache_read_input_tokens/cache_creation_input_tokens`, cache semantics
     `separate`;
   - Codex, summed over `turn.completed`: `input_tokens/output_tokens/cached_input_tokens`, cache semantics
-    `included_in_input`, cache writes unknown, so `partial`.
+    `included_in_input`; cache writes from `cache_write_input_tokens` when the CLI reports it (codex-cli 0.160),
+    else unknown and `partial`.
 
   `is_error`, a non-`success` subtype, `turn.failed` or unreadable output → `error` / `PROVIDER_ERROR`, keeping any
   usage reported. A single Claude `modelUsage` entry becomes `resolved_model`.
@@ -66,3 +67,12 @@ Tests: `tests/test_agent_cli.py` (fake `claude`/`codex` on `PATH`; no real provi
 
 - `output_limit` is checked after exit; a runaway CLI can still fill the disk (`ponytail` note in code).
 - `rejection_reason` is per backend instance; concurrent launches on one instance share it.
+
+## Smoke test result (2026-10-10, macOS, logged-in CLIs, no API key exported)
+
+| CLI | Result |
+|---|---|
+| `claude` (sonnet → `claude-sonnet-5-5`) | all six checks pass. Sandboxed shell ran without a prompt (`autoAllowBashIfSandboxed` works); `curl` blocked by the sandbox proxy (403). Usage complete: input 4, output 510, cache read 37 328, cache write 20 936. |
+| `codex` 0.160 (`gpt-6.1-sol`) | first run rejected: `codex sandbox <os>` is not the 0.160 syntax (`sandbox-exec: execvp() of 'macos' failed`), so the refusal path worked as designed. After fixing the probe to `codex sandbox -c sandbox_mode="workspace-write" -- true`, all six checks pass: stdin prompt, sandboxed shell, network blocked (DNS failure). Usage from `turn.completed`, including `cache_write_input_tokens`. |
+
+Still unverified: the Linux/container sandbox (bubblewrap/Landlock); run the smoke script in the pilot container.
