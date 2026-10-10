@@ -278,6 +278,27 @@ def qualification_passes(doc, evidence_root):
     return all(c["result"] == "pass" for c in doc["checks"]) and review is not None and review["verdict"] == "pass"
 
 
+def session_qualification_passes(session, session_evidence, reviewed, reviewed_evidence):
+    """A session's automatic qualification (ADR 0002 amendment, review per tuple): ``session`` passes every check
+    with evidence of its own job and carries no review of its own; ``reviewed`` passes with its independent review;
+    both name the same target, policy digest and tuple apart from ``job_id``, including the probe code digest
+    ``tuple.probe_digest``. A changed host, engine, kernel, image or probe code therefore needs a new review."""
+    verify_qualification_evidence(session, session_evidence)
+    if session["independent_review"] is not None:
+        raise ContractError("BINDING_MISMATCH", "session.independent_review: a session report carries no review")
+    if not qualification_passes(reviewed, reviewed_evidence):
+        return False
+    if session["target"] != reviewed["target"] or session["policy_digest"] != reviewed["policy_digest"]:
+        raise ContractError("BINDING_MISMATCH", "session.target/policy_digest")
+    _match(_DIGEST, session["tuple"].get("probe_digest"), "session.tuple.probe_digest")
+    if {k: v for k, v in session["tuple"].items() if k != "job_id"} != \
+            {k: v for k, v in reviewed["tuple"].items() if k != "job_id"}:
+        raise ContractError("BINDING_MISMATCH", "session.tuple: differs from the reviewed tuple")
+    if session["tuple"]["job_id"] == reviewed["tuple"]["job_id"]:
+        raise ContractError("BINDING_MISMATCH", "session.tuple.job_id: a session is its own job")
+    return all(c["result"] == "pass" for c in session["checks"])
+
+
 def qualification_digest(doc):
     validate_qualification_report(doc)
     return request_digest(doc)  # sha256 of the canonical document
@@ -319,7 +340,7 @@ def _evidence_bytes(root, ref):
     return (root / ref["path"]).resolve().read_bytes()  # size and digest already verified
 
 
-def validate_capability_binding(report, qualification, evidence_root, job_id):
+def validate_capability_binding(report, qualification, evidence_root, job_id, *, reviewed=None):
     """A report may claim ``qualified`` only with a passing, evidence-verified qualification of the same target and
     policy digest from the caller's own job (``job_id``). ``validate_capability_report`` alone does not make
     ``qualified`` meaningful; consumers that rely on qualification must call this."""
@@ -329,7 +350,9 @@ def validate_capability_binding(report, qualification, evidence_root, job_id):
         raise ContractError("BINDING_MISMATCH", "report.target/policy_digest")
     if qualification["tuple"]["job_id"] != job_id:
         raise ContractError("BINDING_MISMATCH", "qualification.tuple.job_id: qualified in another job")
-    if report["qualified"] and not qualification_passes(qualification, evidence_root):
+    passes = (qualification_passes(qualification, evidence_root) if reviewed is None
+              else session_qualification_passes(qualification, evidence_root, *reviewed))
+    if report["qualified"] and not passes:
         raise ContractError("BINDING_MISMATCH", "report.qualified: the qualification does not pass")
     return report
 

@@ -785,10 +785,13 @@ class QualifiedDockerBackend:
     supports_limits = True
 
     def __init__(self, qualification, *, qualification_evidence, capability_report, job_id, image, command, cases,
-                 docker="docker", grace=2.0):
-        contract.validate_capability_binding(capability_report, qualification, qualification_evidence, job_id)
-        if not capability_report["qualified"] or not contract.qualification_passes(qualification,
-                                                                                   qualification_evidence):
+                 reviewed=None, docker="docker", grace=2.0):
+        # reviewed=(report, evidence_root): a session report qualified by matching a reviewed tuple (ADR 0002)
+        contract.validate_capability_binding(capability_report, qualification, qualification_evidence, job_id,
+                                             reviewed=reviewed)
+        passes = (contract.qualification_passes(qualification, qualification_evidence) if reviewed is None
+                  else contract.session_qualification_passes(qualification, qualification_evidence, *reviewed))
+        if not capability_report["qualified"] or not passes:
             raise contract.ContractError("NOT_QUALIFIED", "the qualification does not pass")
         digest = qualification["tuple"]["workload_image"]
         if not isinstance(image, str) or not image.endswith("@" + digest):

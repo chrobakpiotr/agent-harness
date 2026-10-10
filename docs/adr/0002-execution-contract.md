@@ -122,3 +122,22 @@ shared with another check), `independent_review` (nullable; `reviewer` ≠ `auth
 
 Python API for launching/cancelling (no implementation yet; arrives with a real backend in AH5-04b),
 retry policy, retention of artefacts.
+
+## Amendment: review per tuple (2026-10-10, AH5-04c D5)
+
+A grading session cannot carry an independent review of its own, so a session report qualifies by matching a
+reviewed one. `session_qualification_passes(session, session_evidence, reviewed, reviewed_evidence)` is true only
+when:
+
+- the reviewed report passes as before (all checks, job-bound evidence, a passing independent review);
+- the session report passes every check with evidence naming its own `job_id`, carries no review, and is a
+  different job;
+- target and policy digest are equal, and the tuple is equal apart from `job_id`. The tuple must state
+  `probe_digest`, the digest of the probe code that ran, so changed probes need a new review just as a changed
+  host, engine, kernel or image does.
+
+`validate_capability_binding(…, reviewed=(report, evidence_root))` and `QualifiedDockerBackend(…, reviewed=…)` use
+it. A result's `target.qualification_digest` is the session's digest; the session record returned by
+`qualify()` (AH5-04c-1) also names the reviewed report's digest and the probe digest, so every grade traces to
+one independent review. Reports without `probe_digest` (such as the accepted 04b report) remain valid reports, but
+they cannot serve as the reviewed reference for sessions until a run with the moved probes is reviewed.

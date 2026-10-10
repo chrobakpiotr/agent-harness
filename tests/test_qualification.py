@@ -200,3 +200,71 @@ class QualificationReportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionQualificationTest(unittest.TestCase):
+    """ADR 0002 amendment: a session's automatic report qualifies by matching a reviewed tuple and probe code."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.tuple = {"host": "Docker_Desktop", "kernel": "7.0.14-linuxkit", "engine": "DockerEngine_29.8.2",
+                      "workload_image": "sha256:" + "3" * 64, "probe_digest": "sha256:" + "5" * 64}
+        self.reviewed = self.report("reviewed", "job-reviewed", review=True)
+        self.session = self.report("session", "session-1")
+
+    def report(self, name, job, review=False, **tuple_changes):
+        (self.root / name).mkdir(exist_ok=True)
+
+        def evidence(check, text=None):
+            path = self.root / name / f"{check}.log"
+            path.write_text(text or f"raw output of {check} in job {job}\n")
+            data = path.read_bytes()
+            return {"path": f"{check}.log", "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+        doc = {"contract_version": 1, "target": "t", "policy_digest": "sha256:" + "2" * 64, "author": "qualifier",
+               "tuple": {"job_id": job, **self.tuple, **tuple_changes},
+               "checks": [{"id": i, "result": "pass", "evidence": [evidence(i)]} for i in contract.QUALIFICATION_CHECKS],
+               "independent_review": None, "created_at": "2026-10-10T00:00:00Z"}
+        if review:
+            subject = contract.review_subject(doc)
+            doc["independent_review"] = {"reviewer": "evaluator", "subject": subject, "verdict": "pass",
+                                         "evidence": evidence("review", f"review of {subject}: pass\n")}
+        return contract.validate_qualification_report(doc)
+
+    def passes(self, session):
+        return contract.session_qualification_passes(session, self.root / "session", self.reviewed,
+                                                     self.root / "reviewed")
+
+    def test_matching_session_passes_without_its_own_review(self):
+        self.assertTrue(self.passes(self.session))
+        self.assertFalse(contract.qualification_passes(self.session, self.root / "session"))  # not on its own
+        report = capability("t", self.session["policy_digest"], True)
+        contract.validate_capability_binding(report, self.session, self.root / "session", "session-1",
+                                             reviewed=(self.reviewed, self.root / "reviewed"))
+
+    def test_every_tuple_fact_and_the_probe_code_must_match(self):
+        for key, value in (("host", "ubuntu-24.04"), ("kernel", "6.8"), ("engine", "DockerEngine_29.9.0"),
+                           ("workload_image", "sha256:" + "4" * 64), ("probe_digest", "sha256:" + "6" * 64)):
+            with self.subTest(key), self.assertRaises(contract.ContractError):
+                self.passes(self.report("session", "session-1", **{key: value}))
+        no_probe = self.report("session", "session-1")
+        del no_probe["tuple"]["probe_digest"]
+        with self.assertRaises(contract.ContractError):
+            self.passes(no_probe)
+
+    def test_session_is_its_own_unreviewed_job_and_needs_a_passing_reviewed_report(self):
+        with self.assertRaises(contract.ContractError):
+            self.passes(self.report("session", "job-reviewed"))
+        with self.assertRaises(contract.ContractError):
+            self.passes(self.report("session", "session-1", review=True))
+        failing = copy.deepcopy(self.reviewed)
+        failing["independent_review"]["verdict"] = "fail"
+        self.reviewed = failing
+        self.assertFalse(self.passes(self.session))
+        bad = self.report("session", "session-1")
+        bad["checks"][0]["result"] = "fail"
+        bad["checks"][0]["evidence"] = []
+        self.reviewed = self.report("reviewed", "job-reviewed", review=True)
+        self.assertFalse(self.passes(contract.validate_qualification_report(bad)))

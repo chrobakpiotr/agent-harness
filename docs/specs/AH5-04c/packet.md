@@ -115,3 +115,13 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
 - **Benchmark side:** the candidate patch is applied on the host with `git apply` on a fresh copy of `base/` (hardened
   git environment, patch scope checked: no symlinks, no `.git`, allow-listed files only). The container receives the
   finished workspace.
+
+## Progress (2026-10-10)
+
+- AH5-04c-2 backend: `execution.QualifiedDockerBackend` implemented (`01986e8`), with session mode via
+  `reviewed=(report, evidence_root)`. 7 fake-docker tests cover flags, refusal on limits and tuple drift, session
+  binding, timeout/OOM, unsafe or oversized answers, capped output and an unconfirmed destroy. The opt-in real run
+  (`AGENT_HARNESS_REAL_DOCKER=1`) passes on Docker Desktop 29.8.2 / 7.0.14-linuxkit with the pinned image.
+- ADR 0002 amendment (D5): `contract.session_qualification_passes`; `validate_capability_binding(…, reviewed=…)`.
+- Open: AH5-04c-1, moving the probes and adding `qualify(job_id)` (awaits Showcase agreement); a reviewed reference
+  run with `probe_digest`; independent evaluation; release.

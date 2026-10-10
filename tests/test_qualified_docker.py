@@ -102,21 +102,23 @@ class QualifiedDockerTest(unittest.TestCase):
                            "supported": True, "qualified": True, "launch_ready": False,
                            "capabilities": ["qualified_isolation"], "refusal": "BACKEND_UNAVAILABLE"}
 
-    def evidence(self, name, text=None):
+    def evidence(self, name, text=None, job=JOB):
         path = self.root / "qual" / "evidence" / f"{name}.log"
-        path.write_text(text or f"raw output of {name} in job {JOB}\n")
+        path.write_text(text or f"raw output of {name} in job {job}\n")
         data = path.read_bytes()
         return {"path": f"evidence/{name}.log", "sha256": "sha256:" + hashlib.sha256(data).hexdigest(),
                 "size": len(data)}
 
-    def report(self):
+    def report(self, job=JOB, review=True, **extra):
         doc = {"contract_version": 1, "target": "showcase-docker-desktop-linux-guest",
                "policy_digest": "sha256:" + "4" * 64, "author": "qualifier",
-               "tuple": {"job_id": JOB, "host": "Docker_Desktop", "kernel": "7.0.14-linuxkit",
-                         "engine": "DockerEngine_29.8.2", "workload_image": IMAGE_DIGEST},
-               "checks": [{"id": i, "result": "pass", "evidence": [self.evidence(i)]}
+               "tuple": {"job_id": job, "host": "Docker_Desktop", "kernel": "7.0.14-linuxkit",
+                         "engine": "DockerEngine_29.8.2", "workload_image": IMAGE_DIGEST, **extra},
+               "checks": [{"id": i, "result": "pass", "evidence": [self.evidence(i, job=job)]}
                           for i in contract.QUALIFICATION_CHECKS],
                "independent_review": None, "created_at": "2026-10-10T00:00:00Z"}
+        if not review:
+            return contract.validate_qualification_report(doc)
         subject = contract.review_subject(doc)
         doc["independent_review"] = {"reviewer": "evaluator", "subject": subject, "verdict": "pass",
                                      "evidence": self.evidence("review", f"review of {subject}: pass\n")}
@@ -192,6 +194,24 @@ class QualifiedDockerTest(unittest.TestCase):
             self.assertIn("differs from the qualified tuple", backend.rejection_reasons[f"drift-{i}"])
             os.environ.pop(var)
         self.assertFalse(any(c[:1] == ["run"] for c in self.calls()))
+
+    def test_session_report_qualifies_by_matching_a_reviewed_tuple(self):
+        probe = {"probe_digest": "sha256:" + "7" * 64}
+        reviewed_root = self.root / "reviewed"
+        (reviewed_root / "evidence").mkdir(parents=True)
+        reviewed = self.report(job="reviewed-job", **probe)  # evidence lands in qual/; copy it for the reviewed root
+        for ref in [r for c in reviewed["checks"] for r in c["evidence"]] + [reviewed["independent_review"]["evidence"]]:
+            (reviewed_root / ref["path"]).write_bytes((self.root / "qual" / ref["path"]).read_bytes())
+        session = self.report(review=False, **probe)
+        with self.assertRaises(contract.ContractError):
+            execution.QualifiedDockerBackend(session, qualification_evidence=str(self.root / "qual"),
+                                             capability_report=self.capability, job_id=JOB, image=IMAGE,
+                                             command=["true"], cases=str(self.cases), docker=self.docker)
+        backend = execution.QualifiedDockerBackend(
+            session, qualification_evidence=str(self.root / "qual"), capability_report=self.capability, job_id=JOB,
+            image=IMAGE, command=["true"], cases=str(self.cases), docker=self.docker,
+            reviewed=(reviewed, reviewed_root))
+        self.assertEqual(contract.qualification_digest(session), backend.target["qualification_digest"])
 
     def test_session_binding_is_checked_at_construction(self):
         with self.assertRaises(contract.ContractError):
