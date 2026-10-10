@@ -103,6 +103,9 @@ class AgentCliTest(unittest.TestCase):
                                                    settings["network"]["allowedDomains"]))
         self.assertEqual("WebFetch,WebSearch", argv[argv.index("--disallowedTools") + 1])
         self.assertIn("~/.codex", settings["filesystem"]["denyRead"])
+        claude_settings = json.loads(argv[argv.index("--settings") + 1])
+        self.assertEqual(["Bash"], claude_settings["permissions"]["allow"])  # sandboxed; `VAR=x cmd` must not prompt
+        self.assertIn("Read(~/.codex/**)", claude_settings["permissions"]["deny"])
         for forbidden in ("--bare", "bypassPermissions", "--dangerously-skip-permissions"):
             self.assertNotIn(forbidden, " ".join(argv))
         self.assertEqual({"input_tokens": 120, "output_tokens": 45, "cache_read_tokens": 300,

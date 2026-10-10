@@ -443,7 +443,11 @@ _LOGIN_PATHS = ("~/.claude", "~/.claude.json", "~/.codex", "~/.config/claude")
 _CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
                                 "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []},
                                 "filesystem": {"denyRead": list(_LOGIN_PATHS)}},
-                    "permissions": {"deny": [f"Read({path}/**)" for path in _LOGIN_PATHS]
+                    # Every Bash call runs in the sandbox (no unsandboxed fallback), so allowing Bash outright gives
+                    # Claude what Codex's workspace-write gives: auto-allow alone still prompts for commands that set
+                    # variables (`VAR=x cmd`, `env`, `export`), which blocks typical test commands in `-p` mode.
+                    "permissions": {"allow": ["Bash"],
+                                    "deny": [f"Read({path}/**)" for path in _LOGIN_PATHS]
                                     + [f"Read({path})" for path in _LOGIN_PATHS]},
                     "forceLoginMethod": "claudeai"}  # the subscription login, never an API key or apiKeyHelper
 # Shapes of provider credentials; a candidate or output containing one is withheld.

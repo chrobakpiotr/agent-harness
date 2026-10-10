@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `AgentCliBackend` (Claude): allow sandboxed Bash outright, so commands that set variables or use heredocs
+  (typical test commands) run in `-p` mode, as under Codex `workspace-write`. Smoke test distinguishes a blocked
+  login read from a model refusal.
+
 ## 0.6.0 — 2026-10-10
 
 - `execution.AgentCliBackend` (AH5-05b): runs `claude -p` / `codex exec` on the CLI's own subscription login, with

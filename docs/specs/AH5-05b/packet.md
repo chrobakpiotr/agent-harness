@@ -109,3 +109,17 @@ The surviving mutations now have tests: each Claude/Codex failure signal alone, 
 cancel in diff mode, and that `_withhold` removes the files. Remaining, low: the secret scan matches literal values and
 credential shapes only (a re-encoded token passes); on macOS Claude's login is in the Keychain, so only Codex's file is
 matched literally.
+
+## Calibration fix (2026-10-10, agent-benchmark real-001)
+
+Claude in `-p` mode denied every Bash call that sets a variable (`VAR=x cmd`, `env VAR=x cmd`, `export …; cmd`, and
+the heredoc that came with them) while plain commands, pipes and redirects ran: auto-allow of sandboxed Bash does not
+cover them, so Claude could not run `PYTHONPATH=src python -m unittest …` and Codex could. Fix: `permissions.allow:
+["Bash"]`. Every Bash call still runs in the sandbox (`failIfUnavailable`, `allowUnsandboxedCommands: false`, no
+network), which is what Codex's `workspace-write` gives. Verified with the real CLI: seven command shapes, all run;
+`curl` still fails, and reading a login path is still refused.
+
+The smoke test is now diagnostic. It runs a variable-prefixed command and a heredoc, and plants a fixture in
+`~/.claude` and `~/.codex` whose read is classified from files, not from the model's word: `read`,
+`blocked-by-sandbox` (ran, failed), `blocked-by-permission` (in `permission_denials`) or `not-run` (a refusal, which
+fails). Result: Claude blocked-by-sandbox for both, 9/9; Codex reads both, as documented; covered by the output scan.
