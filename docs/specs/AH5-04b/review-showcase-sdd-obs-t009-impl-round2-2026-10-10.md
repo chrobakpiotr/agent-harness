@@ -39,3 +39,41 @@ now caught.
 
 The reported stale `constitution_sha256` inputs and the completion-correction concurrency failures are outside the
 registered verification; compare them against `main` before attributing them to T-009.
+
+## Coverage and abort re-check (independent evaluator; high findings confirmed by Harness)
+
+| Round-1 # | Status | Evidence |
+|---|---|---|
+| 2 end-to-end coverage | **not fixed** | `record_manual` now signs a plan-bound envelope, but the only "unmocked" test still mocks `load_plan_record`, `validate_plan_record`, `_load_trusted_profile` and `seal_candidate`. A real run fails: `store.py:612` and `:628` call `validate_plan_record(record)` without `repository`, so a profile with a manual gate raises `invalid-manual-reviewer-registry`, and no plan with a manual obligation can be published or loaded (confirmed). With that and NEW-1 worked around in a scratch copy, register → coverage succeeds, so the logic is right but unreachable. |
+| 3 checkpoint proof | logic yes, tests no | Trusted `seal_candidate`, commit-type check and an immutable binding record exist (`harness.py:2551–2586`). Removing the seal comparison or the commit check survives, because every test stubs `seal_candidate`. |
+| 4 prelaunch stranding | **partial** | A hard kill after consume now recovers to `safe_prelaunch_abort` and replan passes. Still stranded forever (`UNCERTAIN / EXECUTION_LAUNCH_AUTHORITY_ABSENT`, replan refused, every later execute `verification-owned`): (a) consume then an exception, such as a failed `reacquire(timeout=0)`, which releases the admission so owner death can't be proven; (b) reserve only, killed or exception, with no reserved-only abort CAS. (b) regressed: it recovered in round 1. |
+| 5 executor wiring | fixed | `executor.py:231`; a real `execute_plan` with a fake backend drives three reservations to `execution_terminal`. |
+| 6 reason code / exit 5 | partial | The API returns `MANUAL_EVIDENCE_CANDIDATE_BINDING_REQUIRED`. Through `record-manual --plan-id` the exit is 5 but the codes are wrong: an unknown plan gives `MANUAL_EVIDENCE_SCOPE_UNAVAILABLE`, a dirty candidate `MANUAL_EVIDENCE_CHECKPOINT_UNAVAILABLE`. The exit-5 test mocks `record_manual`; there is still no coverage CLI. |
+| 7 reseal in lock | code yes, tests no | `harness.py:2471`, `telemetry.py:747`; deleting either survives every test. |
+| 8 concurrency test | **not fixed** | With the coverage lock replaced by `nullcontext` the test passes 3/3 (0.05 s timing); no replan race test. |
+| 9 coverage guards | mostly fixed | All are now caught except the feature-fingerprint check (`harness.py:2484`, low; the authority-binding equality likely covers it). |
+| 10 abort guards | **not fixed** | Still survive: the `store.py:120` safe-abort shape, `harness_invocation_upper_bound == 0` (`store.py:116`, `harness.py:1347`), `supervisor.py:888` authority-state → `UNCERTAIN`, and `harness.py:1342` replay accepting any receipt hash. |
+| 12 AC-OBS-048 | not fixed (low) | Nothing reads `manual_coverage_ledger`. |
+
+New:
+
+- **NEW-1 (high, confirmed):** `record_manual` stores attestations and report snapshots under
+  `.agent-runs/manual-attestations/` and `.agent-runs/manual-report-snapshots/`, outside the runtime root that
+  `seal_candidate` excludes (`candidate.py:122–133`). After one `record-manual`, sealing reports
+  `SECRET_BEARING_CANDIDATE_UNSEALABLE` and `admit_verification_execution` fails `invalid-verification-plan`, which
+  blocks every plan-bound verification, coverage and registration in the repository. Store them under the excluded
+  control root.
+- **NEW-2 (medium):** the telemetry pre-check allows role `reviewer` on a builder task (`telemetry.py:701`); trusted
+  `resolve_manual_review_scope` then rejects it with `MANUAL_EVIDENCE_TASK_ROLE_MISMATCH`. Align the two.
+
+## Required before completion (cumulative)
+
+1. The two `test_telemetry` failures; `machine_outcomes.py` scope.
+2. `validate_plan_record(…, repository=…)` in `store.py` publish/load; manual evidence stored under the excluded control
+   root (NEW-1); one truly unmocked registration → coverage test (real plan, profile, seal, signature).
+3. Recovery that terminalizes consume-then-exception and reserve-only (kill and exception) to `safe_prelaunch_abort`,
+   with fork/kill tests for each.
+4. Spec reason codes through `record-manual --plan-id`; a coverage entry point that returns exit 5.
+5. Tests that fail when removed: the seal comparison and commit check, both reseals, the coverage lock (assert the
+   outcome), a replan race, the round-1 #10 abort guards, and the two profile guards (finding 11).
+6. NEW-2.
