@@ -11,6 +11,7 @@ qualification digest, the reviewed report's digest and the probe digest, so each
 
 import hashlib
 import json
+import time
 from importlib import resources
 from pathlib import Path
 
@@ -70,9 +71,6 @@ def qualify(job_id, out, *, reviewed=None, target_kind="docker-desktop", target_
     scratch directory; ``evidence/retries.json`` records every earlier attempt. The backend's own grading layout is
     probed too (``execution.probe_grading_layout``); its verdict is the tuple fact ``grading_layout``, so a session
     qualifies only if it passes as it did in the reviewed run."""
-    from types import SimpleNamespace
-
-    from ..execution import probe_grading_layout
     from . import report as runner
     if not isinstance(job_id, str) or not job_id or runner._safe(job_id) != job_id:
         raise ValueError("job_id must be a safe identifier (letters, digits and ._:/@+-)")
@@ -85,6 +83,40 @@ def qualify(job_id, out, *, reviewed=None, target_kind="docker-desktop", target_
     out = out.resolve()
     evidence = out / "evidence"
     evidence.mkdir(parents=True)
+    started = time.time()
+    try:
+        return _qualify(job_id, out, evidence, reviewed, target_kind, target_id, image, docker, author,
+                        timeout_seconds, retries)
+    finally:
+        _remove_leftover_probes(docker, started)
+
+
+def _remove_leftover_probes(docker, since):
+    """Probes that time out can leave their exited containers behind: remove the ones this run created."""
+    import datetime as dt
+    import subprocess
+    try:
+        listed = subprocess.run([docker, "ps", "-a", "--filter", "name=^showcase-", "--filter", "status=exited",
+                                 "--format", "{{.ID}} {{.CreatedAt}}"], capture_output=True, text=True, timeout=60,
+                                check=False).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        return
+    for line in listed:
+        container, _, created = line.partition(" ")
+        try:
+            when = dt.datetime.strptime(" ".join(created.split()[:2]), "%Y-%m-%d %H:%M:%S").timestamp()
+        except ValueError:
+            continue
+        if when >= since - 1:
+            subprocess.run([docker, "rm", "-f", container], capture_output=True, timeout=60, check=False)
+
+
+def _qualify(job_id, out, evidence, reviewed, target_kind, target_id, image, docker, author, timeout_seconds,
+             retries):
+    from types import SimpleNamespace
+
+    from ..execution import probe_grading_layout
+    from . import report as runner
     tuple_, errors = live_tuple(target_kind, docker, image, job_id)
     tuple_["probe_digest"] = probe_digest()
     if errors:
