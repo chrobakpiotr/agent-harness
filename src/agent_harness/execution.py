@@ -562,6 +562,8 @@ class AgentCliBackend(ProcessBackend):
     def _finish(self, body, request, roots):
         secrets = _login_secrets(self.env.get("HOME"))
         if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
+            if _has_hardlinks(Path(roots["workspace"])):  # a hardlink can carry any same-volume host file
+                return self._withhold(body, request, roots, "candidate")
             try:
                 diff = _workspace_diff(self._git_dir(request, roots), roots["workspace"], self.diff_base)
             except (OSError, subprocess.CalledProcessError):  # e.g. a nested repository without commits
@@ -669,6 +671,16 @@ def _codex_report(data):
             (type(units["cache_write_tokens"]) is not int or units["cache_write_tokens"] < 0)):
         return None, True, None
     return units, failed, None
+
+
+def _has_hardlinks(workspace):
+    for path in workspace.rglob("*"):
+        if ".git" in path.relative_to(workspace).parts:
+            continue
+        info = path.lstat()
+        if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+            return True
+    return False
 
 
 def _login_secrets(home):
@@ -847,6 +859,10 @@ class QualifiedDockerBackend:
 
     def run(self, request, roots, cancelled, execution_id, started_at):
         name = f"agent-harness-grade-{uuid.uuid4().hex[:16]}"
+        members = _workspace_members(Path(roots["workspace"]))
+        if members is None:  # larger than the qualified workspace tmpfs, so it could never be graded as qualified
+            now = _now()
+            return self._body(request, "error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         with tempfile.TemporaryDirectory(prefix="ah-grade-") as tmp:
             inputs, output = Path(tmp) / "inputs", Path(tmp) / "output"
             inputs.mkdir()
@@ -863,52 +879,68 @@ class QualifiedDockerBackend:
             captured, truncated = bytearray(), threading.Event()
             reader = threading.Thread(target=_drain_capped, args=(child.stdout, captured, truncated), daemon=True)
             reader.start()
-            try:
-                _write_tar(child.stdin, Path(roots["workspace"]))
-            except OSError:
-                pass
-            finally:
-                try:
-                    child.stdin.close()
-                except OSError:
-                    pass
-            deadline = time.monotonic() + request["timeout_seconds"]  # from the end of the workspace stream
-            outcome = None
+            writer = threading.Thread(target=_stream_tar, args=(child.stdin, Path(roots["workspace"]), members),
+                                      daemon=True)
+            writer.start()
+            # The wall clock starts once the workspace is in; the stream itself is bounded by the tmpfs size and by
+            # _STREAM_SECONDS, and cancel applies throughout.
+            stream_deadline, deadline, outcome = time.monotonic() + _STREAM_SECONDS, None, None
             while child.poll() is None:
+                now = time.monotonic()
+                if deadline is None and not writer.is_alive():
+                    deadline = now + request["timeout_seconds"]
                 if cancelled.is_set():
                     outcome = "cancel"
-                elif time.monotonic() >= deadline:
+                elif (deadline is None and now >= stream_deadline) or (deadline is not None and now >= deadline):
                     outcome = "timeout"
+                elif _tree_bytes(output) > _ANSWERS_LIMIT + _OUTPUT_SLACK:
+                    outcome = "disk"  # /output is outside the qualified tmpfs set: the host bounds it
                 if outcome:
                     break
-                time.sleep(0.05)
+                time.sleep(0.02)
+            container = self._container_id(name)
             if outcome:
-                self._docker("kill", name, check=False)
+                self._docker("kill", container or name, check=False)
             try:
                 child.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 child.kill()
             reader.join(5)
-            state = self._state(name)
-            self._docker("rm", "-f", name, check=False)
-            gone = not self._docker("ps", "-a", "--no-trunc", f"--filter=name=^{name}$", "--format={{.ID}}",
-                                    check=False).strip()
+            child.stdout.close()
+            state = self._state(container or name)
+            self._docker("rm", "-f", container or name, check=False)
+            gone = container is not None and not self._docker(
+                "ps", "-a", "--no-trunc", f"--filter=id={container}", "--format={{.ID}}", check=False).strip()
             ended = _now()
             answers = _read_answers(output) if gone else None
         oom = bool(state and state.get("OOMKilled"))
         exit_code = state.get("ExitCode") if state else None
-        if outcome is None:
-            outcome = "error" if oom else ("completed" if gone and type(exit_code) is int else "unknown")
-        fired = "timeout" if outcome == "timeout" else ("oom" if oom else None)
-        artifacts = [] if answers is None else [{"name": "answers", **_seal(answers, roots, request, "answers")}]
+        fired = {"timeout": "timeout", "disk": "disk"}.get(outcome, "oom" if oom else None)
+        if outcome == "disk" or (outcome is None and oom):
+            outcome = "error"
+        elif outcome is None:
+            outcome = "completed" if gone and type(exit_code) is int else "unknown"
+        body = self._body(request, outcome, exit_code if outcome == "completed" else None,
+                          "confirmed" if gone else "unconfirmed", started_at, ended,
+                          error_code=contract.LIMIT_EXCEEDED if outcome == "error" else None,
+                          fired=fired, truncated=truncated.is_set())
+        if answers is not None:
+            body["artifacts"] = [{"name": "answers", **_seal(answers, roots, request, "answers")}]
+        return body
+
+    def _body(self, request, outcome, exit_code, drain, started_at, ended, *, error_code=None, fired=None,
+              truncated=False):
         attempt = {"attempt_id": "attempt-1", "outcome": outcome, "started_at": started_at, "ended_at": ended}
-        return {"outcome": outcome, "exit_code": exit_code if outcome == "completed" else None, "completion": None,
-                "error_code": contract.LIMIT_EXCEEDED if outcome == "error" else None,
-                "drain": "confirmed" if gone else "unconfirmed", "started_at": started_at, "ended_at": ended,
-                "attempts": [attempt], "candidate": None, "artifacts": artifacts, "usage_events": [],
-                "usage_completeness": "unknown", "target": dict(self.target),
+        return {"outcome": outcome, "exit_code": exit_code, "completion": None, "error_code": error_code,
+                "drain": drain, "started_at": started_at, "ended_at": ended, "attempts": [attempt],
+                "candidate": None, "artifacts": [], "usage_events": [], "usage_completeness": "unknown",
+                "target": dict(self.target),
                 "limits": {"applied": {**request["limits"], "timeout_seconds": request["timeout_seconds"]},
-                           "fired": fired, "output_truncated": truncated.is_set()}}
+                           "fired": fired, "output_truncated": truncated}}
+
+    def _container_id(self, name):
+        found = self._docker("inspect", "--format", "{{.Id}}", name, check=False).strip()
+        return found if re.fullmatch(r"[0-9a-f]{64}", found) else None
 
     def _state(self, name):
         try:
@@ -917,16 +949,55 @@ class QualifiedDockerBackend:
             return None
 
 
-def _write_tar(pipe, workspace):
-    """The workspace as a tar stream: regular files and directories only (no links or devices), ``.git`` skipped."""
+_STREAM_SECONDS = 120  # streaming at most 240 MiB into the container
+_OUTPUT_SLACK = 64 << 10  # polling overshoot allowance on /output
+
+
+def _workspace_members(workspace):
+    """Directories and single-link regular files to stream (no ``.git``, symlinks, hardlinks or devices); None if
+    their apparent size exceeds the qualified workspace tmpfs."""
+    members, total = [], 0
+    for path in sorted(workspace.rglob("*")):
+        relative = path.relative_to(workspace)
+        if ".git" in relative.parts:
+            continue
+        info = path.lstat()
+        if stat.S_ISDIR(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink == 1):
+            members.append((path, str(relative)))
+            total += info.st_size if stat.S_ISREG(info.st_mode) else 0
+            if total > _WORKSPACE_TMPFS_BYTES:
+                return None
+    return members
+
+
+def _stream_tar(pipe, workspace, members):
     import tarfile
-    with tarfile.open(fileobj=pipe, mode="w|") as archive:
-        for path in sorted(workspace.rglob("*")):
-            relative = path.relative_to(workspace)
-            if ".git" in relative.parts or path.is_symlink():
-                continue
-            if path.is_dir() or path.is_file():
-                archive.add(path, arcname=str(relative), recursive=False)
+    try:
+        with tarfile.open(fileobj=pipe, mode="w|") as archive:
+            for path, arcname in members:
+                archive.add(path, arcname=arcname, recursive=False)
+    except OSError:
+        pass
+    finally:
+        try:
+            pipe.close()
+        except OSError:
+            pass
+
+
+def _tree_bytes(root):
+    total, stack = 0, [root]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+                    else:
+                        total += entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            continue
+    return total
 
 
 def _drain_capped(pipe, captured, truncated, limit=1 << 20):

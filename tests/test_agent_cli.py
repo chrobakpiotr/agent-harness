@@ -205,6 +205,28 @@ class AgentCliTest(unittest.TestCase):
         self.assertNotIn(b" .git/", sealed.replace(b"a/.gitattributes", b"").replace(b"b/.gitattributes", b""))
         self.assertNotIn(b"diff --git a/.git/", sealed)
 
+    def test_hardlink_in_the_workspace_withholds_the_diff_candidate(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("x\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        secret = self.root / "host-file"
+        secret.write_text("host content\n")
+        script = self.root / "bin" / "claude"
+        script.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import os, sys
+            if sys.argv[1:2] == ["--version"]: sys.exit(0)
+            sys.stdin.read()
+            os.link({str(secret)!r}, "linked.txt")
+            print({json.dumps(CLAUDE_OK)!r})
+            """))
+        script.chmod(0o755)
+        backend = self.claude("x", env=self.env, diff_base=base)
+        result = self.run_backend(backend, self.request("claude", "sonnet"))
+        self.assertEqual(("error", None, "candidate"), (result["outcome"], result["candidate"], backend.withheld))
+
     def test_evidence_root_writable_by_the_agent_is_refused(self):
         ws = self.root / "workspace"
         self.git("init", "-q")

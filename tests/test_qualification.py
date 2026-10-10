@@ -254,6 +254,14 @@ class SessionQualificationTest(unittest.TestCase):
         with self.assertRaises(contract.ContractError):
             self.passes(no_probe)
 
+    def test_target_policy_and_evidence_of_the_session_are_bound(self):
+        for key, value in (("target", "other-target"), ("policy_digest", "sha256:" + "9" * 64)):
+            with self.subTest(key), self.assertRaises(contract.ContractError):
+                self.passes(contract.validate_qualification_report({**self.session, key: value}))
+        (self.root / "session" / "Q01.log").write_text("tampered output in job session-1\n")
+        with self.assertRaises(contract.ContractError):
+            self.passes(self.session)
+
     def test_session_is_its_own_unreviewed_job_and_needs_a_passing_reviewed_report(self):
         with self.assertRaises(contract.ContractError):
             self.passes(self.report("session", "job-reviewed"))

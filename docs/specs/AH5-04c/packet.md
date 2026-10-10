@@ -125,3 +125,13 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
 - ADR 0002 amendment (D5): `contract.session_qualification_passes`; `validate_capability_binding(…, reviewed=…)`.
 - Open: AH5-04c-1, moving the probes and adding `qualify(job_id)` (awaits Showcase agreement); a reviewed reference
   run with `probe_digest`; independent evaluation; release.
+
+## Independent evaluation of AH5-04c-2 (2026-10-10, `62826dc`): pass with conditions, fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 high | A large (sparse) workspace stalled the session past the timeout and cancel: the tar was written before the deadline, and `tar -x` reads on after ENOSPC (real Docker: 1 GiB sparse blocked 34.9 s). | Workspaces whose apparent size exceeds the 240 MiB tmpfs are not launched (`error` / `LAUNCH_FAILED`). The stream runs in a thread under a 120 s budget; cancel applies throughout; the wall clock starts when the stream ends. Real Docker: 1 GiB sparse is refused in 0.6 s. |
+| 2 medium | `/output` was an unbounded bind mount (real Docker: 400 MiB written, `completed`). | The host polls `/output` and kills the container above 1 MiB + 64 KiB: `error` / `LIMIT_EXCEEDED`, `fired: disk`. Real Docker: the 400 MiB writer is killed in 3.4 s. `/output` is outside the 04b-qualified mount set; the moved probes (AH5-04c-1) must qualify it. |
+| 3 | Hardlinks in the workspace were followed. | Streamed members are directories and single-link regular files only. AH5-05b's diff candidate is withheld if the workspace holds a hardlink. |
+| 4 | Kill and absence check went by name; stdout pipe left open. | Kill, inspect, `rm` and `ps --filter id=` go by the 64-hex container id; stdout is closed. The container environment is the image's ENV plus `GRADING_ENV`, with nothing from the host. |
+| 5 | Untested guards. | New tests: the exact `docker run` argv (no extra flag or mount), session target/policy mismatch, tampered session evidence, engine-only drift, a directory `answers.json`, cancel during the stream, the oversized workspace, the hardlink. |

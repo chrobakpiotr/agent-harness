@@ -25,6 +25,12 @@ args = sys.argv[1:]
 with open(root / "docker-calls.jsonl", "a") as log:
     log.write(json.dumps(args) + "\n")
 state_dir = root / "containers"; state_dir.mkdir(exist_ok=True)
+import hashlib
+def resolve(ref):  # a container id (sha256 of its name in this fake) or its name
+    for p in state_dir.iterdir():
+        if ref in (p.name, hashlib.sha256(p.name.encode()).hexdigest()):
+            return p
+    return state_dir / ref
 mode = os.environ.get("FAKE_MODE", "answer")
 if args[:1] == ["version"]: print(os.environ.get("FAKE_ENGINE", "29.8.2")); sys.exit(0)
 if args[:1] == ["info"]: print("Docker Desktop|" + os.environ.get("FAKE_KERNEL", "7.0.14-linuxkit")); sys.exit(0)
@@ -45,31 +51,38 @@ if args[:1] == ["run"]:
         time.sleep(60)
     if mode == "flood":
         sys.stdout.write("x" * (2 << 20)); sys.stdout.flush()
+    if mode == "flood-output":
+        (out / "big.bin").write_bytes(b"x" * (3 << 20))
+        time.sleep(30)
+    if mode == "dir":
+        (out / "answers.json").mkdir()
     if mode == "symlink":
         (out / "answers.json").symlink_to("/etc/passwd")
     elif mode == "big":
         (out / "answers.json").write_bytes(b"x" * ((1 << 20) + 1))
-    elif mode != "sleep":
+    elif mode not in ("sleep", "dir", "flood-output"):
         cases = json.loads(pathlib.Path(mounts["/inputs"], "cases.json").read_text())
         (out / "answers.json").write_text(json.dumps({c["id"]: {"value": 1} for c in cases["cases"]}))
     oom = mode == "oom"
     (state_dir / name).write_text(json.dumps({"Running": False, "OOMKilled": oom, "ExitCode": 137 if oom else 0}))
     sys.exit(137 if oom else 0)
 if args[:1] == ["kill"]:
-    p = state_dir / args[1]
+    p = resolve(args[1])
     if p.exists():
         p.write_text(json.dumps({"Running": False, "OOMKilled": False, "ExitCode": 137}))
     sys.exit(0)
 if args[:1] == ["inspect"]:
-    p = state_dir / args[-1]
+    p = resolve(args[-1])
+    if "{{.Id}}" in args:
+        print(hashlib.sha256(p.name.encode()).hexdigest() if p.exists() else ""); sys.exit(0 if p.exists() else 1)
     print(p.read_text() if p.exists() else "null"); sys.exit(0 if p.exists() else 1)
 if args[:1] == ["rm"]:
     if mode != "stuck":
-        (state_dir / args[-1]).unlink(missing_ok=True)
+        resolve(args[-1]).unlink(missing_ok=True)
     sys.exit(0)
 if args[:1] == ["ps"]:
-    name = next(a.split("=", 2)[2] for a in args if a.startswith("--filter=name="))[1:-1]
-    print("deadbeef" if (state_dir / name).exists() else ""); sys.exit(0)
+    ref = next(a.split("=", 2)[2] for a in args if a.startswith("--filter=id="))
+    print(ref if resolve(ref).exists() else ""); sys.exit(0)
 sys.exit(2)
 '''
 
@@ -159,6 +172,14 @@ class QualifiedDockerTest(unittest.TestCase):
         self.assertEqual(({**execution.QUALIFIED_LIMITS, "timeout_seconds": 30}, None, False),
                          (result["limits"]["applied"], result["limits"]["fired"], result["limits"]["output_truncated"]))
         run = next(c for c in self.calls() if c[:1] == ["run"])
+        name = run[2]
+        mounts = [run[i + 1] for i, a in enumerate(run) if a == "--mount"]
+        self.assertEqual(["run", "-i", name, *execution.QUALIFIED_RUN_FLAGS, "--mount", mounts[0], "--mount",
+                          mounts[1], "--workdir=/workspace", "--env=PYTHONPATH=/workspace",
+                          "--env=PYTHONDONTWRITEBYTECODE=1", "--env=HOME=/tmp", IMAGE],
+                         run[:run.index("sh")])  # the exact set: nothing added (no --privileged, no extra mount)
+        self.assertEqual(["dst=/inputs,readonly", "dst=/output"], [m.split(",", 2)[-1] if m.endswith("readonly")
+                                                                  else m.split(",")[-1] for m in mounts])
         for flag in ("--network=none", "--read-only", "--user=65532:65532", "--cap-drop=ALL",
                      "--security-opt=no-new-privileges", "--pids-limit=64", "--memory=512m", "--memory-swap=512m",
                      "--cpus=1", "--tmpfs=/tmp:rw,noexec,nosuid,size=16m", "--tmpfs=/dev/shm:ro,noexec,nosuid,size=1m",
@@ -175,6 +196,8 @@ class QualifiedDockerTest(unittest.TestCase):
         self.assertFalse((seen / ".git").exists() or (seen / "link").exists())  # no .git, no links streamed
         order = [c[0] for c in self.calls()]
         self.assertLess(order.index("rm"), order.index("ps"))  # absence confirmed after removal
+        ps = next(c for c in self.calls() if c[:1] == ["ps"])
+        self.assertTrue(any(a.startswith("--filter=id=") and len(a) == len("--filter=id=") + 64 for a in ps))
         answers = result["artifacts"][0]
         data = (self.root / "evidence" / answers["path"]).read_bytes()
         self.assertEqual(("answers", {"c1": {"value": 1}}), (answers["name"], json.loads(data)))
@@ -191,7 +214,7 @@ class QualifiedDockerTest(unittest.TestCase):
             os.environ[var] = value
             result = self.grade(backend, self.request(f"drift-{i}"))
             self.assertEqual(("rejected", "NOT_QUALIFIED"), (result["outcome"], result["error_code"]))
-            self.assertIn("differs from the qualified tuple", backend.rejection_reasons[f"drift-{i}"])
+            self.assertIn(["engine", "kernel", "workload_image"][i], backend.rejection_reasons[f"drift-{i}"])
             os.environ.pop(var)
         self.assertFalse(any(c[:1] == ["run"] for c in self.calls()))
 
@@ -232,11 +255,39 @@ class QualifiedDockerTest(unittest.TestCase):
                          (result["outcome"], result["error_code"], result["limits"]["fired"]))
 
     def test_unsafe_or_oversized_answers_are_not_sealed_and_output_is_capped(self):
-        for i, mode in enumerate(("symlink", "big")):
+        for i, mode in enumerate(("symlink", "big", "dir")):
             os.environ["FAKE_MODE"] = mode
             self.assertEqual([], self.grade(self.backend(), self.request(f"u{i}"))["artifacts"])
         os.environ["FAKE_MODE"] = "flood"
         self.assertTrue(self.grade(self.backend(), self.request("f"))["limits"]["output_truncated"])
+
+    def test_writing_more_than_the_answers_limit_to_output_is_killed_as_disk(self):
+        os.environ["FAKE_MODE"] = "flood-output"
+        result = self.grade(self.backend(), self.request("d"))
+        self.assertEqual(("error", contract.LIMIT_EXCEEDED, "disk", []),
+                         (result["outcome"], result["error_code"], result["limits"]["fired"], result["artifacts"]))
+        self.assertIn(["kill"], [c[:1] for c in self.calls()])
+
+    def test_workspace_larger_than_the_qualified_tmpfs_is_not_launched_and_hardlinks_are_skipped(self):
+        big = self.root / "workspace" / "sparse.bin"
+        with big.open("wb") as handle:
+            handle.truncate(execution._WORKSPACE_TMPFS_BYTES + 1)  # sparse: apparent size counts
+        result = self.grade(self.backend(), self.request("big-ws"))
+        self.assertEqual(("error", "LAUNCH_FAILED"), (result["outcome"], result["error_code"]))
+        self.assertFalse(any(c[:1] == ["run"] for c in self.calls()))
+        big.unlink()
+        secret = self.root / "host-secret"
+        secret.write_text("secret")
+        os.link(secret, self.root / "workspace" / "hl")
+        self.grade(self.backend(), self.request("hl"))
+        self.assertFalse((self.root / "seen-workspace" / "hl").exists())
+
+    def test_cancel_applies_while_the_workspace_streams(self):
+        os.environ["FAKE_MODE"] = "sleep"
+        launched = execution.launch(self.request("c"), self.backend(), workspace=str(self.root / "workspace"),
+                                    evidence_root=str(self.root / "evidence"))
+        launched.cancel()
+        self.assertEqual("cancel", launched.result(60)["outcome"])
 
     def test_container_that_is_not_confirmed_gone_reads_nothing(self):
         os.environ["FAKE_MODE"] = "stuck"
