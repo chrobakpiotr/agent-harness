@@ -1,0 +1,67 @@
+# AH5-05b — Coding-agent CLI backend (subscription login, no spend)
+
+- Status: **implemented**, pending independent evaluation and a human smoke test.
+- Source: agent-benchmark AB5-07 (no-spend pilot): a backend that runs a coding-agent CLI on its own login and
+  reports the CLI's usage. Extends AH5-05a (ADR 0004); contract v1/v2 unchanged. Independent of Showcase.
+
+## Scope
+
+`agent_harness.execution.AgentCliBackend(provider, prompt, *, candidate=None, env=None, grace=2.0,
+output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process group, timeout/cancel/drain as AH5-05a):
+
+- Fixed command lines. The request's `provider` must equal the backend's, and its `model` (a contract id) is passed
+  through:
+  - `claude -p --model <model> --output-format json --permission-mode acceptEdits --settings <sandbox>
+    --disallowedTools WebFetch,WebSearch`;
+  - `codex exec -m <model> --sandbox workspace-write --skip-git-repo-check --json --ephemeral -`.
+
+  The prompt is always written to stdin, never passed as an argument, so a prompt such as `--bare` cannot become a
+  flag.
+
+  No caller arguments, so `--bare`, `bypassPermissions`, `danger-full-access` and `--dangerously-*` cannot appear.
+- Claude sandbox settings: `sandbox.enabled`, `failIfUnavailable: true` (no unsandboxed fallback),
+  `allowUnsandboxedCommands: false`, `network.allowedDomains: []`, `autoAllowBashIfSandboxed: true`. WebFetch and
+  WebSearch run outside the sandbox, so they are disallowed.
+- Credentials: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CODEX_API_KEY` and `OPENAI_API_KEY` are removed from the
+  child's environment, so the CLI uses its own subscription login.
+- Refusal before launch (`rejected`, nothing started, nothing written; `backend.rejection_reason` says why):
+  - provider mismatch → `CAPABILITY_UNSUPPORTED`;
+  - CLI not on `PATH` → `BACKEND_UNAVAILABLE`;
+  - sandbox probe fails → `CAPABILITY_UNSUPPORTED`. Codex is probed with `codex sandbox <macos|linux> --full-auto --
+    true`; on Linux, Claude is probed for bubblewrap and socat. There is no fallback mode.
+- Output: stdout up to `output_limit` is kept as the named artifact `agent-output` (by digest). Usage becomes one
+  `provider` summary:
+  - Claude `usage.input_tokens/output_tokens/cache_read_input_tokens/cache_creation_input_tokens`, cache semantics
+    `separate`;
+  - Codex, summed over `turn.completed`: `input_tokens/output_tokens/cached_input_tokens`, cache semantics
+    `included_in_input`, cache writes unknown, so `partial`.
+
+  `is_error`, a non-`success` subtype, `turn.failed` or unreadable output → `error` / `PROVIDER_ERROR`, keeping any
+  usage reported. A single Claude `modelUsage` entry becomes `resolved_model`.
+- `isolation_level: controlled`, never qualified; the CLI's sandbox is not a qualified target (04b/ADR 0002).
+
+## Acceptance criteria
+
+- AC1: the exact command lines above, with the prompt on stdin; no billing variable reaches the child; no forbidden
+  flag in argv, even when the prompt looks like one.
+- AC2: usage from Claude JSON and summed Codex `turn.completed` events; every result validates (v1 and v2).
+- AC3: a failed sandbox probe → `rejected` / `CAPABILITY_UNSUPPORTED` with a reason, with the agent never started.
+- AC4: provider errors and unreadable output → `error` / `PROVIDER_ERROR`; output over the limit → no usage claimed.
+- AC5: cancel stops the CLI's process group (`cancel`, `drain: confirmed`); `ProcessBackend` behaviour unchanged.
+
+Tests: `tests/test_agent_cli.py` (fake `claude`/`codex` on `PATH`; no real provider calls).
+
+## Not verified offline (human smoke test before the pilot)
+
+- That `codex exec … -` reads the prompt from stdin (Claude `-p` does without a prompt argument).
+- The `codex sandbox` probe command and whether `workspace-write` starts in the target container.
+- That `autoAllowBashIfSandboxed` lets sandboxed Bash (tests) run in `-p` mode without a prompt; the Claude docs do
+  not name this key. If it does not, Claude cannot run tests and the two configurations are not equal.
+- The Claude JSON usage field names (the docs list only `result`, `session_id`, `total_cost_usd`).
+- Smoke test, on the logged-in machine with no API key exported: one `claude` and one `codex` request through
+  `launch`; check `outcome`, `usage_events` and the `agent-output` artifact.
+
+## Known limits
+
+- `output_limit` is checked after exit; a runaway CLI can still fill the disk (`ponytail` note in code).
+- `rejection_reason` is per backend instance; concurrent launches on one instance share it.

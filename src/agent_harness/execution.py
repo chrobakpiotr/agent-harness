@@ -16,9 +16,11 @@ import atexit
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -87,7 +89,8 @@ def launch(request, backend, *, workspace, evidence_root):
         if marker_path.exists():  # read-only: a reused ID is checked before anything else
             _check_binding(_marker_digest(marker_path), request)
         missing = [c for c in request["capabilities"] if c not in backend.capabilities]
-        code = getattr(backend, "rejection", None)
+        refuse = getattr(backend, "refuse", None)
+        code = refuse(request) if refuse is not None else getattr(backend, "rejection", None)
         if request.get("limits") is not None and not getattr(backend, "supports_limits", False):
             code = "CAPABILITY_UNSUPPORTED"  # never run a limited request without enforcing its limits
         if missing:
@@ -341,14 +344,36 @@ class ProcessBackend:
     def report(self):
         return _report(self)
 
+    _stdin = None  # bytes fed to the child's stdin, else /dev/null
+
+    def _argv(self, request):
+        return self.argv
+
+    def _output(self, request, roots):
+        return subprocess.DEVNULL
+
+    def _finish(self, body, request, roots):
+        return body
+
     def run(self, request, roots, cancelled, execution_id, started_at):
         workspace = Path(roots["workspace"])
+        output = self._output(request, roots)
         try:
-            child = subprocess.Popen(self.argv, cwd=workspace, env=self.env, start_new_session=True,
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            child = subprocess.Popen(self._argv(request), cwd=workspace, env=self.env, start_new_session=True,
+                                     stdin=subprocess.DEVNULL if self._stdin is None else subprocess.PIPE,
+                                     stdout=output, stderr=subprocess.DEVNULL)
+            if self._stdin is not None:
+                try:
+                    child.stdin.write(self._stdin)
+                except BrokenPipeError:
+                    pass
+                child.stdin.close()
         except OSError:
             now = _now()
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
+        finally:
+            if output is not subprocess.DEVNULL:
+                output.close()
         deadline = time.monotonic() + request["timeout_seconds"]
         outcome = None
         while child.poll() is None:
@@ -370,8 +395,9 @@ class ProcessBackend:
             source = (workspace / self.candidate).resolve()  # a symlink out of the workspace is not sealed
             if source.is_file() and workspace.resolve() in source.parents:
                 candidate = _seal(source, roots, request)
-        return self._body(outcome, child.returncode if outcome == "completed" else None,
-                          "confirmed" if drained else "unconfirmed", started_at, ended, candidate=candidate)
+        return self._finish(self._body(outcome, child.returncode if outcome == "completed" else None,
+                                       "confirmed" if drained else "unconfirmed", started_at, ended,
+                                       candidate=candidate), request, roots)
 
     def _stop_group(self, child):
         """Terminate whatever is left of the child's process group; True when it was observed empty."""
@@ -398,6 +424,159 @@ class ProcessBackend:
         return {"outcome": outcome, "exit_code": exit_code, "completion": None, "error_code": error_code,
                 "drain": drain, "started_at": started_at, "ended_at": ended_at, "attempts": [attempt],
                 "candidate": candidate, "artifacts": [], "usage_events": [], "usage_completeness": "unknown"}
+
+
+# Credentials that would bill an API account instead of the CLI's own subscription login.
+_BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY")
+_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
+# Claude Code's own Bash sandbox: no network, never an unsandboxed fallback (`failIfUnavailable`), sandboxed Bash
+# allowed without a prompt in `-p` mode. WebFetch/WebSearch run outside the sandbox and are disallowed separately.
+_CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
+                                "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []}}}
+_CODEX_SANDBOX = "workspace-write"
+
+
+class AgentCliBackend(ProcessBackend):
+    """A coding-agent CLI (``claude`` or ``codex``) run as a ``ProcessBackend`` child, on the CLI's own login.
+
+    The command line is fixed per provider; the request's ``provider`` must match and its ``model`` is passed
+    through. API-key variables are removed from the child's environment, so a run never bills an API account.
+    stdout is kept (up to ``output_limit`` bytes) in the evidence root and its usage report becomes one usage
+    summary. Before every launch the CLI's sandbox is probed; if it cannot start, the request is ``rejected``
+    with ``CAPABILITY_UNSUPPORTED`` and ``rejection_reason`` says why, with no fallback to another mode.
+    ``isolation_level`` stays ``controlled``: the CLI's sandbox is not a qualified target.
+    """
+
+    kind = "agent-cli"
+    capabilities = ("cancel", "usage")
+
+    def __init__(self, provider, prompt, *, candidate=None, env=None, grace=2.0, output_limit=8 << 20,
+                 sandbox_probe=None):
+        if provider not in ("claude", "codex"):
+            raise ValueError("provider must be 'claude' or 'codex'")
+        if not isinstance(prompt, str) or not prompt:
+            raise ValueError("prompt must be a non-empty string")
+        env = dict(os.environ if env is None else env)
+        for name in _BILLING_ENV:
+            env.pop(name, None)
+        super().__init__([], candidate=candidate, env=env, grace=grace)
+        self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
+        self._stdin = prompt.encode("utf-8")
+        self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
+        self.rejection_reason = None
+
+    def refuse(self, request):
+        """A contract error code when this request must not launch (nothing started, nothing written)."""
+        self.rejection_reason = None
+        if request["provider"] != self.provider or not _MODEL.fullmatch(request["model"]):
+            self.rejection_reason = "request provider/model does not match this backend"
+            return "CAPABILITY_UNSUPPORTED"
+        if shutil.which(self.provider, path=self.env.get("PATH")) is None:
+            self.rejection_reason = f"{self.provider} executable not found on PATH"
+            return "BACKEND_UNAVAILABLE"
+        try:
+            probe = subprocess.run(self.sandbox_probe, check=False, env=self.env, stdin=subprocess.DEVNULL,
+                                   capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.rejection_reason = f"sandbox probe failed: {error}"
+            return "CAPABILITY_UNSUPPORTED"
+        if probe.returncode != 0:
+            detail = (probe.stderr or probe.stdout).decode("utf-8", "replace").strip()[:500]
+            self.rejection_reason = f"sandbox unavailable (exit {probe.returncode}): {detail}"
+            return "CAPABILITY_UNSUPPORTED"
+        return None
+
+    def _argv(self, request):
+        model = request["model"]
+        # The prompt goes in on stdin, never as an argument, so a prompt such as "--bare" is never a flag.
+        if self.provider == "claude":
+            return ["claude", "-p", "--model", model, "--output-format", "json",
+                    "--permission-mode", "acceptEdits", "--settings", json.dumps(_CLAUDE_SETTINGS),
+                    "--disallowedTools", "WebFetch,WebSearch"]
+        return ["codex", "exec", "-m", model, "--sandbox", _CODEX_SANDBOX, "--skip-git-repo-check", "--json",
+                "--ephemeral", "-"]
+
+    def _output_path(self, request, roots):
+        return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/agent-output"
+
+    def _output(self, request, roots):
+        path = self._output_path(request, roots)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path.open("wb")
+
+    def _finish(self, body, request, roots):
+        path = self._output_path(request, roots)
+        size = path.stat().st_size
+        # ponytail: the limit is checked after exit, so a runaway CLI can still fill the disk; enforce it while
+        # streaming if that ever matters.
+        if size > self.output_limit:
+            return body
+        data = path.read_bytes()
+        body["artifacts"] = [{"name": "agent-output", "path": str(path.relative_to(roots["evidence_root"])),
+                              "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": size}]
+        units, failed, model = (_claude_report if self.provider == "claude" else _codex_report)(data)
+        if units is not None:
+            body["usage_events"] = [{"contract_version": request["contract_version"], "event_id": "usage-1",
+                                     "attempt_id": "attempt-1", "source": "provider", "kind": "summary",
+                                     "units": units,
+                                     "cache_semantics": "separate" if self.provider == "claude"
+                                     else "included_in_input"}]
+            body["usage_completeness"] = "complete" if None not in units.values() else "partial"
+        if body["outcome"] == "completed" and failed:
+            body.update(outcome="error", exit_code=None, error_code="PROVIDER_ERROR")
+            body["attempts"][0]["outcome"] = "error"
+        body["resolved_model"] = model
+        return body
+
+
+def _default_probe(provider):
+    system = "macos" if sys.platform == "darwin" else "linux"
+    if provider == "codex":  # the same sandbox the run uses; `codex sandbox <os>` runs one command in it
+        return ["codex", "sandbox", system, "--full-auto", "--", "true"]
+    if system == "linux":  # Claude Code's Linux sandbox needs bubblewrap and socat; macOS uses Seatbelt
+        return ["sh", "-c", "command -v bwrap >/dev/null && command -v socat >/dev/null && bwrap --ro-bind / / true"]
+    return ["claude", "--version"]
+
+
+def _claude_report(data):
+    """(units, failed, model) from ``claude -p --output-format json``; units None when unreadable."""
+    try:
+        doc = json.loads(data)
+        usage = doc["usage"]
+        units = {"input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
+                 "cache_read_tokens": usage.get("cache_read_input_tokens"),
+                 "cache_write_tokens": usage.get("cache_creation_input_tokens")}
+    except (ValueError, KeyError, TypeError):
+        return None, True, None
+    if any(v is not None and (type(v) is not int or v < 0) for v in units.values()):
+        return None, True, None
+    models = doc.get("modelUsage")
+    model = next(iter(models)) if isinstance(models, dict) and len(models) == 1 else None
+    return units, doc.get("is_error") is not False or doc.get("subtype") != "success", model
+
+
+def _codex_report(data):
+    """(units, failed, model) summed over ``turn.completed`` events of ``codex exec --json``."""
+    totals, turns, failed = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0}, 0, False
+    for line in data.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        kind = event.get("type") if isinstance(event, dict) else None
+        if kind in ("turn.failed", "error"):
+            failed = True
+        elif kind == "turn.completed":
+            usage = event.get("usage") or {}
+            values = (usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cached_input_tokens", 0))
+            if any(type(v) is not int or v < 0 for v in values):
+                return None, True, None
+            for key, value in zip(totals, values):
+                totals[key] += value
+            turns += 1
+    if not turns:
+        return None, True, None
+    return {**totals, "cache_write_tokens": None}, failed, None
 
 
 def _group_alive(pgid):
