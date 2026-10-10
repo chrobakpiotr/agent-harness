@@ -1,6 +1,7 @@
 # AH5-04c — Grading on the qualified target (`QualifiedDockerBackend`)
 
-- Status: **draft for consumer review** (agent-benchmark). Nothing implemented.
+- Status: **draft for consumer review** (agent-benchmark); owner decisions D1 (a) and D2 (timeout/oom only) taken
+  2026-10-10, D3 open. Nothing implemented.
 - Source: master plan AH5-04c ("hardened live"); agent-benchmark AB5-07 (blocking: grading model-written code
   needs a qualified target); AH5-04b accepted report `sha256:f7cdab99…2600` (target
   `showcase-docker-desktop-linux-guest`, job `local-20261008T205033Z-7939417fefb5`), whose capability report says
@@ -52,7 +53,7 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
 
 ## Decisions needed
 
-- **D1 — qualification per job (blocking).** ADR 0002: "nothing stays qualified between jobs";
+- **D1 — qualification per job. Decided: (a).** ADR 0002: "nothing stays qualified between jobs";
   `validate_capability_binding` requires the caller's `job_id`. The accepted 04b report qualifies only its own
   local job.
   - (a) **Recommended:** every grading session runs Showcase's qualification (26 checks, a few minutes on Docker
@@ -60,7 +61,7 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
     It requires the Showcase qualification runner to be callable by the benchmark (Showcase-owned script).
   - (b) Amend ADR 0002 so a persistent local target stays qualified while the live tuple (engine, kernel, image,
     policy digest) is unchanged. Faster, but weaker: host changes that do not alter the tuple go unnoticed.
-- **D2 — fired limits that the host cannot observe.** PIDs and disk exhaustion happen inside the container
+- **D2 — fired limits that the host cannot observe. Decided: `timeout`/`oom` only.** PIDs and disk exhaustion happen inside the container
   (`EAGAIN`/`ENOSPC`); the host sees only the exit code. Proposal: report `fired` only for `timeout` and `oom`, with
   `fired: null` otherwise. Alternatively, the grading command reports them in a sidecar file, which is untrusted
   output.
