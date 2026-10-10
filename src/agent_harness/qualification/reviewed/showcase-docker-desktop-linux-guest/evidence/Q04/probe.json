@@ -1,0 +1,14 @@
+{
+  "check_id": "Q04",
+  "details": {
+    "exit_code": 0,
+    "protected_path_written": false
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "PROTECTED_WRITE_GRANDCHILD",
+  "reason_code": "PROTECTED_WRITE_DENIED",
+  "status": "pass",
+  "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    from pathlib import Path; Path('/protected/attempted-write').write_text('bad')\n                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"/usr/local/lib/python3.13/pathlib/_local.py\", line 555, in write_text\n    return PathBase.write_text(self, data, encoding, errors, newline)\n           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/pathlib/_abc.py\", line 651, in write_text\n    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:\n         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/pathlib/_local.py\", line 537, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nOSError: [Errno 30] Read-only file system: '/protected/attempted-write'\n",
+  "stdout": "grandchild-denied\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

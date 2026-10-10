@@ -1,0 +1,97 @@
+Independent qualification review
+
+subject: sha256:a59e74b4bdc2ba173367e81d9c906aa41a95bc85588d6956fb974428d85a9e2e
+verdict: pass
+reviewer: harness-independent-reviewer-20261010b
+date: 2026-10-10
+report: /Users/pau/.cache/agent-harness-qualify/reference-20261010T194859Z/report.json (author agent-harness-qualify, created_at 2026-10-10T19:50:27Z)
+target: showcase-docker-desktop-linux-guest
+job_id: ref-20261010T194859Z
+tuple: host Docker_Desktop, engine DockerEngine_29.8.2, kernel 7.0.14-linuxkit,
+       workload_image sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5,
+       probe_digest sha256:e3f5d77bcd1e095f2a05ee0677907f224af0acf2ca4d29c2d4572656a6031c84
+policy_digest: sha256:bbf60e97a0afa5e405401f15daa661b37af8cbfc7f7f064ad39ecdc7c3370077
+code: /Users/pau/IdeaProjects/agent-harness HEAD b18c8bc
+
+Subject
+- contract.review_subject(report) = the subject above; equals session.json qualification_digest.
+
+Report and evidence integrity
+- Exactly Q01-Q16 and B1-B10, each once, all result pass; contract.validate_qualification_report accepts the report.
+- Each check has one evidence file <ID>/probe.json; recorded sha256 and size match the bytes on disk; all 26 digests distinct.
+- Every probe.json has check_id equal to its check, status pass, target_id showcase-docker-desktop-linux-guest, job_id ref-20261010T194859Z.
+- qualification_passes(report, evidence) is False before a review is attached, as expected.
+
+Binding to code and live target
+- qualification.probe_digest() at HEAD = tuple.probe_digest. qualification.policy_digest() at HEAD = report policy_digest.
+- b_probes.py, q_lifecycle.py, q_probes.py, report.py byte-identical to Showcase 830c5e6 tooling/agent-harness/qualification/.
+- __init__.py (in PROBE_MODULES, unmodified vs HEAD) runs run_q01_q10, run_q11_q16, run_b1_b10 against the three Docker
+  probe targets when the tuple is fully observed, or records every check not-run with TARGET_IDENTITY_UNAVAILABLE when
+  not; records come from the probes unchanged except job_id/target_id stamping (_persist_check_job_id), and
+  assemble_report records each probe's status. capability/session are derived from contract.qualification_passes. Faithful.
+- DockerProbeTarget._base_args() + the b_probes /workspace tmpfs (size=251658240) == execution.QUALIFIED_RUN_FLAGS
+  exactly; DockerGradingProbeTarget inherits _base_args; B8 disk and B10 run with the full flag set.
+- Live, read-only: docker version 29.8.2; docker info linux|Docker Desktop|7.0.14-linuxkit; image inspect RepoDigests
+  python@sha256:9d72651c...15d5. Matches the tuple. No leftover showcase-* containers.
+
+Per-check findings
+- Q01 PERMITTED_WRITE: exit 0, stdout allowed-write, protected_path_written false. pass.
+- Q02 PROTECTED_WRITE_DIRECT: stdout denied, protected_path_written false. pass.
+- Q03 PROTECTED_WRITE_CHILD: child gets EROFS on /protected, stdout child-denied, not written. pass.
+- Q04 PROTECTED_WRITE_GRANDCHILD: grandchild EROFS, stdout grandchild-denied, not written. pass.
+- Q05 CONTAINMENT_CHILD: descendant visible in docker top (docker-init/python3/python3), container exited and removed. pass.
+- Q06 CONTAINMENT_GRANDCHILD: grandchild pid recorded, visible, exited, removed. pass.
+- Q07 CONTAINMENT_PARENT_EXIT: child started, parent exit stopped the unit (exited 0), removed. pass.
+- Q08 CONTAINMENT_NEW_PROCESS_GROUP: child in its own PGID still inside the container, drained, removed. pass.
+- Q09 CONTAINMENT_NEW_SESSION: child in its own SID still contained, drained, removed. pass.
+- Q10 CONTAINMENT_BACKGROUND_SHELL: backgrounded sh/sleep contained, drained, removed. pass.
+- Q11 EXECUTION_IDENTITY_DURABLE: identity fsynced, read after controller exit, two controller pids, generation 1. pass.
+- Q12 EXECUTION_IDENTITY_STALE_REJECTED: persisted generation 2, supplied 1, rejected. pass.
+- Q13 CANCEL_EXECUTION_UNIT: cancel requested, whole unit cancelled and drained; identity terminal process_table_empty. pass.
+- Q14 DRAIN_EXECUTION_UNIT: process table present before, empty after drain. pass.
+- Q15 RESTART_ACTIVE: controller killed, same active generation recovered, cleanup drained. pass.
+- Q16 RESTART_DRAINED: terminal record fsynced, relaunch attempted after controller kill, not admitted. pass.
+- B1 HIDDEN_MATERIAL_ABSENT: hidden bundle created outside target, not mounted, canary absent in container. pass.
+- B2 HIDDEN_EXPECTED_VALUES_UNREADABLE: host expected-value file created, path not mounted, unreadable. pass.
+- B3 FRESH_DESTROYED_SANDBOX: second sandbox does not see the first's marker. pass.
+- B4 FILESYSTEM_AND_MOUNT_BOUNDARIES: uid 65532, root ro, input ro, workspace rw, tmpfs; mountinfo valid, exact external
+  allowlist, tmpfs and daemon mounts match, no protected overlaps or unexpected mounts. pass.
+- B5 NO_NETWORK_EGRESS_DNS_OR_METADATA: only lo active (tunnel stubs down), no non-loopback routes, TCP/UDP egress and
+  metadata ENETUNREACH, DNS fails. pass.
+- B6 EXACT_ENVIRONMENT_NO_INHERITED_CREDENTIALS: host env and file canaries absent, ANTHROPIC_API_KEY/AWS_ACCESS_KEY_ID
+  not inherited, mounts exact. pass.
+- B7 NONROOT_NO_CAPS_NO_NEW_PRIVS_SECCOMP: uid 65532, CapEff 0, NoNewPrivs 1, Seccomp 2 (filter), raw socket, setuid
+  and mount blocked. pass.
+- B8 RESOURCE_LIMITS_AND_BOUNDED_OUTPUT: cgroup exact cpu.max 100000 100000, memory.max 536870912, memory.swap.max 0,
+  pids.max 64; disk 240 MiB workspace (251658240) + 16 MiB /tmp (16777216) = 268435456 then ENOSPC, /dev/shm write
+  blocked, both tmpfs; memory OOM-killed exit 137; pids errno 11 at 63 children; wall timeout stopped by container id,
+  exit 137; output captured 1048576 bytes = required max, truncated true. pass.
+- B9 BOUNDED_ARTIFACT_AFTER_SANDBOX_DESTROYED: container removed (exit 0) before the 12-byte artifact was read; bytes
+  match written. pass.
+- B10 PER_GRADE_TARGET_AND_LIMIT_PROVENANCE: re-validated here: contract.validate_request(request) and
+  contract.validate_result(result, request) accept; request_digest recomputes to the result's; candidate target
+  validates with validate_target(qualified=False) and is rejected with qualified=True (qualification_digest null);
+  isolation_level unqualified, outcome completed, exit 0, drain confirmed, applied limits equal request limits incl.
+  timeout_seconds 10, fired null; observed cgroup limits exact. pass.
+
+Comparison
+- Showcase accepted run (AH5-04B-QUAL-001 evidence/selected, job local-20261008T205033Z-7939417fefb5): same host,
+  engine, kernel, image; all 26 checks pass with the same reason codes and details equal once per-run identifiers
+  (container/execution ids, pids, random paths, artifact digest, timestamps) are set aside, including B8 wall/memory
+  and B10 request/result shape. Its policy_digest differs by design (Showcase spec digest vs Harness policy digest).
+- Earlier Harness run reference-20261010T192515Z: same 26 passes with equivalent details; probe_digest
+  sha256:5c8955f0... and policy_digest sha256:da778059... differ because b18c8bc added __init__.py to the probe digest
+  and the grading layout to the policy digest. That run cannot serve as the reference for HEAD; this one can.
+
+Observations (not failures)
+- Q11-Q16 lifecycle containers (q_lifecycle.py) use the qualified flags minus the /dev/shm and /workspace tmpfs plus
+  --init and an /evidence bind; verbatim from Showcase and identical to the accepted run.
+- The backend's /output bind mount is not exercised by the probes (ADR 0002 amendment known gap; covered by policy digest).
+- job_id is a local correlation id; evidence proves structure and binding, not who produced it or when (ADR 0002:
+  authenticity out of scope).
+- During review the working tree gained an untracked src/agent_harness/qualification/reference.py and a pyproject.toml
+  package-data edit (mtimes after this run). Neither is in PROBE_MODULES; probe_digest and policy_digest still equal the
+  report. If reference.py is ever added to PROBE_MODULES, this review no longer applies.
+
+Scope: this review qualifies only this tuple + probe_digest + policy_digest on this Docker Desktop Linux guest. It
+grants no launch authority and makes no claim about other hosts, GitHub runners or production.

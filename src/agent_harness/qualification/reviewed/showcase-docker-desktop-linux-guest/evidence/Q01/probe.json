@@ -1,0 +1,14 @@
+{
+  "check_id": "Q01",
+  "details": {
+    "exit_code": 0,
+    "protected_path_written": false
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "PERMITTED_WRITE",
+  "reason_code": "PERMITTED_WRITE_OBSERVED",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "allowed-write\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

@@ -1,0 +1,15 @@
+{
+  "check_id": "B3",
+  "details": {
+    "first_exit": 0,
+    "second_exit": 0,
+    "second_sandbox_marker_absent": true
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "FRESH_DESTROYED_SANDBOX",
+  "reason_code": "SANDBOX_STATE_NOT_PERSISTED",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "marker-absent\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

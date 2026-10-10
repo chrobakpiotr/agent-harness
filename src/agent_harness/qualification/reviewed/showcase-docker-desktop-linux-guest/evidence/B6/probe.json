@@ -1,0 +1,26 @@
+{
+  "check_id": "B6",
+  "details": {
+    "daemon_mounts_match": true,
+    "exact_external_allowlist": true,
+    "exit_code": 0,
+    "host_env_canary_absent": true,
+    "host_file_canary_absent": true,
+    "inherited_env": {
+      "ANTHROPIC_API_KEY": false,
+      "AWS_ACCESS_KEY_ID": false,
+      "SHOWCASE_HOST_CANARY": false
+    },
+    "mountinfo_valid": true,
+    "protected_overlaps": [],
+    "tmpfs_mounts_match": true,
+    "unexpected_external_mounts": []
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "EXACT_ENVIRONMENT_NO_INHERITED_CREDENTIALS",
+  "reason_code": "HOST_ENV_AND_CREDENTIALS_ABSENT",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "{\"inherited_env\": {\"SHOWCASE_HOST_CANARY\": false, \"AWS_ACCESS_KEY_ID\": false, \"ANTHROPIC_API_KEY\": false}, \"host_file_canary_absent\": true, \"host_env_canary_absent\": true, \"mountinfo_valid\": true, \"protected_overlaps\": [], \"unexpected_external_mounts\": [], \"exact_external_allowlist\": true, \"tmpfs_mounts_match\": true, \"daemon_mounts_match\": true}",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

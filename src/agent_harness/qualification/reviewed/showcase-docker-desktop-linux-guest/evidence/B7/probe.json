@@ -1,0 +1,20 @@
+{
+  "check_id": "B7",
+  "details": {
+    "capeff": "0000000000000000",
+    "exit_code": 0,
+    "mount": "blocked",
+    "no_new_privs": "1",
+    "raw_socket": "blocked",
+    "seccomp": "2",
+    "setuid": "blocked",
+    "uid": 65532
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "NONROOT_NO_CAPS_NO_NEW_PRIVS_SECCOMP",
+  "reason_code": "PRIVILEGES_RESTRICTED",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "{\"uid\": 65532, \"capeff\": \"0000000000000000\", \"no_new_privs\": \"1\", \"seccomp\": \"2\", \"raw_socket\": \"blocked\", \"setuid\": \"blocked\", \"mount\": \"blocked\"}\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

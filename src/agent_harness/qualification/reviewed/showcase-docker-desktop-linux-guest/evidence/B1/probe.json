@@ -1,0 +1,15 @@
+{
+  "check_id": "B1",
+  "details": {
+    "exit_code": 0,
+    "hidden_bundle_created_outside_target": true,
+    "host_bundle_mounted": false
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "HIDDEN_MATERIAL_ABSENT",
+  "reason_code": "HIDDEN_MATERIAL_ABSENT",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "hidden-canary-absent\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

@@ -152,3 +152,14 @@ class QualifyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShippedReferenceTest(unittest.TestCase):
+    def test_shipped_reference_passes_and_names_this_librarys_code_and_policy(self):
+        from agent_harness.qualification.reference import reviewed_reference
+        report, evidence = reviewed_reference()
+        self.assertTrue(contract.qualification_passes(report, evidence))
+        self.assertEqual((qualification.probe_digest(), qualification.policy_digest()),
+                         (report["tuple"]["probe_digest"], report["policy_digest"]))
+        with self.assertRaises(contract.ContractError):
+            reviewed_reference("no-such-target")

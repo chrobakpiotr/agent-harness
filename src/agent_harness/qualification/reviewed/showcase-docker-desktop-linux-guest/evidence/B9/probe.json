@@ -1,0 +1,20 @@
+{
+  "check_id": "B9",
+  "details": {
+    "artifact_bytes": 12,
+    "artifact_matches_written_bytes": true,
+    "artifact_read": true,
+    "artifact_sha256": "22088ecf0cae358847d59ab20eef014d79fb25a2a0d530d7b6863be48cdea6ab",
+    "container_destroyed_before_result_read": true,
+    "container_id": "3b7f778967a928e9e34b5f7bd6470df0cc852ef6114e8034b109707ca06552da",
+    "inventory_exit_code": 0,
+    "remove_exit_code": 0
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "BOUNDED_ARTIFACT_AFTER_SANDBOX_DESTROYED",
+  "reason_code": "BOUNDED_ARTIFACT_AFTER_DESTROY",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

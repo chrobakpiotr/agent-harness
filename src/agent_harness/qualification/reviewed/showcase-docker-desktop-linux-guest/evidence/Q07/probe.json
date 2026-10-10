@@ -1,0 +1,16 @@
+{
+  "check_id": "Q07",
+  "details": {
+    "child_started": true,
+    "container_id": "aca79b9a07e09daf6cad4cab717d3a1c9d154c59980e78b76f4464985b5c6571",
+    "removed": true,
+    "unit_stopped": true
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "CONTAINMENT_PARENT_EXIT",
+  "reason_code": "PARENT_EXIT_DRAINED_UNIT",
+  "status": "pass",
+  "stderr": "\n\nError response from daemon: container aca79b9a07e09daf6cad4cab717d3a1c9d154c59980e78b76f4464985b5c6571 is not running\n\n",
+  "stdout": "aca79b9a07e09daf6cad4cab717d3a1c9d154c59980e78b76f4464985b5c6571\n\n8\nexited 0\n\n\naca79b9a07e09daf6cad4cab717d3a1c9d154c59980e78b76f4464985b5c6571\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

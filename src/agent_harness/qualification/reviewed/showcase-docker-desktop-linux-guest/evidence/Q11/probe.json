@@ -1,0 +1,22 @@
+{
+  "check_id": "Q11",
+  "details": {
+    "container_id": "be30edc682cd292d640d34f189a99fb0ebda8f46142e326e46fe3bd5019fd47e",
+    "controller_pid": 39064,
+    "controller_pids": [
+      39064,
+      39087
+    ],
+    "execution_id": "f1a686dc91224d0893c84a7af1fa4d8b",
+    "generation": 1,
+    "identity_fsynced": true,
+    "identity_read_after_controller_exit": true
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "EXECUTION_IDENTITY_DURABLE",
+  "reason_code": "EXECUTION_IDENTITY_DURABLE",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

@@ -135,3 +135,24 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
 | 3 | Hardlinks in the workspace were followed. | Streamed members are directories and single-link regular files only. AH5-05b's diff candidate is withheld if the workspace holds a hardlink. |
 | 4 | Kill and absence check went by name; stdout pipe left open. | Kill, inspect, `rm` and `ps --filter id=` go by the 64-hex container id; stdout is closed. The container environment is the image's ENV plus `GRADING_ENV`, with nothing from the host. |
 | 5 | Untested guards. | New tests: the exact `docker run` argv (no extra flag or mount), session target/policy mismatch, tampered session evidence, engine-only drift, a directory `answers.json`, cancel during the stream, the oversized workspace, the hardlink. |
+
+## AH5-04c-1 and the reviewed reference (2026-10-10)
+
+- `agent_harness.qualification`: the probes moved verbatim (`provenance.md`, parity test on Git blob ids);
+  `qualify(job_id, out, *, reviewed=None, timeout_seconds=30)`; `probe_digest()` covers the probe and
+  orchestration modules; `policy_digest()` covers the flags, limits, grading environment, the backend's mount layout
+  and entrypoint, and the check list. `qualification.reference.reviewed_reference(target)` returns the shipped
+  reviewed reference.
+- Independent evaluation of `qualify` and the session flow: pass with conditions, all fixed in `b18c8bc` (digest
+  coverage, session pinned to the installed digests, out-dir symlink check before resolve, `reviewed` validated before
+  any probe, unsafe `job_id` refused, flag-equality and digest tests).
+- Reviewed reference: job `ref-20261010T194859Z`, all 26 checks pass, independent review
+  `harness-independent-reviewer-20261010b` verdict pass, shipped as
+  `qualification/reviewed/showcase-docker-desktop-linux-guest/` (digest `sha256:018ac943…`, probe digest
+  `sha256:e3f5d77b…`, policy digest `sha256:bbf60e97…`).
+- End to end on Docker Desktop: a session `qualify(..., reviewed=reviewed_reference(), timeout_seconds=60)`
+  qualified automatically, and `QualifiedDockerBackend(..., reviewed=...)` graded one request (`completed`,
+  `qualified`, correct answers).
+- Operational note: under load a probe can hit its Docker command timeout (`PROBE_EXCEPTION`, `not-run`); the
+  session then does not qualify. Use `timeout_seconds=60`, run the session without other Docker load, and retry
+  with a new `job_id`. Changing the default in code would change `probe_digest` and void the review.

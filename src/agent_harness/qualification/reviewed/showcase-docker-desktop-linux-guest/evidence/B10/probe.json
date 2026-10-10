@@ -1,0 +1,112 @@
+{
+  "check_id": "B10",
+  "details": {
+    "candidate_target": {
+      "id": "showcase-docker-desktop-linux-guest",
+      "image_digest": "sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5",
+      "qualification_digest": null
+    },
+    "configured_limits": {
+      "exact_match": true,
+      "expected": {
+        "cpu.max": "100000 100000",
+        "memory.max": "536870912",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      },
+      "observed": {
+        "cpu.max": "100000 100000",
+        "memory.max": "536870912",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    "container_state": {
+      "container_id": "e0dfb6c5a968c0219da7df4cc2c11e22875e6394024c90bc2e09b2c7d8d8daad",
+      "exit_code": 0,
+      "oom_killed": false,
+      "status": "exited"
+    },
+    "request": {
+      "capabilities": [],
+      "config_digest": "sha256:f231cbec74648376748311479874a6009afeb53127425f77390902c81de8e38c",
+      "contract_version": 2,
+      "input_bindings": [
+        {
+          "name": "grading-probe",
+          "sha256": "sha256:a53c59096bc8741d7f05d4bc18177becffa9e7844919e7c32fbcbf61a2c29509"
+        }
+      ],
+      "limits": {
+        "cpus": 1,
+        "disk_bytes": 268435456,
+        "memory_bytes": 536870912,
+        "output_bytes": 1048576,
+        "pids": 64
+      },
+      "max_attempts": 1,
+      "model": "pinned-workload-image",
+      "provider": "showcase-docker-grading-probe",
+      "request_id": "b10-f9254de2ea854e049860031c1ae664df",
+      "settings": {},
+      "task_digest": "sha256:a53c59096bc8741d7f05d4bc18177becffa9e7844919e7c32fbcbf61a2c29509",
+      "timeout_seconds": 10,
+      "trial_id": "b10-trial-f9254de2ea854e049860031c1ae664df"
+    },
+    "result": {
+      "artifacts": [],
+      "attempts": [
+        {
+          "attempt_id": "b10-attempt-8591e8690f004cf898acfb864ba19601",
+          "ended_at": "2026-10-10T19:50:26.622835Z",
+          "outcome": "completed",
+          "started_at": "2026-10-10T19:50:25.300512Z"
+        }
+      ],
+      "cancel_requested": false,
+      "candidate": null,
+      "completion": null,
+      "contract_version": 2,
+      "drain": "confirmed",
+      "ended_at": "2026-10-10T19:50:26.622835Z",
+      "error_code": null,
+      "execution_id": "b10-exec-10d1f204b8af489397d11f67f747b08f",
+      "exit_code": 0,
+      "isolation_level": "unqualified",
+      "limits": {
+        "applied": {
+          "cpus": 1,
+          "disk_bytes": 268435456,
+          "memory_bytes": 536870912,
+          "output_bytes": 1048576,
+          "pids": 64,
+          "timeout_seconds": 10
+        },
+        "fired": null,
+        "output_truncated": false
+      },
+      "outcome": "completed",
+      "request_digest": "sha256:a24918ce8496ed7363cd97a2a1b5bae0197d67ca1d7177bf43e00e62e63f2e1b",
+      "request_id": "b10-f9254de2ea854e049860031c1ae664df",
+      "resolved_model": null,
+      "started_at": "2026-10-10T19:50:25.300512Z",
+      "target": {
+        "id": "showcase-docker-desktop-linux-guest",
+        "image_digest": "sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5",
+        "qualification_digest": null
+      },
+      "usage_completeness": "unknown",
+      "usage_events": [],
+      "versions": {
+        "backend": "docker-probe"
+      }
+    }
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "PER_GRADE_TARGET_AND_LIMIT_PROVENANCE",
+  "reason_code": "CANDIDATE_RESULT_VALIDATED",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "{\"cpu.max\": \"100000 100000\", \"memory.max\": \"536870912\", \"memory.swap.max\": \"0\", \"pids.max\": \"64\"}\n",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

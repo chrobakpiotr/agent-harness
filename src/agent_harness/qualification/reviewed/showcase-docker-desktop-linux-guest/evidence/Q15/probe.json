@@ -1,0 +1,22 @@
+{
+  "check_id": "Q15",
+  "details": {
+    "cleanup_drained": true,
+    "container_id": "ed1baa38aaf62d4fc59bad0dde78ddd99af6fa504433ed1643e404071e62b6ba",
+    "controller_killed": true,
+    "controller_pids": [
+      39263,
+      39286
+    ],
+    "execution_id": "65b33d586c594f89a6f53ab5267996cf",
+    "generation": 1,
+    "same_active_generation_recovered": true
+  },
+  "job_id": "ref-20261010T194859Z",
+  "name": "RESTART_ACTIVE",
+  "reason_code": "RESTART_ACTIVE",
+  "status": "pass",
+  "stderr": "",
+  "stdout": "",
+  "target_id": "showcase-docker-desktop-linux-guest"
+}

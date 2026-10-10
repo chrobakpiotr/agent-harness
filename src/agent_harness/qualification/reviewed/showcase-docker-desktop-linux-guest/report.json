@@ -1,0 +1,313 @@
+{
+  "author": "agent-harness-qualify",
+  "checks": [
+    {
+      "evidence": [
+        {
+          "path": "Q01/probe.json",
+          "sha256": "sha256:e87d4a4bc7beb13f1cfad2a64f48613d2da8bfe3f0175dc97be721e2dd4c408f",
+          "size": 331
+        }
+      ],
+      "id": "Q01",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q02/probe.json",
+          "sha256": "sha256:3643dc46e1d36ba6804aeac49de99168b271a3d64c30cf38e65ce877950ff018",
+          "size": 329
+        }
+      ],
+      "id": "Q02",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q03/probe.json",
+          "sha256": "sha256:31c7e21c518f4f6752028ab202e15df401e7c91608eac52146b1e43333236d69",
+          "size": 1338
+        }
+      ],
+      "id": "Q03",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q04/probe.json",
+          "sha256": "sha256:1e155b8e62e5781e356be68eaeef446eddbf5d272cf8ef29e537b1c3dc528364",
+          "size": 1348
+        }
+      ],
+      "id": "Q04",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q05/probe.json",
+          "sha256": "sha256:02e0a412431a3543c50ac9b2edba45416cfbd615036412865771155387f1a406",
+          "size": 1029
+        }
+      ],
+      "id": "Q05",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q06/probe.json",
+          "sha256": "sha256:7469a901ed0fc891a05146c55411cf0b36b7cdb1017ebfa2fb0bd3fa99cc7779",
+          "size": 1034
+        }
+      ],
+      "id": "Q06",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q07/probe.json",
+          "sha256": "sha256:ad074984d2352ad58ed53c6243c9f790720808f1d306dfd29052b8ccb3854b6f",
+          "size": 705
+        }
+      ],
+      "id": "Q07",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q08/probe.json",
+          "sha256": "sha256:6826acd4a62b09680f44cea751eb158a0aa321ecc42e5dd8d783bda69ba6d247",
+          "size": 1041
+        }
+      ],
+      "id": "Q08",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q09/probe.json",
+          "sha256": "sha256:24d4eba2cad74e2d4ba769297dd0c831af8832b48c6bd3a147545b3f0c44a064",
+          "size": 1035
+        }
+      ],
+      "id": "Q09",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q10/probe.json",
+          "sha256": "sha256:b6b42afd43591dec693218606a2773628f67b558cc52c726606f48e6ce4b88c5",
+          "size": 1124
+        }
+      ],
+      "id": "Q10",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q11/probe.json",
+          "sha256": "sha256:5cf9f82ef8ec2548746b4b1527d02cafcd951fb55a3ef193e436bd1287229169",
+          "size": 602
+        }
+      ],
+      "id": "Q11",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q12/probe.json",
+          "sha256": "sha256:33b250a2cd5253fd9d9ebff0cbfc21863ba954f09200146f02fb4248624eb706",
+          "size": 403
+        }
+      ],
+      "id": "Q12",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q13/probe.json",
+          "sha256": "sha256:b544d23d8cc2c4f58feae8aa70639d4d20c6cd99f5ca131b3e546ffbff8978da",
+          "size": 476
+        }
+      ],
+      "id": "Q13",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q14/probe.json",
+          "sha256": "sha256:90afe3e1ac22cca09e6dd1474f8557d215ca9b4b9385dc4d0c29c12368e1979c",
+          "size": 489
+        }
+      ],
+      "id": "Q14",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q15/probe.json",
+          "sha256": "sha256:6ad355aec9da8b3a74710de0361f60a6bcaf88114f23889a65905b0907ba8c6a",
+          "size": 576
+        }
+      ],
+      "id": "Q15",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "Q16/probe.json",
+          "sha256": "sha256:325a2b54506bc8c55a75c580c32c6e701d280770d582577fef6d175e6664112e",
+          "size": 741
+        }
+      ],
+      "id": "Q16",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B1/probe.json",
+          "sha256": "sha256:df7db3a8fb652e7d653cebfcfbc4df611e74a2022ab1ccae0f3e6b18dd13ef26",
+          "size": 389
+        }
+      ],
+      "id": "B1",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B2/probe.json",
+          "sha256": "sha256:e4b288df46a8770339a50b8c3b31f8a8564822c41ad762e60386f9da14416720",
+          "size": 493
+        }
+      ],
+      "id": "B2",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B3/probe.json",
+          "sha256": "sha256:c4bf79fcabf86846918e040cae1c3dda2447beabb291fd10f77ea1378ca144bb",
+          "size": 369
+        }
+      ],
+      "id": "B3",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B4/probe.json",
+          "sha256": "sha256:803487f7190efdff66dd9bfc4c0c7b164a2e3f2204d8c7910379caff180bb76d",
+          "size": 890
+        }
+      ],
+      "id": "B4",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B5/probe.json",
+          "sha256": "sha256:9b74636a843cb094fe3d46aa806148f38034dab5dfb1e3a030271d8b0ad41262",
+          "size": 1273
+        }
+      ],
+      "id": "B5",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B6/probe.json",
+          "sha256": "sha256:48723805739b986b376e6cf593f9bccda7db04e47fb0a48adefe3902dad57890",
+          "size": 1090
+        }
+      ],
+      "id": "B6",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B7/probe.json",
+          "sha256": "sha256:788e67ee02f51b47ed7df341831c9b3aa13788478a0a086bb3603ab13eacf9a3",
+          "size": 646
+        }
+      ],
+      "id": "B7",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B8/probe.json",
+          "sha256": "sha256:3f875e3c41721c7cbac7187eeadd49f8dbd75c98a87afe8a18ded1dd05e07309",
+          "size": 3271
+        }
+      ],
+      "id": "B8",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B9/probe.json",
+          "sha256": "sha256:735876b08f231828c161fba14236fae6d9883e5bfa4153ca93d742b690f94112",
+          "size": 674
+        }
+      ],
+      "id": "B9",
+      "result": "pass"
+    },
+    {
+      "evidence": [
+        {
+          "path": "B10/probe.json",
+          "sha256": "sha256:8c7fcf9194f5cd62f8c7188f40125d066ea6e2fce3e75813923ffeeaed8e34b7",
+          "size": 3661
+        }
+      ],
+      "id": "B10",
+      "result": "pass"
+    }
+  ],
+  "contract_version": 1,
+  "created_at": "2026-10-10T19:50:27Z",
+  "independent_review": {
+    "evidence": {
+      "path": "independent-review.txt",
+      "sha256": "sha256:2108b91101e74a0757aa8b85c301601f93da8ecbae5ffab4041209de1152f756",
+      "size": 8173
+    },
+    "reviewer": "harness-independent-reviewer-20261010b",
+    "subject": "sha256:a59e74b4bdc2ba173367e81d9c906aa41a95bc85588d6956fb974428d85a9e2e",
+    "verdict": "pass"
+  },
+  "policy_digest": "sha256:bbf60e97a0afa5e405401f15daa661b37af8cbfc7f7f064ad39ecdc7c3370077",
+  "target": "showcase-docker-desktop-linux-guest",
+  "tuple": {
+    "engine": "DockerEngine_29.8.2",
+    "host": "Docker_Desktop",
+    "job_id": "ref-20261010T194859Z",
+    "kernel": "7.0.14-linuxkit",
+    "probe_digest": "sha256:e3f5d77bcd1e095f2a05ee0677907f224af0acf2ca4d29c2d4572656a6031c84",
+    "workload_image": "sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5"
+  }
+}
