@@ -58,8 +58,9 @@ Tests: `tests/test_agent_cli.py` (fake `claude`/`codex` on `PATH`; no real provi
 - That `autoAllowBashIfSandboxed` lets sandboxed Bash (tests) run in `-p` mode without a prompt; the Claude docs do
   not name this key. If it does not, Claude cannot run tests and the two configurations are not equal.
 - The Claude JSON usage field names (the docs list only `result`, `session_id`, `total_cost_usd`).
-- Smoke test, on the logged-in machine with no API key exported: one `claude` and one `codex` request through
-  `launch`; check `outcome`, `usage_events` and the `agent-output` artifact.
+- Smoke test: `PYTHONPATH=src python3 scripts/smoke-agent-cli.py [--provider claude|codex|both]` on the logged-in
+  machine. It runs one small task per CLI and checks launch, completion, stdin prompt, sandboxed shell, blocked
+  network and usage (exit 0 = all pass).
 
 ## Known limits
 
