@@ -1,7 +1,7 @@
 # AH5-04c — Grading on the qualified target (`QualifiedDockerBackend`)
 
-- Status: **draft for consumer review** (agent-benchmark); owner decisions D1 (a) and D2 (timeout/oom only) taken
-  2026-10-10, D3 open. Nothing implemented.
+- Status: **accepted by agent-benchmark** (review of `9528dcb`, 2026-10-10); owner decisions D1–D5 below. Work
+  split: AH5-04c-1 (probes into Harness, `qualify`), ADR 0002 amendment (review per tuple), AH5-04c-2 (backend).
 - Source: master plan AH5-04c ("hardened live"); agent-benchmark AB5-07 (blocking: grading model-written code
   needs a qualified target); AH5-04b accepted report `sha256:f7cdab99…2600` (target
   `showcase-docker-desktop-linux-guest`, job `local-20261008T205033Z-7939417fefb5`), whose capability report says
@@ -82,3 +82,36 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
   `qualification_digest`. A real run on the qualified Docker Desktop tuple passes one grading request end to end;
   the request carries no expected values.
 - Tests: a fake `docker` on `PATH` for argv and lifecycle; one opt-in real-Docker test.
+
+## Consumer review (agent-benchmark, 2026-10-10) and resulting decisions
+
+- **D3 — command. Decided:** the caller's argv in the backend config, with the trusted driver inline:
+  `["python3", "-c", <DRIVER>, "/inputs/cases.json", "/output/answers.json"]`. `<DRIVER>` is agent-benchmark's
+  `grader.DRIVER`, covered by the grader identity digest and, through argv, by `config_digest`. Nothing from the
+  candidate workspace is executed as a command; the driver only imports it. Working directory `/workspace`;
+  environment exactly `PYTHONPATH=/workspace`, `PYTHONDONTWRITEBYTECODE=1`, `HOME=/tmp`.
+- **Formats.**
+  - `cases.json` (inputs only): `{"module": "...", "cases": [{"id": ..., "function": ..., "args": [...]}]}`.
+  - `answers.json` (one JSON object, at most 1 MiB): `{"<case id>": {"value": <json>} | {"raises": [MRO class
+    names]}}`.
+
+  The verdict is computed by the benchmark (complete case set, exact count, equality with expected values kept
+  outside); the exit code is evidence only.
+- **Timeout:** `timeout_seconds` from the task bundle (30 s for real-001/reference-002), measured from container
+  start to exit; streaming the workspace tar is not counted. Measured patch-io on the host: about 0.2 s.
+- **D1 (a), refined:** one grading session = one `QualifiedDockerBackend` instance = one `job_id`, grading many
+  requests (all candidates of one run). Qualification runs once per session, not per request.
+- **D4 — `qualify(job_id)` in Harness. Decided:** move Showcase's qualification probes (`q_probes`, `q_lifecycle`,
+  `b_probes`, `report`) into `agent_harness` (AH5-04c-1, with parity against Showcase's version; Showcase then uses
+  the pinned library). `agent_harness.qualification.qualify(job_id, *, out)` runs the 26 checks and returns the
+  report with its `qualification_digest`; the benchmark stores each session's report as evidence (B10). The
+  benchmark does not depend on a Showcase checkout. Needs Showcase owner agreement (ADR 0001 per-module move).
+- **D5 — independent review. Decided:** per tuple, not per job (ADR 0002 amendment). One independent review covers a
+  target tuple (host, engine, kernel, workload image) plus the probe-code digest. A job's automatically produced
+  report qualifies when all 26 checks pass with its own job-bound evidence and its tuple and probe-code digest equal
+  a reviewed one. A new tuple or changed probe code needs a new review.
+- **D2, accepted:** PID or disk exhaustion shows up as missing or wrong answers, i.e. FAIL; the benchmark records
+  `fired` (timeout/oom) as a grading criterion.
+- **Benchmark side:** the candidate patch is applied on the host with `git apply` on a fresh copy of `base/` (hardened
+  git environment, patch scope checked: no symlinks, no `.git`, allow-listed files only). The container receives the
+  finished workspace.
