@@ -16,13 +16,15 @@ from pathlib import Path
 
 from .. import contract
 
-PROBE_MODULES = ("b_probes.py", "q_lifecycle.py", "q_probes.py", "report.py")
+PROBE_MODULES = ("__init__.py", "b_probes.py", "q_lifecycle.py", "q_probes.py", "report.py")
 DEFAULT_TARGET = "showcase-docker-desktop-linux-guest"
 DEFAULT_IMAGE = "python@sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5"
 
 
 def probe_digest():
-    """sha256 over the probe modules' names and bytes: a changed probe needs a new independent review."""
+    """sha256 over the installed probe and orchestration modules (names and bytes): a change needs a new review.
+
+    It names the code installed here, not proof of the code that ran (ADR 0002: authenticity is out of scope)."""
     here = resources.files(__package__)
     manifest = {name: hashlib.sha256(here.joinpath(name).read_bytes()).hexdigest() for name in PROBE_MODULES}
     return "sha256:" + hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
@@ -30,9 +32,15 @@ def probe_digest():
 
 def policy_digest():
     """The qualified grading policy: container flags, limits, grading environment and the mandatory checks."""
-    from ..execution import GRADING_ENV, QUALIFIED_LIMITS, QUALIFIED_RUN_FLAGS
+    from ..execution import (
+        GRADING_ENV,
+        GRADING_LAYOUT,
+        QUALIFIED_LIMITS,
+        QUALIFIED_RUN_FLAGS,
+    )
     policy = {"policy_version": 1, "run_flags": list(QUALIFIED_RUN_FLAGS), "limits": QUALIFIED_LIMITS,
-              "grading_env": GRADING_ENV, "checks": list(contract.QUALIFICATION_CHECKS)}
+              "grading_env": GRADING_ENV, "grading_layout": GRADING_LAYOUT,
+              "checks": list(contract.QUALIFICATION_CHECKS)}
     return "sha256:" + hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest()
 
 
@@ -40,12 +48,16 @@ def qualify(job_id, out, *, reviewed=None, target_id=DEFAULT_TARGET, image=DEFAU
             author="agent-harness-qualify", timeout_seconds=30):
     """Run every check under ``job_id`` into the new, empty directory ``out``; return the session record."""
     from . import report as runner
-    out = Path(out).resolve()
-    if out.exists() and (out.is_symlink() or not out.is_dir() or any(out.iterdir())):
+    if not isinstance(job_id, str) or not job_id or runner._safe(job_id) != job_id:
+        raise ValueError("job_id must be a safe identifier (letters, digits and ._:/@+-)")
+    if reviewed is not None:  # before any probe runs: an invalid reference must not leave a half-written run
+        contract.validate_qualification_report(reviewed[0])
+    out = Path(out)
+    if out.is_symlink() or (out.exists() and (not out.is_dir() or any(out.iterdir()))):
         raise ValueError("out must be a new, empty directory")
+    out = out.resolve()
     evidence = out / "evidence"
     evidence.mkdir(parents=True)
-    job_id = runner._safe(job_id)
     errors = []
     tuple_ = runner._target_tuple("docker-desktop", docker, image, job_id, errors)
     tuple_["probe_digest"] = probe_digest()

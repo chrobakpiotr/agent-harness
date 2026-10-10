@@ -122,9 +122,9 @@ class QualifiedDockerTest(unittest.TestCase):
         return {"path": f"evidence/{name}.log", "sha256": "sha256:" + hashlib.sha256(data).hexdigest(),
                 "size": len(data)}
 
-    def report(self, job=JOB, review=True, **extra):
+    def report(self, job=JOB, review=True, policy="sha256:" + "4" * 64, **extra):
         doc = {"contract_version": 1, "target": "showcase-docker-desktop-linux-guest",
-               "policy_digest": "sha256:" + "4" * 64, "author": "qualifier",
+               "policy_digest": policy, "author": "qualifier",
                "tuple": {"job_id": job, "host": "Docker_Desktop", "kernel": "7.0.14-linuxkit",
                          "engine": "DockerEngine_29.8.2", "workload_image": IMAGE_DIGEST, **extra},
                "checks": [{"id": i, "result": "pass", "evidence": [self.evidence(i, job=job)]}
@@ -219,7 +219,9 @@ class QualifiedDockerTest(unittest.TestCase):
         self.assertFalse(any(c[:1] == ["run"] for c in self.calls()))
 
     def test_session_report_qualifies_by_matching_a_reviewed_tuple(self):
-        probe = {"probe_digest": "sha256:" + "7" * 64}
+        from agent_harness import qualification
+        probe = {"probe_digest": qualification.probe_digest(), "policy": qualification.policy_digest()}
+        self.capability = {**self.capability, "policy_digest": probe["policy"]}
         reviewed_root = self.root / "reviewed"
         (reviewed_root / "evidence").mkdir(parents=True)
         reviewed = self.report(job="reviewed-job", **probe)  # evidence lands in qual/; copy it for the reviewed root
@@ -235,6 +237,18 @@ class QualifiedDockerTest(unittest.TestCase):
             image=IMAGE, command=["true"], cases=str(self.cases), docker=self.docker,
             reviewed=(reviewed, reviewed_root))
         self.assertEqual(contract.qualification_digest(session), backend.target["qualification_digest"])
+        # A matching pair that names other probe code (or policy) than this library's is refused.
+        fake = {"probe_digest": "sha256:" + "7" * 64, "policy": probe["policy"]}
+        other_reviewed, other_session = self.report(job="reviewed-job", **fake), None
+        for ref in [r for c in other_reviewed["checks"] for r in c["evidence"]] + [
+                other_reviewed["independent_review"]["evidence"]]:
+            (reviewed_root / ref["path"]).write_bytes((self.root / "qual" / ref["path"]).read_bytes())
+        other_session = self.report(review=False, **fake)
+        with self.assertRaisesRegex(contract.ContractError, "not this library"):
+            execution.QualifiedDockerBackend(
+                other_session, qualification_evidence=str(self.root / "qual"), capability_report=self.capability,
+                job_id=JOB, image=IMAGE, command=["true"], cases=str(self.cases), docker=self.docker,
+                reviewed=(other_reviewed, reviewed_root))
 
     def test_session_binding_is_checked_at_construction(self):
         with self.assertRaises(contract.ContractError):

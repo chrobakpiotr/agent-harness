@@ -100,6 +100,49 @@ class QualifyTest(unittest.TestCase):
         self.assertFalse(result["qualified"])
         self.assertEqual({"not-run"}, {c["result"] for c in result["report_doc"]["checks"]})
 
+    def test_probe_flags_equal_the_backend_flags_and_digests_cover_code_and_layout(self):
+        from agent_harness import execution
+        from agent_harness.qualification import q_probes
+        probe_flags = q_probes.DockerProbeTarget("python@sha256:" + "0" * 64)._base_args()
+        workspace = [f for f in execution.QUALIFIED_RUN_FLAGS if f.startswith("--tmpfs=/workspace")]
+        self.assertEqual(list(execution.QUALIFIED_RUN_FLAGS), probe_flags + workspace)
+        self.assertEqual(("__init__.py", "b_probes.py", "q_lifecycle.py", "q_probes.py", "report.py"),
+                         qualification.PROBE_MODULES)
+        before = qualification.probe_digest()
+        copy = self.root / "probes"
+        copy.mkdir()
+        for name in qualification.PROBE_MODULES:
+            copy.joinpath(name).write_bytes(resources.files("agent_harness.qualification").joinpath(name).read_bytes())
+        with mock.patch.object(qualification.resources, "files", lambda _package: copy):
+            self.assertEqual(before, qualification.probe_digest())
+            copy.joinpath("q_probes.py").write_bytes(copy.joinpath("q_probes.py").read_bytes() + b"#")
+            self.assertNotEqual(before, qualification.probe_digest())
+        policy = qualification.policy_digest()
+        with mock.patch.dict(execution.GRADING_LAYOUT, {"options": ["-i"]}):
+            self.assertNotEqual(policy, qualification.policy_digest())
+
+    def test_capability_of_a_passing_session_is_launch_ready_with_qualified_isolation(self):
+        session = qualification.qualify("s6", self.root / "s6", reviewed=self.reviewed_reference())
+        self.assertEqual((True, True, True, ["qualified_isolation"], None),
+                         tuple(session["capability_doc"][k] for k in
+                               ("supported", "qualified", "launch_ready", "capabilities", "refusal")))
+        first = qualification.qualify("s7", self.root / "s7")  # no reference: all pass, not qualified
+        self.assertEqual((True, False, [], "NOT_QUALIFIED"),
+                         tuple(first["capability_doc"][k] for k in ("supported", "qualified", "capabilities",
+                                                                     "refusal")))
+
+    def test_bad_job_id_symlinked_out_or_invalid_reference_fail_before_any_probe(self):
+        with self.assertRaises(ValueError):
+            qualification.qualify("job 1", self.root / "j1")
+        (self.root / "target").mkdir()
+        (self.root / "link").symlink_to(self.root / "target")
+        with self.assertRaises(ValueError):
+            qualification.qualify("j2", self.root / "link")
+        with self.assertRaises(contract.ContractError):
+            qualification.qualify("j3", self.root / "j3", reviewed=({"contract_version": 1}, self.root))
+        self.assertFalse((self.root / "j1").exists() or (self.root / "j3").exists())
+        self.assertEqual([], list((self.root / "target").iterdir()))
+
     def test_out_must_be_new_and_empty(self):
         (self.root / "used").mkdir()
         (self.root / "used" / "x").write_text("x")

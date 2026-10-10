@@ -776,6 +776,11 @@ QUALIFIED_RUN_FLAGS = (
     f"--tmpfs=/workspace:rw,noexec,nosuid,size={_WORKSPACE_TMPFS_BYTES},mode=1777",
 )
 GRADING_ENV = {"PYTHONPATH": "/workspace", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"}
+# What the backend adds around the qualified flags; part of qualification.policy_digest(), so changing it needs a new
+# review. /output is host-bounded (polled, killed above the answers limit), not one of the 04b-qualified mounts.
+GRADING_LAYOUT = {"options": ["-i", "--workdir=/workspace"],
+                  "mounts": ["type=bind,src=<inputs>,dst=/inputs,readonly", "type=bind,src=<output>,dst=/output"],
+                  "entrypoint": ["sh", "-c", 'tar -x -C /workspace && exec "$@"', "grade"]}
 _ANSWERS_LIMIT = 1 << 20
 
 
@@ -805,6 +810,11 @@ class QualifiedDockerBackend:
                   else contract.session_qualification_passes(qualification, qualification_evidence, *reviewed))
         if not capability_report["qualified"] or not passes:
             raise contract.ContractError("NOT_QUALIFIED", "the qualification does not pass")
+        if reviewed is not None:  # a session names the installed probe code and policy; both must be this library's
+            from . import qualification as installed
+            if (qualification["tuple"].get("probe_digest") != installed.probe_digest() or
+                    qualification["policy_digest"] != installed.policy_digest()):
+                raise contract.ContractError("NOT_QUALIFIED", "session probe/policy digest is not this library's")
         digest = qualification["tuple"]["workload_image"]
         if not isinstance(image, str) or not image.endswith("@" + digest):
             raise ValueError("image must be the qualified workload image pinned by its digest")
@@ -869,11 +879,12 @@ class QualifiedDockerBackend:
             output.mkdir(mode=0o777)
             output.chmod(0o777)  # the container user (65532) writes here
             shutil.copyfile(self.cases, inputs / "cases.json")
-            argv = [self.docker, "run", "-i", f"--name={name}", *QUALIFIED_RUN_FLAGS,
-                    "--mount", f"type=bind,src={inputs},dst=/inputs,readonly",
-                    "--mount", f"type=bind,src={output},dst=/output", "--workdir=/workspace",
+            mounts = [m.replace("<inputs>", str(inputs)).replace("<output>", str(output))
+                      for m in GRADING_LAYOUT["mounts"]]
+            argv = [self.docker, "run", GRADING_LAYOUT["options"][0], f"--name={name}", *QUALIFIED_RUN_FLAGS,
+                    "--mount", mounts[0], "--mount", mounts[1], *GRADING_LAYOUT["options"][1:],
                     *[f"--env={k}={v}" for k, v in GRADING_ENV.items()],
-                    self.image, "sh", "-c", 'tar -x -C /workspace && exec "$@"', "grade", *self.command]
+                    self.image, *GRADING_LAYOUT["entrypoint"], *self.command]
             child = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                      start_new_session=True)
             captured, truncated = bytearray(), threading.Event()
