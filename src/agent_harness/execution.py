@@ -23,6 +23,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import uuid
@@ -802,7 +803,7 @@ class QualifiedDockerBackend:
     supports_limits = True
 
     def __init__(self, qualification, *, qualification_evidence, capability_report, job_id, image, command, cases,
-                 reviewed=None, docker="docker", grace=2.0):
+                 reviewed=None, target_kind="docker-desktop", docker="docker", grace=2.0):
         # reviewed=(report, evidence_root): a session report qualified by matching a reviewed tuple (ADR 0002)
         contract.validate_capability_binding(capability_report, qualification, qualification_evidence, job_id,
                                              reviewed=reviewed)
@@ -821,6 +822,7 @@ class QualifiedDockerBackend:
         if not isinstance(command, (list, tuple)) or not command or not all(isinstance(a, str) for a in command):
             raise ValueError("command must be a non-empty argv list")
         self.qualification, self.image, self.command = qualification, image, list(command)
+        self.target_kind = target_kind
         self.cases, self.docker, self.grace = Path(cases), docker, grace
         self.target = {"id": qualification["target"], "image_digest": digest,
                        "qualification_digest": contract.qualification_digest(qualification)}
@@ -846,21 +848,17 @@ class QualifiedDockerBackend:
             return "CAPABILITY_UNSUPPORTED", "a qualified grading request is contract v2 with exactly QUALIFIED_LIMITS"
         if not self.cases.is_file():
             return "CAPABILITY_UNSUPPORTED", "cases file missing"
-        try:
-            engine = self._docker("version", "--format", "{{.Server.Version}}").strip()
-            host, kernel = self._docker("info", "--format", "{{.OperatingSystem}}|{{.KernelVersion}}").strip() \
-                .split("|", 1)
-            repo_digests = json.loads(self._docker("image", "inspect", "--format", "{{json .RepoDigests}}",
-                                                   self.image) or "[]")
-        except (OSError, subprocess.SubprocessError, ValueError):
-            return "BACKEND_UNAVAILABLE", "docker is not reachable or the image is not present"
+        from .qualification import (
+            live_tuple,  # the same identification the qualification recorded
+        )
         want = self.qualification["tuple"]
-        live = {"engine": f"DockerEngine_{engine}", "host": host.replace(" ", "_"), "kernel": kernel}
-        drift = [k for k, v in live.items() if want[k] != v]
-        if self.image not in (repo_digests or []):
-            drift.append("workload_image")
+        live, errors = live_tuple(self.target_kind, self.docker, self.image, want["job_id"])
+        if any("unavailable" in error for error in errors):
+            return "BACKEND_UNAVAILABLE", f"docker target not identifiable: {sorted(errors)}"
+        drift = sorted({k for k in ("host", "kernel", "engine", "workload_image") if live.get(k) != want.get(k)}
+                       | set(errors))
         if drift:  # the qualification covers exactly its tuple
-            return "NOT_QUALIFIED", f"live target differs from the qualified tuple: {sorted(drift)}"
+            return "NOT_QUALIFIED", f"live target differs from the qualified tuple: {drift}"
         return None, None
 
     def _docker(self, *args, timeout=30, check=True, **kwargs):
@@ -1033,3 +1031,76 @@ def _read_answers(output):
         return data if len(data) <= _ANSWERS_LIMIT else None
     finally:
         os.close(fd)
+
+
+def probe_grading_layout(image, out, *, docker="docker", timeout_seconds=60):
+    """Exercise the backend's own grading layout on the target (AH5-04c-1): one grade through the real argv
+    (stdin tar into /workspace, read-only /inputs, /output, working directory and environment), a writer of more
+    than the answers limit to /output (must be killed as ``disk``) and a sleeper (must time out). Returns the
+    evidence document; ``passed`` is true only when every case behaves as qualified."""
+    out = Path(out)
+    workspace, evidence = out / "workspace", out / "backend-evidence"
+    (workspace / "pkg").mkdir(parents=True)
+    evidence.mkdir()
+    marker = uuid.uuid4().hex
+    (workspace / "pkg" / "marker.txt").write_text(marker)
+    cases = out / "cases.json"
+    cases.write_text(json.dumps({"probe": marker}))
+    canary = "AGENT_HARNESS_HOST_CANARY"
+    report = textwrap.dedent("""\
+        import json, os, sys
+        try:
+            open("/inputs/written", "w").write("x"); inputs_writable = True
+        except OSError:
+            inputs_writable = False
+        json.dump({"cwd": os.path.realpath("."), "env": {k: os.environ.get(k) for k in sorted(os.environ)},
+                   "inputs_writable": inputs_writable, "cases": json.load(open(sys.argv[1])),
+                   "marker": open("/workspace/pkg/marker.txt").read()}, open(sys.argv[2], "w"))
+        """)
+    flood = "open('/output/flood.bin', 'wb').write(b'x' * (3 << 20)); import time; time.sleep(60)"
+    backend = object.__new__(QualifiedDockerBackend)  # an unbound instance: the probe runs before any qualification
+    backend.image, backend.cases, backend.docker, backend.grace = image, cases, docker, 2.0
+    backend.target = {"id": "grading-layout-probe", "image_digest": "sha256:" + image.rsplit("@sha256:", 1)[-1],
+                      "qualification_digest": None}
+    results = {}
+    previous = os.environ.get(canary)
+    os.environ[canary] = marker  # must not reach the container: only GRADING_ENV is passed
+    try:
+        for name, command, timeout in (("grade", ["python3", "-c", report, "/inputs/cases.json",
+                                                  "/output/answers.json"], timeout_seconds),
+                                       ("output-flood", ["python3", "-c", flood], timeout_seconds),
+                                       ("timeout", ["python3", "-c", "import time; time.sleep(60)"], 2)):
+            backend.command = command
+            request = contract.validate_request({
+                "contract_version": 2, "request_id": f"layout-{name}", "trial_id": None,
+                "task_digest": "sha256:" + "0" * 64, "config_digest": "sha256:" + "0" * 64, "provider": "harness",
+                "model": "grading-layout", "settings": {}, "capabilities": ["qualified_isolation"],
+                "timeout_seconds": timeout, "max_attempts": 1, "input_bindings": [], "limits": QUALIFIED_LIMITS})
+            body = backend.run(request, {"workspace": str(workspace), "evidence_root": str(evidence)},
+                               threading.Event(), name, _now())
+            answers = None
+            if body["artifacts"]:
+                answers = json.loads((evidence / body["artifacts"][0]["path"]).read_text())
+            results[name] = {"outcome": body["outcome"], "fired": body["limits"]["fired"], "drain": body["drain"],
+                             "answers": answers}
+    finally:
+        if previous is None:
+            os.environ.pop(canary, None)
+        else:
+            os.environ[canary] = previous
+    grade = results["grade"]["answers"] or {}
+    env = grade.get("env", {})
+    checks = {
+        "grade completed with answers after destroy": results["grade"]["outcome"] == "completed" and bool(grade)
+        and results["grade"]["drain"] == "confirmed",
+        "working directory is /workspace": grade.get("cwd") == "/workspace",
+        "workspace streamed in": grade.get("marker") == marker,
+        "inputs mounted read-only": grade.get("inputs_writable") is False and grade.get("cases") == {"probe": marker},
+        "environment is GRADING_ENV plus the image's own": all(env.get(k) == v for k, v in GRADING_ENV.items())
+        and canary not in env and marker not in json.dumps(env),
+        "/output over the answers limit is killed as disk": results["output-flood"]["fired"] == "disk"
+        and results["output-flood"]["answers"] is None,
+        "wall clock fires as timeout": results["timeout"]["outcome"] == "timeout"
+        and results["timeout"]["fired"] == "timeout",
+    }
+    return {"passed": all(checks.values()), "checks": checks, "results": results}

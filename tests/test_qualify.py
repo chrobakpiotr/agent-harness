@@ -2,13 +2,14 @@
 
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from importlib import resources
 from pathlib import Path
 from unittest import mock
 
-from agent_harness import contract, qualification
+from agent_harness import contract, execution, qualification
 from agent_harness.qualification import report as runner
 
 # Showcase `tooling/agent-harness/qualification/<file>` blobs at main 830c5e6 (provenance.md): byte-identical copies.
@@ -40,6 +41,10 @@ class QualifyTest(unittest.TestCase):
             patcher = mock.patch.object(runner, name, patched)
             patcher.start()
             self.addCleanup(patcher.stop)
+        self.layout = {"passed": True, "checks": {"stub": True}, "results": {}}
+        patcher = mock.patch.object(execution, "probe_grading_layout", lambda *a, **k: self.layout)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def reviewed_reference(self):
         first = qualification.qualify("ref-job", self.root / "ref")
@@ -142,6 +147,52 @@ class QualifyTest(unittest.TestCase):
             qualification.qualify("j3", self.root / "j3", reviewed=({"contract_version": 1}, self.root))
         self.assertFalse((self.root / "j1").exists() or (self.root / "j3").exists())
         self.assertEqual([], list((self.root / "target").iterdir()))
+
+    def test_a_timed_out_check_is_retried_and_its_first_attempt_recorded(self):
+        calls = {"B1": 0}
+
+        def flaky(self, check_id, name, check_dir):
+            if check_id == "B1":
+                calls["B1"] += 1
+                if calls["B1"] == 1:
+                    raise subprocess.TimeoutExpired("docker", 30)
+            return {"status": "pass", "reason_code": "OBSERVED", "stdout": "", "stderr": "", "details": {}}
+        reviewed = self.reviewed_reference()
+        with mock.patch.object(FakeTarget, "execute_b1_b10", flaky):
+            result = qualification.qualify("r1", self.root / "r1", reviewed=reviewed)
+        self.assertTrue(result["qualified"])
+        self.assertEqual((2, ["B1"]), (calls["B1"], result["retried"]))
+        retries = json.loads((self.root / "r1" / "evidence" / "retries.json").read_text())
+        self.assertEqual("PROBE_EXCEPTION", retries["B1"][0]["reason_code"])
+
+    def test_a_check_that_keeps_timing_out_stays_not_run(self):
+        def always(self, check_id, name, check_dir):
+            if check_id == "B8":
+                raise subprocess.TimeoutExpired("docker", 30)
+            return {"status": "pass", "reason_code": "OBSERVED", "stdout": "", "stderr": "", "details": {}}
+        reviewed = self.reviewed_reference()
+        with mock.patch.object(FakeTarget, "execute_b1_b10", always):
+            result = qualification.qualify("r2", self.root / "r2", reviewed=reviewed, retries=2)
+        self.assertFalse(result["qualified"])
+        self.assertEqual(2, len(json.loads((self.root / "r2" / "evidence" / "retries.json").read_text())["B8"]))
+
+    def test_a_failed_grading_layout_never_qualifies(self):
+        reviewed = self.reviewed_reference()
+        self.layout = {"passed": False, "checks": {"stub": False}, "results": {}}
+        result = qualification.qualify("l1", self.root / "l1", reviewed=reviewed)
+        self.assertEqual((False, "failed"), (result["qualified"], result["report_doc"]["tuple"]["grading_layout"]))
+
+    def test_linux_docker_kind_accepts_a_non_desktop_engine(self):
+        def native(kind, docker, image, job_id, errors):
+            errors.append("docker_desktop_identity_mismatch")
+            return {"job_id": job_id, **TUPLE, "host": "Ubuntu_24.04_LTS"}
+        with mock.patch.object(runner, "_target_tuple", native):
+            found, errors = qualification.live_tuple("linux-docker", "docker", "img@sha256:" + "0" * 64, "j")
+            self.assertEqual(([], "Ubuntu_24.04_LTS"), (errors, found["host"]))
+            self.assertEqual(["docker_desktop_identity_mismatch"],
+                             qualification.live_tuple("docker-desktop", "docker", "img", "j")[1])
+        with self.assertRaises(ValueError):
+            qualification.live_tuple("windows", "docker", "img", "j")
 
     def test_out_must_be_new_and_empty(self):
         (self.root / "used").mkdir()

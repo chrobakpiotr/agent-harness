@@ -33,7 +33,9 @@ def resolve(ref):  # a container id (sha256 of its name in this fake) or its nam
     return state_dir / ref
 mode = os.environ.get("FAKE_MODE", "answer")
 if args[:1] == ["version"]: print(os.environ.get("FAKE_ENGINE", "29.8.2")); sys.exit(0)
-if args[:1] == ["info"]: print("Docker Desktop|" + os.environ.get("FAKE_KERNEL", "7.0.14-linuxkit")); sys.exit(0)
+if args[:1] == ["info"]:
+    os_type = "linux|" if any("OSType" in a for a in args) else ""
+    print(os_type + "Docker Desktop|" + os.environ.get("FAKE_KERNEL", "7.0.14-linuxkit")); sys.exit(0)
 if args[:2] == ["image", "inspect"]: print(json.dumps([os.environ.get("FAKE_IMAGE", args[-1])])); sys.exit(0)
 if args[:1] == ["run"]:
     name = next(a.split("=", 1)[1] for a in args if a.startswith("--name="))
