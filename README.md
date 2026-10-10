@@ -11,7 +11,7 @@ nothing in this release is a qualified backend. See `CHANGELOG.md` and `docs/adr
 Pin a released tag or commit (no PyPI release):
 
 ```text
-agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.6.1
+agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.7.0
 ```
 
 Python ≥ 3.13, no third-party dependencies (Ed25519 grants need the `grants` extra), no side effects on import. Public API: `agent_harness.contract`,

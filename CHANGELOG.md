@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 — 2026-10-10
+
+- `execution.QualifiedDockerBackend` (AH5-04c-2): grading on the qualified Docker target, contract v2. A fresh container
+  per request with exactly the qualified flags; the workspace is streamed into a tmpfs (bounded, `.git`, links and
+  hardlinks skipped); `cases.json` is read-only; `answers.json` is read only after the container is confirmed gone.
+  `fired: timeout|oom|disk`. Refused before launch on other limits or on drift of the live tuple.
+- `agent_harness.qualification` (AH5-04c-1): the Q01–Q16/B1–B10 probes, moved verbatim from Showcase, and
+  `qualify(job_id, out, reviewed=…)` with `probe_digest()` and `policy_digest()`. `qualification.reference
+  .reviewed_reference()` returns the shipped, independently reviewed Docker Desktop reference.
+- Contract: `session_qualification_passes` and `validate_capability_binding(…, reviewed=…)` (ADR 0002 amendment: one
+  independent review per tuple and probe code). The backend pins sessions to this library's probe and policy digests.
+
 ## 0.6.1 — 2026-10-10
 
 - `AgentCliBackend` (Claude): allow sandboxed Bash outright, so commands that set variables or use heredocs
