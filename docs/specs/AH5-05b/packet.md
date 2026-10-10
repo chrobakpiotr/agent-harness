@@ -19,6 +19,10 @@ grace=2.0, output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (o
   flag.
 
   No caller arguments, so `--bare`, `bypassPermissions`, `danger-full-access` and `--dangerously-*` cannot appear.
+- Login protection: Claude's sandbox denies reads of `~/.claude`, `~/.claude.json`, `~/.codex`, `~/.config/claude`
+  (smoke-verified). Codex `workspace-write` can read them, so every candidate and the `agent-output` are scanned for
+  the login files' token values and credential shapes; a hit withholds both and reports `error` / `PROVIDER_ERROR`
+  (`backend.withheld` says which).
 - Claude sandbox settings: `sandbox.enabled`, `failIfUnavailable: true` (no unsandboxed fallback),
   `allowUnsandboxedCommands: false`, `network.allowedDomains: []`, `autoAllowBashIfSandboxed: true`. WebFetch and
   WebSearch run outside the sandbox, so they are disallowed.
