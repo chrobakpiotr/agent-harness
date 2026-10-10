@@ -22,6 +22,10 @@ first, except fail-closed seams created by explicit roots (ADR 0001 decision 3),
 | `agent_harness/verification/store.py` | `verification/store.py` | `597ace86` | `_git`/`_worktrees`/`resolve_control_root` body replaced by `agent_harness.repository`, `RepositoryError` re-raised as `StoreError` with the same code; no default issuer registry (`__file__`), **[seam]** missing registry fails `FAILURE_GRANT_ISSUER_UNAVAILABLE`; new `profile_root` parameter passed to `validate_plan_record` |
 | `agent_harness/verification/authority.py` | `verification/authority.py` | `4ac59537` | no `import harness`: `publish_and_accept`, `resolve_accepted`, `resolve_execution`, `prepare_task_plan` take an injected `lifecycle` port (the Showcase `harness` module fits it); profile root is an explicit `profile_root` parameter instead of `__file__`; `prepare_task_plan` takes `profile_id` (no built-in `showcase`) and **[seam]** refuses a profile resolving outside `profile_root` (`ACCEPTED_PLAN_UNAVAILABLE`, `f756e42`), as `resolve_execution` does; `resolve_execution` guard unchanged |
 | `benchmarks/verification_planning.py` (repo, not in the wheel) | `benchmarks/verification_planning.py` | `50690851` | imports from `agent_harness.verification`, unused `sys` import removed; recorded Showcase baseline JSON not copied |
+| `agent_harness/qualification/q_probes.py` | `qualification/q_probes.py` at `830c5e6` | `f2e02e58` | none (AH5-04c-1; Harness owns it from here) |
+| `agent_harness/qualification/q_lifecycle.py` | `qualification/q_lifecycle.py` at `830c5e6` | `705874a6` | none |
+| `agent_harness/qualification/b_probes.py` | `qualification/b_probes.py` at `830c5e6` | `1562b0c9` | none |
+| `agent_harness/qualification/report.py` | `qualification/report.py` at `830c5e6` | `a8f35d11` | none; `qualify()` in `__init__.py` reuses its helpers with Harness's `policy_digest` and `tuple.probe_digest`; its Showcase CLI defaults are not used |
 | `agent_harness/schemas/verification-profile.schema.json` | `schemas/verification-profile.schema.json` | `375b2f5e` | none |
 
 Check a module against its source:

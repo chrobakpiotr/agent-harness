@@ -8,6 +8,9 @@ from pathlib import Path
 import agent_harness
 
 PACKAGE = Path(agent_harness.__file__).parent
+# Verbatim Showcase probes (provenance.md) that locate their own code, not a repository root: q_lifecycle re-runs
+# itself as a controller process; report's Showcase CLI keeps its defaults (qualify() never uses them).
+SELF_LOCATING = {("qualification", "q_lifecycle.py", "__file__"), ("qualification", "report.py", "__file__")}
 
 
 class ImportBoundaryTest(unittest.TestCase):
@@ -39,6 +42,7 @@ class NoLocationDerivedRootTest(unittest.TestCase):
             if path.name != "__main__.py"
             for needle in ("__file__", "Path.cwd", "getcwd")
             if needle in path.read_text(encoding="utf-8")
+            and (path.parent.name, path.name, needle) not in SELF_LOCATING
         ]
         self.assertEqual(offenders, [])
 
