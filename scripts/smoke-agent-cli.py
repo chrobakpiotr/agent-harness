@@ -46,9 +46,11 @@ def request(provider, model):
 
 def smoke(provider, model):
     root = Path(tempfile.mkdtemp(prefix=f"smoke-{provider}-")).resolve()
-    workspace, evidence = root / "workspace", root / "evidence"
+    workspace = root / "workspace"
     workspace.mkdir()
-    evidence.mkdir()
+    # the evidence root must be outside every directory the CLI sandbox can write (workspace, /tmp, $TMPDIR)
+    evidence = Path.home() / ".cache" / "agent-harness-smoke" / root.name
+    evidence.mkdir(parents=True)
     backend = execution.AgentCliBackend(provider, PROMPT, candidate="hello.txt")
     result = execution.launch(request(provider, model), backend, workspace=str(workspace),
                               evidence_root=str(evidence)).result(900)

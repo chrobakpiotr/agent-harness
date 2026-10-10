@@ -13,6 +13,9 @@ from pathlib import Path
 
 from agent_harness import contract, execution
 
+# Written out literally: the test must not derive what to check from the code under test.
+BILLING_NAMES = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                 "CLAUDE_CODE_USE_VERTEX", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_API_KEY"}
 CLAUDE_OK = {"type": "result", "subtype": "success", "is_error": False, "num_turns": 3, "result": "done",
              "usage": {"input_tokens": 120, "output_tokens": 45, "cache_read_input_tokens": 300,
                        "cache_creation_input_tokens": 80}, "modelUsage": {"claude-sonnet-x": {}}}
@@ -28,6 +31,12 @@ class AgentCliTest(unittest.TestCase):
         for name in ("workspace", "evidence", "bin"):
             (self.root / name).mkdir()
         self.log = self.root / "calls.jsonl"
+        self.real_writable_roots = execution._agent_writable_roots
+        # The test roots live under $TMPDIR; treat only the workspace as agent-writable here (tested apart below).
+        patcher = unittest.mock.patch.object(execution, "_agent_writable_roots",
+                                             lambda ws: [Path(ws).resolve()])
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.env = {"PATH": f"{self.root / 'bin'}:/usr/bin:/bin", "HOME": str(self.root),
                     "ANTHROPIC_API_KEY": "sk-ant-secret", "CODEX_API_KEY": "sk-codex-secret",
                     "OPENAI_API_KEY": "sk-openai-secret", "ANTHROPIC_AUTH_TOKEN": "secret-token",
@@ -45,7 +54,7 @@ class AgentCliTest(unittest.TestCase):
             with open({str(self.log)!r}, "a") as log:
                 log.write(json.dumps({{"cli": {name!r}, "argv": argv,
                     "stdin": stdin,
-                    "billing": sorted(k for k in os.environ if k in {list(execution._BILLING_ENV)!r})}}) + "\\n")
+                    "billing": sorted(k for k in os.environ if k in {sorted(BILLING_NAMES)!r})}}) + "\\n")
             if argv[:1] in (["sandbox"], ["--version"]):
                 sys.exit({probe_exit})
             time.sleep({sleep})
@@ -115,7 +124,8 @@ class AgentCliTest(unittest.TestCase):
                                   self.request("codex", "gpt-6.1-sol", version=2))
         probe, run = self.calls()
         self.assertEqual("sandbox", probe["argv"][0])
-        self.assertEqual(["exec", "-m", "gpt-6.1-sol", "--sandbox", "workspace-write", "--skip-git-repo-check",
+        self.assertEqual(["exec", "-m", "gpt-6.1-sol", "--sandbox", "workspace-write",
+                          "-c", 'forced_login_method="chatgpt"', "--skip-git-repo-check",
                           "--json", "--ephemeral", "-"], run["argv"])
         self.assertEqual("fix the bug", run["stdin"])
         self.assertEqual([], run["billing"])
@@ -192,7 +202,7 @@ class AgentCliTest(unittest.TestCase):
         self.assertNotIn(b" .git/", sealed.replace(b"a/.gitattributes", b"").replace(b"b/.gitattributes", b""))
         self.assertNotIn(b"diff --git a/.git/", sealed)
 
-    def test_diff_mode_refuses_an_evidence_root_inside_the_workspace(self):
+    def test_evidence_root_writable_by_the_agent_is_refused(self):
         ws = self.root / "workspace"
         self.git("init", "-q")
         (ws / "a.txt").write_text("x\n")
@@ -203,8 +213,10 @@ class AgentCliTest(unittest.TestCase):
         request = self.request("claude", "sonnet")
         result = execution.launch(request, self.claude("x", env=self.env, diff_base=base), workspace=str(ws),
                                   evidence_root=str(ws / "evidence")).result(60)
-        self.assertEqual(("error", "LAUNCH_FAILED"), (result["outcome"], result["error_code"]))
+        self.assertEqual(("rejected", "CAPABILITY_UNSUPPORTED"), (result["outcome"], result["error_code"]))
         self.assertFalse(any(c["argv"][:1] == ["-p"] for c in self.calls()))  # the agent never started
+        roots = self.real_writable_roots(str(ws))
+        self.assertIn(Path("/tmp").resolve(), roots)  # Codex workspace-write can write /tmp and $TMPDIR
 
     def test_login_token_in_candidate_or_output_is_withheld(self):
         token = "tok-" + "x" * 40
@@ -231,10 +243,68 @@ class AgentCliTest(unittest.TestCase):
                          (result["outcome"], result["error_code"], result["candidate"], result["artifacts"],
                           backend.withheld))
         self.assertEqual([], list((self.root / "evidence").rglob("candidate")))
+        self.assertEqual([], list((self.root / "evidence").rglob("agent-output")))
         self.fake("claude", json.dumps({**CLAUDE_OK, "result": "key sk-ant-" + "a" * 30}))
         backend = self.claude("x", env=self.env)
         result = self.run_backend(backend, self.request("claude", "sonnet", request_id="req-2"))
         self.assertEqual(("error", [], "agent-output"), (result["outcome"], result["artifacts"], backend.withheld))
+
+    def test_each_provider_failure_signal_alone_is_an_error(self):
+        cases = {"claude-is_error": ("claude", json.dumps({**CLAUDE_OK, "is_error": True})),
+                 "claude-subtype": ("claude", json.dumps({**CLAUDE_OK, "subtype": "error_during_execution"})),
+                 "codex-turn.failed": ("codex", json.dumps({"type": "turn.failed"}) + "\n" + json.dumps(CODEX_OK[-1])),
+                 "codex-error": ("codex", json.dumps({"type": "error", "message": "x"}) + "\n" + json.dumps(CODEX_OK[-1]))}
+        for i, (name, (provider, out)) in enumerate(cases.items()):
+            with self.subTest(name):
+                self.fake(provider, out)
+                backend = (self.claude("x", env=self.env) if provider == "claude"
+                           else execution.AgentCliBackend(provider, "x", env=self.env))
+                result = self.run_backend(backend, self.request(provider, "m", request_id=f"fail-{i}"))
+                self.assertEqual(("error", "PROVIDER_ERROR", "error"),
+                                 (result["outcome"], result["error_code"], result["attempts"][0]["outcome"]))
+                self.assertTrue(result["usage_events"])  # spent tokens are still reported
+
+    def test_probe_errors_and_bad_diff_base_refuse(self):
+        self.fake("codex", json.dumps(CODEX_OK[-1]))
+        missing = execution.AgentCliBackend("codex", "x", env=self.env, sandbox_probe=["/nonexistent-probe"])
+        result = self.run_backend(missing, self.request("codex", "m"))
+        self.assertEqual("CAPABILITY_UNSUPPORTED", result["error_code"])
+        self.assertIn("probe failed", missing.rejection_reasons["req-1"])
+        self.git("init", "-q")
+        (self.root / "workspace" / "a.txt").write_text("x\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        backend = self.claude("x", env=self.env, diff_base="0" * 40)  # not in the repository
+        self.fake("claude", json.dumps(CLAUDE_OK))
+        result = self.run_backend(backend, self.request("claude", "sonnet", request_id="r2"))
+        self.assertEqual(("error", "LAUNCH_FAILED"), (result["outcome"], result["error_code"]))
+        self.assertFalse(any(c["argv"][:1] == ["-p"] for c in self.calls()))
+
+    def test_cancelled_diff_run_seals_no_candidate(self):
+        self.git("init", "-q")
+        (self.root / "workspace" / "a.txt").write_text("x\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        self.fake("claude", json.dumps(CLAUDE_OK), sleep=30)
+        launched = execution.launch(self.request("claude", "sonnet"),
+                                    self.claude("x", env=self.env, diff_base=base, grace=0.5),
+                                    workspace=str(self.root / "workspace"), evidence_root=str(self.root / "evidence"))
+        for _ in range(100):
+            if any(c["argv"][:1] == ["-p"] for c in self.calls()):
+                break
+            execution.time.sleep(0.05)
+        launched.cancel()
+        result = launched.result(30)
+        self.assertEqual(("cancel", None), (result["outcome"], result["candidate"]))
+
+    def test_large_prompt_to_a_cli_that_never_reads_still_times_out(self):
+        script = self.root / "bin" / "claude"
+        script.write_text("#!/bin/sh\n[ \"$1\" = --version ] && exit 0\nsleep 60\n")
+        script.chmod(0o755)
+        request = contract.validate_request({**self.request("claude", "sonnet"), "timeout_seconds": 2})
+        started = execution.time.monotonic()
+        result = self.run_backend(self.claude("p" * (2 << 20), env=self.env, grace=0.5), request)
+        self.assertEqual("timeout", result["outcome"])
+        self.assertLess(execution.time.monotonic() - started, 20)
 
     def test_codex_sandbox_unavailable_is_rejected_without_running_the_agent(self):
         self.fake("codex", json.dumps(CODEX_OK[-1]), probe_exit=1)

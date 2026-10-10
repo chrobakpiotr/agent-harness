@@ -81,6 +81,9 @@ def launch(request, backend, *, workspace, evidence_root):
     root = Path(roots["evidence_root"]).resolve() / "executions"
     slot = _slot(request["request_id"])
     key = (str(root), slot)
+    refuse = getattr(backend, "refuse", None)
+    # A probe can take a while: run it before taking the lock, and not when this request already has a result.
+    refused = refuse(request, roots) if refuse is not None and not (root / f"{slot}.json").exists() else None
     with _RUNNING_LOCK:
         running = _RUNNING.get(key)
         if running is not None:
@@ -90,8 +93,7 @@ def launch(request, backend, *, workspace, evidence_root):
         if marker_path.exists():  # read-only: a reused ID is checked before anything else
             _check_binding(_marker_digest(marker_path), request)
         missing = [c for c in request["capabilities"] if c not in backend.capabilities]
-        refuse = getattr(backend, "refuse", None)
-        code = refuse(request) if refuse is not None else getattr(backend, "rejection", None)
+        code = refused if refuse is not None else getattr(backend, "rejection", None)
         if request.get("limits") is not None and not getattr(backend, "supports_limits", False):
             code = "CAPABILITY_UNSUPPORTED"  # never run a limited request without enforcing its limits
         if missing:
@@ -347,7 +349,7 @@ class ProcessBackend:
 
     _stdin = None  # bytes fed to the child's stdin, else /dev/null
 
-    def _argv(self, request):
+    def _argv(self, request, roots):
         return self.argv
 
     def _output(self, request, roots):
@@ -367,15 +369,11 @@ class ProcessBackend:
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         output = self._output(request, roots)
         try:
-            child = subprocess.Popen(self._argv(request), cwd=workspace, env=self.env, start_new_session=True,
+            child = subprocess.Popen(self._argv(request, roots), cwd=workspace, env=self.env, start_new_session=True,
                                      stdin=subprocess.DEVNULL if self._stdin is None else subprocess.PIPE,
                                      stdout=output, stderr=subprocess.DEVNULL)
-            if self._stdin is not None:
-                try:
-                    child.stdin.write(self._stdin)
-                except BrokenPipeError:
-                    pass
-                child.stdin.close()
+            if self._stdin is not None:  # fed from a thread: a child that never reads still times out
+                threading.Thread(target=_feed, args=(child.stdin, self._stdin), daemon=True).start()
         except OSError:
             now = _now()
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
@@ -444,7 +442,10 @@ _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 _LOGIN_PATHS = ("~/.claude", "~/.claude.json", "~/.codex", "~/.config/claude")
 _CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
                                 "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []},
-                                "filesystem": {"denyRead": list(_LOGIN_PATHS)}}}
+                                "filesystem": {"denyRead": list(_LOGIN_PATHS)}},
+                    "permissions": {"deny": [f"Read({path}/**)" for path in _LOGIN_PATHS]
+                                    + [f"Read({path})" for path in _LOGIN_PATHS]},
+                    "forceLoginMethod": "claudeai"}  # the subscription login, never an API key or apiKeyHelper
 # Shapes of provider credentials; a candidate or output containing one is withheld.
 _SECRET_PATTERNS = (re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"), re.compile(rb"\bsk-[A-Za-z0-9_-]{32,}"),
                     re.compile(rb'"(?:refresh_token|access_token|id_token)"\s*:'))
@@ -483,38 +484,50 @@ class AgentCliBackend(ProcessBackend):
         self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
-        self.rejection_reason = None
+        self.rejection_reasons = {}  # request_id -> why it was refused
 
-    def refuse(self, request):
+    @property
+    def rejection_reason(self):
+        """The reason of the most recent refusal (``rejection_reasons`` holds them per request)."""
+        return next(reversed(self.rejection_reasons.values()), None)
+
+    def refuse(self, request, roots):
         """A contract error code when this request must not launch (nothing started, nothing written)."""
-        self.rejection_reason = None
+        code, reason = self._refusal(request, roots)
+        if code is not None:
+            self.rejection_reasons[request["request_id"]] = reason
+        return code
+
+    def _refusal(self, request, roots):
         if request["provider"] != self.provider or not _MODEL.fullmatch(request["model"]):
-            self.rejection_reason = "request provider/model does not match this backend"
-            return "CAPABILITY_UNSUPPORTED"
+            return "CAPABILITY_UNSUPPORTED", "request provider/model does not match this backend"
+        evidence = Path(roots["evidence_root"]).resolve()
+        writable = [r for r in _agent_writable_roots(roots["workspace"]) if r == evidence or r in evidence.parents]
+        if writable:  # the agent could forge the result or plant Git config in it
+            return "CAPABILITY_UNSUPPORTED", f"evidence root is writable by the agent's sandbox ({writable[0]})"
         if shutil.which(self.provider, path=self.env.get("PATH")) is None:
-            self.rejection_reason = f"{self.provider} executable not found on PATH"
-            return "BACKEND_UNAVAILABLE"
+            return "BACKEND_UNAVAILABLE", f"{self.provider} executable not found on PATH"
         try:
             probe = subprocess.run(self.sandbox_probe, check=False, env=self.env, stdin=subprocess.DEVNULL,
                                    capture_output=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as error:
-            self.rejection_reason = f"sandbox probe failed: {error}"
-            return "CAPABILITY_UNSUPPORTED"
+            return "CAPABILITY_UNSUPPORTED", f"sandbox probe failed: {error}"
         if probe.returncode != 0:
             detail = (probe.stderr or probe.stdout).decode("utf-8", "replace").strip()[:500]
-            self.rejection_reason = f"sandbox unavailable (exit {probe.returncode}): {detail}"
-            return "CAPABILITY_UNSUPPORTED"
-        return None
+            return "CAPABILITY_UNSUPPORTED", f"sandbox unavailable (exit {probe.returncode}): {detail}"
+        return None, None
 
-    def _argv(self, request):
+    def _argv(self, request, roots):
         model = request["model"]
         # The prompt goes in on stdin, never as an argument, so a prompt such as "--bare" is never a flag.
         if self.provider == "claude":
+            settings = json.loads(json.dumps(_CLAUDE_SETTINGS))
+            settings["sandbox"]["filesystem"]["denyWrite"] = [str(Path(roots["evidence_root"]).resolve())]
             return ["claude", "-p", "--model", model, "--output-format", "json",
-                    "--permission-mode", "acceptEdits", "--settings", json.dumps(_CLAUDE_SETTINGS),
+                    "--permission-mode", "acceptEdits", "--settings", json.dumps(settings),
                     "--disallowedTools", "WebFetch,WebSearch"]
-        return ["codex", "exec", "-m", model, "--sandbox", _CODEX_SANDBOX, "--skip-git-repo-check", "--json",
-                "--ephemeral", "-"]
+        return ["codex", "exec", "-m", model, "--sandbox", _CODEX_SANDBOX, "-c", 'forced_login_method="chatgpt"',
+                "--skip-git-repo-check", "--json", "--ephemeral", "-"]
 
     def _output_path(self, request, roots):
         return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/agent-output"
@@ -531,9 +544,7 @@ class AgentCliBackend(ProcessBackend):
         """Copy the diff base into a Git directory of our own before the agent can touch the workspace's ``.git``."""
         if self.diff_base is None:
             return True
-        workspace, evidence = Path(roots["workspace"]).resolve(), Path(roots["evidence_root"]).resolve()
-        if evidence == workspace or workspace in evidence.parents:
-            return False  # the agent could rewrite our Git directory
+        workspace = Path(roots["workspace"]).resolve()
         git_dir = self._git_dir(request, roots)
         try:
             _git(git_dir, None, "init", "-q", "--bare", str(git_dir))
@@ -546,7 +557,10 @@ class AgentCliBackend(ProcessBackend):
     def _finish(self, body, request, roots):
         secrets = _login_secrets(self.env.get("HOME"))
         if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
-            diff = _workspace_diff(self._git_dir(request, roots), roots["workspace"], self.diff_base)
+            try:
+                diff = _workspace_diff(self._git_dir(request, roots), roots["workspace"], self.diff_base)
+            except (OSError, subprocess.CalledProcessError):  # e.g. a nested repository without commits
+                return self._withhold(body, request, roots, "candidate")
             if _leaks(diff, secrets):
                 return self._withhold(body, request, roots, "candidate")
             body["candidate"] = _seal(diff, roots, request)
@@ -557,8 +571,8 @@ class AgentCliBackend(ProcessBackend):
         size = path.stat().st_size
         # ponytail: the limit is checked after exit, so a runaway CLI can still fill the disk; enforce it while
         # streaming if that ever matters.
-        if size > self.output_limit:
-            return body
+        if size > self.output_limit:  # unscanned and unparsed: keep nothing, claim nothing
+            return self._withhold(body, request, roots, "agent-output")
         data = path.read_bytes()
         if _leaks(data, secrets):
             return self._withhold(body, request, roots, "agent-output")
@@ -587,6 +601,14 @@ class AgentCliBackend(ProcessBackend):
                     artifacts=[], usage_events=[], usage_completeness="unknown")
         body["attempts"][0]["outcome"] = "error"
         return body
+
+
+def _agent_writable_roots(workspace):
+    """Directories the CLI sandboxes let the agent write: the workspace, and /tmp and $TMPDIR (Codex default)."""
+    roots = {Path(workspace).resolve(), Path("/tmp").resolve(), Path(tempfile.gettempdir()).resolve()}
+    if os.environ.get("TMPDIR"):
+        roots.add(Path(os.environ["TMPDIR"]).resolve())
+    return sorted(roots)
 
 
 def _default_probe(provider):
@@ -697,6 +719,18 @@ def _workspace_diff(git_dir, workspace, base):
         _git(git_dir, workspace, "add", "-A", "--", ".", ":(exclude).git", index=index)
         return _git(git_dir, workspace, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", base,
                     index=index)
+
+
+def _feed(pipe, data):
+    try:
+        pipe.write(data)
+    except OSError:
+        pass
+    finally:
+        try:
+            pipe.close()
+        except OSError:
+            pass
 
 
 def _group_alive(pgid):

@@ -1,6 +1,7 @@
 # AH5-05b — Coding-agent CLI backend (subscription login, no spend)
 
-- Status: **implemented**; human smoke test passed 2026-10-10 (both CLIs); independent evaluation pending.
+- Status: **implemented**; smoke test passed 2026-10-10 (both CLIs, rerun after the evaluation fixes); independent
+  evaluation: pass with conditions F1–F7, all fixed (below).
 - Source: agent-benchmark AB5-07 (no-spend pilot): a backend that runs a coding-agent CLI on its own login and
   reports the CLI's usage. Extends AH5-05a (ADR 0004); contract v1/v2 unchanged. Independent of Showcase.
 
@@ -82,7 +83,6 @@ Tests: `tests/test_agent_cli.py` (fake `claude`/`codex` on `PATH`; no real provi
 ## Known limits
 
 - `output_limit` is checked after exit; a runaway CLI can still fill the disk (`ponytail` note in code).
-- `rejection_reason` is per backend instance; concurrent launches on one instance share it.
 
 ## Smoke test result (2026-10-10, macOS, logged-in CLIs, no API key exported)
 
@@ -92,3 +92,20 @@ Tests: `tests/test_agent_cli.py` (fake `claude`/`codex` on `PATH`; no real provi
 | `codex` 0.160 (`gpt-6.1-sol`) | first run rejected: `codex sandbox <os>` is not the 0.160 syntax (`sandbox-exec: execvp() of 'macos' failed`), so the refusal path worked as designed. After fixing the probe to `codex sandbox -c sandbox_mode="workspace-write" -- true`, all six checks pass: stdin prompt, sandboxed shell, network blocked (DNS failure). Usage from `turn.completed`, including `cache_write_input_tokens`. |
 
 Still unverified: the Linux/container sandbox (bubblewrap/Landlock); run the smoke script in the pilot container.
+
+## Independent evaluation (2026-10-10, `7dc14d2`): pass with conditions, fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| F1 high | Agent could write the evidence root (Codex `workspace-write` also writes `/tmp`, `$TMPDIR`). It could plant a filter in `base.git/config` that ran on the host, or pre-create the result record. | An evidence root inside the workspace, `/tmp` or `$TMPDIR` is refused (`rejected` / `CAPABILITY_UNSUPPORTED`, with a reason). Claude's sandbox also denies writes to the evidence root. |
+| F2 | The env test derived the names from the code. | Names written out literally. |
+| F3 | A large prompt to a CLI that never reads blocked past the timeout and cancel. | stdin is fed from a thread; test with a 2 MiB prompt and a 2 s timeout. |
+| F4 | The probe ran under the global launch lock; replays reprobed; one shared reason. | Probe before the lock and only without a stored result; `rejection_reasons[request_id]`. |
+| F5 | Oversized output was left unscanned on disk. | Withheld: files removed, `error` / `PROVIDER_ERROR`. |
+| F6 | The login method was not pinned. | Claude `forceLoginMethod: "claudeai"` and `permissions.deny` `Read(...)` for the login paths; Codex `-c forced_login_method="chatgpt"`. |
+| F7 | A nested repository made the diff fail and the result `unknown`. | Diff failure → candidate withheld, `error`. |
+
+The surviving mutations now have tests: each Claude/Codex failure signal alone, probe exception, a bad `diff_base`,
+cancel in diff mode, and that `_withhold` removes the files. Remaining, low: the secret scan matches literal values and
+credential shapes only (a re-encoded token passes); on macOS Claude's login is in the Keychain, so only Codex's file is
+matched literally.
