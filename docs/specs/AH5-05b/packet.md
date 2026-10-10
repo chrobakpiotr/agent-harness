@@ -6,8 +6,8 @@
 
 ## Scope
 
-`agent_harness.execution.AgentCliBackend(provider, prompt, *, candidate=None, env=None, grace=2.0,
-output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process group, timeout/cancel/drain as AH5-05a):
+`agent_harness.execution.AgentCliBackend(provider, prompt, *, candidate=None, diff_base=None, env=None,
+grace=2.0, output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process group, timeout/cancel/drain as AH5-05a):
 
 - Fixed command lines. The request's `provider` must equal the backend's, and its `model` (a contract id) is passed
   through:
@@ -22,8 +22,12 @@ output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process 
 - Claude sandbox settings: `sandbox.enabled`, `failIfUnavailable: true` (no unsandboxed fallback),
   `allowUnsandboxedCommands: false`, `network.allowedDomains: []`, `autoAllowBashIfSandboxed: true`. WebFetch and
   WebSearch run outside the sandbox, so they are disallowed.
-- Credentials: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CODEX_API_KEY` and `OPENAI_API_KEY` are removed from the
-  child's environment, so the CLI uses its own subscription login.
+- Credentials and routing: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`,
+  `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN` and `OPENAI_API_KEY` are
+  removed from the child's environment, so the CLI uses its own subscription login.
+- Candidate: either `candidate` (one workspace file) or `diff_base` (a full commit id): after `completed` with
+  `drain: confirmed`, `git diff --binary <diff_base>` of the whole workspace, untracked files included, built in a
+  throwaway index (the workspace index is untouched), is sealed by digest.
 - Refusal before launch (`rejected`, nothing started, nothing written; `backend.rejection_reason` says why):
   - provider mismatch → `CAPABILITY_UNSUPPORTED`;
   - CLI not on `PATH` → `BACKEND_UNAVAILABLE`;
@@ -33,7 +37,7 @@ output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (own process 
   `provider` summary:
   - Claude `usage.input_tokens/output_tokens/cache_read_input_tokens/cache_creation_input_tokens`, cache semantics
     `separate`;
-  - Codex, summed over `turn.completed`: `input_tokens/output_tokens/cached_input_tokens`, cache semantics
+  - Codex, from the last `turn.completed` (each carries the thread's running total): `input_tokens/output_tokens/cached_input_tokens`, cache semantics
     `included_in_input`; cache writes from `cache_write_input_tokens` when the CLI reports it (codex-cli 0.160),
     else unknown and `partial`.
 

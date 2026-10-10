@@ -21,6 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -426,8 +427,9 @@ class ProcessBackend:
                 "candidate": candidate, "artifacts": [], "usage_events": [], "usage_completeness": "unknown"}
 
 
-# Credentials that would bill an API account instead of the CLI's own subscription login.
-_BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY")
+# Credentials and routing that would bill an API or cloud account instead of the CLI's own subscription login.
+_BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                "CLAUDE_CODE_USE_VERTEX", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_API_KEY")
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # Claude Code's own Bash sandbox: no network, never an unsandboxed fallback (`failIfUnavailable`), sandboxed Bash
 # allowed without a prompt in `-p` mode. WebFetch/WebSearch run outside the sandbox and are disallowed separately.
@@ -450,8 +452,8 @@ class AgentCliBackend(ProcessBackend):
     kind = "agent-cli"
     capabilities = ("cancel", "usage")
 
-    def __init__(self, provider, prompt, *, candidate=None, env=None, grace=2.0, output_limit=8 << 20,
-                 sandbox_probe=None):
+    def __init__(self, provider, prompt, *, candidate=None, diff_base=None, env=None, grace=2.0,
+                 output_limit=8 << 20, sandbox_probe=None):
         if provider not in ("claude", "codex"):
             raise ValueError("provider must be 'claude' or 'codex'")
         if not isinstance(prompt, str) or not prompt:
@@ -459,7 +461,12 @@ class AgentCliBackend(ProcessBackend):
         env = dict(os.environ if env is None else env)
         for name in _BILLING_ENV:
             env.pop(name, None)
+        if candidate is not None and diff_base is not None:
+            raise ValueError("candidate and diff_base are exclusive")
+        if diff_base is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", diff_base):
+            raise ValueError("diff_base must be a full commit id")
         super().__init__([], candidate=candidate, env=env, grace=grace)
+        self.diff_base = diff_base
         self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
@@ -505,6 +512,8 @@ class AgentCliBackend(ProcessBackend):
         return path.open("wb")
 
     def _finish(self, body, request, roots):
+        if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
+            body["candidate"] = _seal(_workspace_diff(roots["workspace"], self.diff_base), roots, request)
         path = self._output_path(request, roots)
         size = path.stat().st_size
         # ponytail: the limit is checked after exit, so a runaway CLI can still fill the disk; enforce it while
@@ -555,9 +564,11 @@ def _claude_report(data):
 
 
 def _codex_report(data):
-    """(units, failed, model) summed over ``turn.completed`` events of ``codex exec --json``."""
-    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
-    turns, failed = 0, False
+    """(units, failed, model) from the last ``turn.completed`` of ``codex exec --json``.
+
+    Codex reports the thread's running total in every ``turn.completed``, so the last one is the run's usage.
+    """
+    usage, failed = None, False
     for line in data.splitlines():
         try:
             event = json.loads(line)
@@ -568,18 +579,29 @@ def _codex_report(data):
             failed = True
         elif kind == "turn.completed":
             usage = event.get("usage") or {}
-            # cache writes are reported by newer CLIs only (codex-cli 0.160: cache_write_input_tokens)
-            values = (usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cached_input_tokens", 0),
-                      usage.get("cache_write_input_tokens"))
-            if any(type(v) is not int or v < 0 for v in values[:3]) or (
-                    values[3] is not None and (type(values[3]) is not int or values[3] < 0)):
-                return None, True, None
-            for key, value in zip(totals, values):
-                totals[key] = None if value is None or totals[key] is None else totals[key] + value
-            turns += 1
-    if not turns:
+    if usage is None:
         return None, True, None
-    return totals, failed, None
+    # cache writes are reported by newer CLIs only (codex-cli 0.160: cache_write_input_tokens)
+    units = {"input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"),
+             "cache_read_tokens": usage.get("cached_input_tokens", 0),
+             "cache_write_tokens": usage.get("cache_write_input_tokens")}
+    required = [units[k] for k in ("input_tokens", "output_tokens", "cache_read_tokens")]
+    if any(type(v) is not int or v < 0 for v in required) or (
+            units["cache_write_tokens"] is not None and
+            (type(units["cache_write_tokens"]) is not int or units["cache_write_tokens"] < 0)):
+        return None, True, None
+    return units, failed, None
+
+
+def _workspace_diff(workspace, base):
+    """``git diff --binary <base>`` of the whole workspace, untracked files included, via a throwaway index."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        git = ["git", "-C", workspace]
+        subprocess.run([*git, "read-tree", base], env=env, check=True, capture_output=True)
+        subprocess.run([*git, "add", "-A", "."], env=env, check=True, capture_output=True)
+        return subprocess.run([*git, "diff", "--cached", "--binary", base], env=env, check=True,
+                              capture_output=True).stdout
 
 
 def _group_alive(pgid):

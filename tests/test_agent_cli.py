@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import stat
+import subprocess
 import tempfile
 import textwrap
 import unittest
@@ -28,7 +30,9 @@ class AgentCliTest(unittest.TestCase):
         self.log = self.root / "calls.jsonl"
         self.env = {"PATH": f"{self.root / 'bin'}:/usr/bin:/bin", "HOME": str(self.root),
                     "ANTHROPIC_API_KEY": "sk-ant-secret", "CODEX_API_KEY": "sk-codex-secret",
-                    "OPENAI_API_KEY": "sk-openai-secret", "ANTHROPIC_AUTH_TOKEN": "secret-token"}
+                    "OPENAI_API_KEY": "sk-openai-secret", "ANTHROPIC_AUTH_TOKEN": "secret-token",
+                    "ANTHROPIC_BASE_URL": "https://proxy.invalid", "CLAUDE_CODE_USE_BEDROCK": "1",
+                    "CLAUDE_CODE_USE_VERTEX": "1", "CODEX_ACCESS_TOKEN": "codex-token"}
 
     def fake(self, name, stdout="", *, exit_code=0, probe_exit=0, sleep=0):
         """A fake CLI that logs argv and the billing variables it sees, then prints ``stdout``."""
@@ -41,7 +45,7 @@ class AgentCliTest(unittest.TestCase):
             with open({str(self.log)!r}, "a") as log:
                 log.write(json.dumps({{"cli": {name!r}, "argv": argv,
                     "stdin": stdin,
-                    "billing": sorted(k for k in os.environ if k.endswith(("API_KEY", "AUTH_TOKEN")))}}) + "\\n")
+                    "billing": sorted(k for k in os.environ if k in {list(execution._BILLING_ENV)!r})}}) + "\\n")
             if argv[:1] in (["sandbox"], ["--version"]):
                 sys.exit({probe_exit})
             time.sleep({sleep})
@@ -102,9 +106,9 @@ class AgentCliTest(unittest.TestCase):
         self.assertEqual(("agent-output", "sha256:" + hashlib.sha256(data).hexdigest()),
                          (artifact["name"], artifact["sha256"]))
 
-    def test_codex_command_line_sums_turn_usage(self):
-        two_turns = CODEX_OK + [{"type": "turn.completed",
-                                 "usage": {"input_tokens": 100, "cached_input_tokens": 0, "output_tokens": 5}}]
+    def test_codex_command_line_and_usage_from_the_last_cumulative_turn(self):
+        two_turns = CODEX_OK + [{"type": "turn.completed",  # Codex reports the thread total in every turn
+                                 "usage": {"input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 75}}]
         self.fake("codex", "\n".join(json.dumps(e) for e in two_turns) + "\n")
         result = self.run_backend(execution.AgentCliBackend("codex", "fix the bug", env=self.env),
                                   self.request("codex", "gpt-6.1-sol", version=2))
@@ -127,6 +131,37 @@ class AgentCliTest(unittest.TestCase):
         self.assertEqual(({"input_tokens": 34144, "output_tokens": 142, "cache_read_tokens": 29056,
                            "cache_write_tokens": 0}, "complete"),
                          (result["usage_events"][0]["units"], result["usage_completeness"]))
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.root / "workspace"), *args], check=True,
+                              capture_output=True, env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
+                                                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"}).stdout
+
+    def test_diff_candidate_seals_the_whole_workspace_change_after_drain(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("old\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        script = self.root / "bin" / "claude"
+        script.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import sys, pathlib
+            if sys.argv[1:2] == ["--version"]: sys.exit(0)
+            sys.stdin.read()
+            pathlib.Path("a.txt").write_text("new\\n"); pathlib.Path("b.bin").write_bytes(bytes(range(256)))
+            print({json.dumps(CLAUDE_OK)!r})
+            """))
+        script.chmod(0o755)
+        result = self.run_backend(self.claude("x", env=self.env, diff_base=base), self.request("claude", "sonnet"))
+        sealed = (self.root / "evidence" / result["candidate"]["path"]).read_bytes()
+        self.assertIn(b"-old\n+new", sealed)
+        self.assertIn(b"GIT binary patch", sealed)  # untracked binary file included
+        self.assertEqual(b"", self.git("diff", "--cached"))  # the workspace index is untouched
+        with self.assertRaises(ValueError):
+            self.claude("x", candidate="a.txt", diff_base=base)
+        with self.assertRaises(ValueError):
+            self.claude("x", diff_base="HEAD")
 
     def test_codex_sandbox_unavailable_is_rejected_without_running_the_agent(self):
         self.fake("codex", json.dumps(CODEX_OK[-1]), probe_exit=1)
