@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 — 2026-10-10
 
 - `AgentCliBackend` (Claude): allow sandboxed Bash outright, so commands that set variables or use heredocs
   (typical test commands) run in `-p` mode, as under Codex `workspace-write`. Smoke test distinguishes a blocked
