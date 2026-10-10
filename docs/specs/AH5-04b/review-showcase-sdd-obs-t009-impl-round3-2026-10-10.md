@@ -40,3 +40,9 @@ validate` OK. Scope: every changed file is inside `allowed_paths` (`machine_outc
 4. Low: the feature-fingerprint check in coverage.
 
 Also include the benchmark (it passes alone; it failed only under parallel CPU load) in the completion evidence.
+
+## Abort-guard mutations (completed run)
+
+Caught: the `store.py` safe-abort shape and upper bound, `supervisor.py` authority-state → `UNCERTAIN`, `harness.py`
+replay accepting any receipt hash, executor authorizer set to `None`, and the recovery rebuild disabled. Survives: only
+the `harness_invocation_upper_bound == 0` check in `harness.py` (condition 3 stands for that one guard).
