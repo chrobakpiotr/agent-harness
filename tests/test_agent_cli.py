@@ -93,6 +93,7 @@ class AgentCliTest(unittest.TestCase):
                                                    settings["allowUnsandboxedCommands"],
                                                    settings["network"]["allowedDomains"]))
         self.assertEqual("WebFetch,WebSearch", argv[argv.index("--disallowedTools") + 1])
+        self.assertIn("~/.codex", settings["filesystem"]["denyRead"])
         for forbidden in ("--bare", "bypassPermissions", "--dangerously-skip-permissions"):
             self.assertNotIn(forbidden, " ".join(argv))
         self.assertEqual({"input_tokens": 120, "output_tokens": 45, "cache_read_tokens": 300,
@@ -162,6 +163,36 @@ class AgentCliTest(unittest.TestCase):
             self.claude("x", candidate="a.txt", diff_base=base)
         with self.assertRaises(ValueError):
             self.claude("x", diff_base="HEAD")
+
+    def test_login_token_in_candidate_or_output_is_withheld(self):
+        token = "tok-" + "x" * 40
+        (self.root / ".codex").mkdir()
+        (self.root / ".codex" / "auth.json").write_text(json.dumps({"tokens": {"refresh": token}}))
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("old\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        script = self.root / "bin" / "claude"
+        script.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import sys, pathlib
+            if sys.argv[1:2] == ["--version"]: sys.exit(0)
+            sys.stdin.read()
+            pathlib.Path("stolen.txt").write_text({token!r})
+            print({json.dumps(CLAUDE_OK)!r})
+            """))
+        script.chmod(0o755)
+        backend = self.claude("x", env=self.env, diff_base=base)
+        result = self.run_backend(backend, self.request("claude", "sonnet"))
+        self.assertEqual(("error", "PROVIDER_ERROR", None, [], "candidate"),
+                         (result["outcome"], result["error_code"], result["candidate"], result["artifacts"],
+                          backend.withheld))
+        self.assertEqual([], list((self.root / "evidence").rglob("candidate")))
+        self.fake("claude", json.dumps({**CLAUDE_OK, "result": "key sk-ant-" + "a" * 30}))
+        backend = self.claude("x", env=self.env)
+        result = self.run_backend(backend, self.request("claude", "sonnet", request_id="req-2"))
+        self.assertEqual(("error", [], "agent-output"), (result["outcome"], result["artifacts"], backend.withheld))
 
     def test_codex_sandbox_unavailable_is_rejected_without_running_the_agent(self):
         self.fake("codex", json.dumps(CODEX_OK[-1]), probe_exit=1)

@@ -11,6 +11,7 @@ cannot prove:
   - the prompt arrives on stdin (the agent creates hello.txt);
   - shell commands run in the sandbox (ran.txt);
   - network is blocked for shell commands (net.txt must stay empty);
+  - Claude's sandbox cannot read the CLI login files (leak.txt must stay empty);
   - usage is read from the CLI's report.
 Each run spends one small task of subscription quota, no money.
 """
@@ -29,6 +30,7 @@ PROMPT = """Do exactly these three steps in the current directory, then stop:
 1. Create a file hello.txt containing the single word: hi
 2. Run this shell command: echo ok > ran.txt
 3. Run this shell command and ignore any error: curl -sS --max-time 10 https://example.com -o net.txt
+4. Run this shell command and ignore any error: (head -c1 ~/.claude.json || head -c1 ~/.codex/auth.json) >/dev/null 2>&1 && echo readable > leak.txt
 """
 MODELS = {"claude": "sonnet", "codex": "gpt-6.1-sol"}
 
@@ -64,6 +66,11 @@ def smoke(provider, model):
         "network blocked (net.txt empty or absent)": not net,
         "usage reported": bool(result["usage_events"]),
     }
+    leak = text("leak.txt")
+    if provider == "claude":  # Codex's workspace-write sandbox can read the login; the output scan covers that
+        checks["login files unreadable in the sandbox (leak.txt empty)"] = not leak
+    else:
+        print(f"info: login files readable by sandboxed commands: {'yes' if leak else 'no'}")
     print(f"\n=== {provider} ({model}) — workspace {workspace}")
     print(f"outcome={result['outcome']} error_code={result['error_code']} exit_code={result['exit_code']} "
           f"drain={result['drain']} resolved_model={result['resolved_model']}")

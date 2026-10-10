@@ -433,8 +433,14 @@ _BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # Claude Code's own Bash sandbox: no network, never an unsandboxed fallback (`failIfUnavailable`), sandboxed Bash
 # allowed without a prompt in `-p` mode. WebFetch/WebSearch run outside the sandbox and are disallowed separately.
+# Login files are not readable by sandboxed commands, so a model command cannot copy them into the workspace.
+_LOGIN_PATHS = ("~/.claude", "~/.claude.json", "~/.codex", "~/.config/claude")
 _CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
-                                "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []}}}
+                                "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []},
+                                "filesystem": {"denyRead": list(_LOGIN_PATHS)}}}
+# Shapes of provider credentials; a candidate or output containing one is withheld.
+_SECRET_PATTERNS = (re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"), re.compile(rb"\bsk-[A-Za-z0-9_-]{32,}"),
+                    re.compile(rb'"(?:refresh_token|access_token|id_token)"\s*:'))
 _CODEX_SANDBOX = "workspace-write"
 
 
@@ -466,7 +472,7 @@ class AgentCliBackend(ProcessBackend):
         if diff_base is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", diff_base):
             raise ValueError("diff_base must be a full commit id")
         super().__init__([], candidate=candidate, env=env, grace=grace)
-        self.diff_base = diff_base
+        self.diff_base, self.withheld = diff_base, None
         self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
@@ -512,8 +518,15 @@ class AgentCliBackend(ProcessBackend):
         return path.open("wb")
 
     def _finish(self, body, request, roots):
+        secrets = _login_secrets(self.env.get("HOME"))
         if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
-            body["candidate"] = _seal(_workspace_diff(roots["workspace"], self.diff_base), roots, request)
+            diff = _workspace_diff(roots["workspace"], self.diff_base)
+            if _leaks(diff, secrets):
+                return self._withhold(body, request, roots, "candidate")
+            body["candidate"] = _seal(diff, roots, request)
+        if body["candidate"] is not None and _leaks((Path(roots["evidence_root"]) / body["candidate"]["path"])
+                                                    .read_bytes(), secrets):
+            return self._withhold(body, request, roots, "candidate")
         path = self._output_path(request, roots)
         size = path.stat().st_size
         # ponytail: the limit is checked after exit, so a runaway CLI can still fill the disk; enforce it while
@@ -521,6 +534,8 @@ class AgentCliBackend(ProcessBackend):
         if size > self.output_limit:
             return body
         data = path.read_bytes()
+        if _leaks(data, secrets):
+            return self._withhold(body, request, roots, "agent-output")
         body["artifacts"] = [{"name": "agent-output", "path": str(path.relative_to(roots["evidence_root"])),
                               "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": size}]
         units, failed, model = (_claude_report if self.provider == "claude" else _codex_report)(data)
@@ -535,6 +550,16 @@ class AgentCliBackend(ProcessBackend):
             body.update(outcome="error", exit_code=None, error_code="PROVIDER_ERROR")
             body["attempts"][0]["outcome"] = "error"
         body["resolved_model"] = model
+        return body
+
+    def _withhold(self, body, request, roots, what):
+        """A credential-shaped string in the output: keep neither candidate nor output, report an error."""
+        for name in ("candidate", "agent-output"):
+            (Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/{name}").unlink(missing_ok=True)
+        self.withheld = what
+        body.update(outcome="error", exit_code=None, completion=None, error_code="PROVIDER_ERROR", candidate=None,
+                    artifacts=[], usage_events=[], usage_completeness="unknown")
+        body["attempts"][0]["outcome"] = "error"
         return body
 
 
@@ -591,6 +616,32 @@ def _codex_report(data):
             (type(units["cache_write_tokens"]) is not int or units["cache_write_tokens"] < 0)):
         return None, True, None
     return units, failed, None
+
+
+def _login_secrets(home):
+    """String values (20+ chars) of the CLIs' login files under ``home``; matched literally in outputs."""
+    values = set()
+    if not home:
+        return values
+    for relative in (".codex/auth.json", ".claude/.credentials.json", ".claude.json"):
+        try:
+            doc = json.loads((Path(home) / relative).read_text())
+        except (OSError, ValueError):
+            continue
+        stack = [doc]
+        while stack:
+            item = stack.pop()
+            if isinstance(item, dict):
+                stack.extend(item.values())
+            elif isinstance(item, list):
+                stack.extend(item)
+            elif isinstance(item, str) and len(item) >= 20:
+                values.add(item.encode())
+    return values
+
+
+def _leaks(data, secrets):
+    return any(value in data for value in secrets) or any(p.search(data) for p in _SECRET_PATTERNS)
 
 
 def _workspace_diff(workspace, base):
