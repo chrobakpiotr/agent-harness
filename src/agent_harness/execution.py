@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -245,9 +246,9 @@ def _unknown(request, backend, execution_id, cancel_requested, started_at):
             "candidate": None, "artifacts": [], "usage_events": [], "usage_completeness": "unknown"}
 
 
-def _seal(source, roots, request):
-    """Copy a candidate file into the evidence root and return its contract reference."""
-    relative = f"executions/{_slot(request['request_id'])}/candidate"
+def _seal(source, roots, request, name="candidate"):
+    """Copy a candidate (or named artifact) into the evidence root and return its contract reference."""
+    relative = f"executions/{_slot(request['request_id'])}/{name}"
     target = Path(roots["evidence_root"]) / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(source, bytes):
@@ -749,3 +750,201 @@ def _group_alive(pgid):
 
 def _now():
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+# --- Qualified grading target (AH5-04c-2) -------------------------------------------------------------------------
+
+# Exactly the container configuration the AH5-04b qualification ran (Showcase q_probes._base_args and B8/B9).
+QUALIFIED_LIMITS = {"cpus": 1, "memory_bytes": 512 << 20, "pids": 64, "disk_bytes": 256 << 20, "output_bytes": 1 << 20}
+_WORKSPACE_TMPFS_BYTES = 251_658_240  # + 16 MiB /tmp = the qualified 256 MiB writable disk
+QUALIFIED_RUN_FLAGS = (
+    "--network=none", "--read-only", "--user=65532:65532", "--cap-drop=ALL", "--security-opt=no-new-privileges",
+    "--pids-limit=64", "--memory=512m", "--memory-swap=512m", "--cpus=1", "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
+    "--tmpfs=/dev/shm:ro,noexec,nosuid,size=1m",
+    f"--tmpfs=/workspace:rw,noexec,nosuid,size={_WORKSPACE_TMPFS_BYTES},mode=1777",
+)
+GRADING_ENV = {"PYTHONPATH": "/workspace", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"}
+_ANSWERS_LIMIT = 1 << 20
+
+
+class QualifiedDockerBackend:
+    """Grades one prepared workspace per request on the qualified Docker target (contract v2 only).
+
+    One instance is one grading session: it is bound at construction to one passing qualification of the caller's
+    own ``job_id`` and grades any number of requests. Per request: a fresh container with exactly the qualified
+    flags; the workspace streams in as a tar into a tmpfs, ``cases`` is mounted read-only at
+    ``/inputs/cases.json``, ``command`` runs in ``/workspace`` with ``GRADING_ENV`` only; after exit the container
+    is removed and its absence confirmed, and only then is ``/output/answers.json`` (regular file, at most 1 MiB)
+    read and sealed as the ``answers`` artifact. Expected values never enter the container; the verdict is the
+    caller's.
+    """
+
+    kind = "qualified-docker"
+    isolation_level = "qualified"
+    capabilities = ("cancel", "qualified_isolation")
+    supports_limits = True
+
+    def __init__(self, qualification, *, qualification_evidence, capability_report, job_id, image, command, cases,
+                 docker="docker", grace=2.0):
+        contract.validate_capability_binding(capability_report, qualification, qualification_evidence, job_id)
+        if not capability_report["qualified"] or not contract.qualification_passes(qualification,
+                                                                                   qualification_evidence):
+            raise contract.ContractError("NOT_QUALIFIED", "the qualification does not pass")
+        digest = qualification["tuple"]["workload_image"]
+        if not isinstance(image, str) or not image.endswith("@" + digest):
+            raise ValueError("image must be the qualified workload image pinned by its digest")
+        if not isinstance(command, (list, tuple)) or not command or not all(isinstance(a, str) for a in command):
+            raise ValueError("command must be a non-empty argv list")
+        self.qualification, self.image, self.command = qualification, image, list(command)
+        self.cases, self.docker, self.grace = Path(cases), docker, grace
+        self.target = {"id": qualification["target"], "image_digest": digest,
+                       "qualification_digest": contract.qualification_digest(qualification)}
+        self.rejection_reasons = {}
+
+    @property
+    def rejection_reason(self):
+        return next(reversed(self.rejection_reasons.values()), None)
+
+    def report(self):
+        return {"contract_version": contract.CONTRACT_VERSION, "target": self.target["id"],
+                "policy_digest": self.qualification["policy_digest"], "discovered": True, "supported": True,
+                "qualified": True, "launch_ready": True, "capabilities": sorted(self.capabilities), "refusal": None}
+
+    def refuse(self, request, roots):
+        code, reason = self._refusal(request)
+        if code is not None:
+            self.rejection_reasons[request["request_id"]] = reason
+        return code
+
+    def _refusal(self, request):
+        if request["contract_version"] != 2 or request["limits"] != QUALIFIED_LIMITS:
+            return "CAPABILITY_UNSUPPORTED", "a qualified grading request is contract v2 with exactly QUALIFIED_LIMITS"
+        if not self.cases.is_file():
+            return "CAPABILITY_UNSUPPORTED", "cases file missing"
+        try:
+            engine = self._docker("version", "--format", "{{.Server.Version}}").strip()
+            host, kernel = self._docker("info", "--format", "{{.OperatingSystem}}|{{.KernelVersion}}").strip() \
+                .split("|", 1)
+            repo_digests = json.loads(self._docker("image", "inspect", "--format", "{{json .RepoDigests}}",
+                                                   self.image) or "[]")
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return "BACKEND_UNAVAILABLE", "docker is not reachable or the image is not present"
+        want = self.qualification["tuple"]
+        live = {"engine": f"DockerEngine_{engine}", "host": host.replace(" ", "_"), "kernel": kernel}
+        drift = [k for k, v in live.items() if want[k] != v]
+        if self.image not in (repo_digests or []):
+            drift.append("workload_image")
+        if drift:  # the qualification covers exactly its tuple
+            return "NOT_QUALIFIED", f"live target differs from the qualified tuple: {sorted(drift)}"
+        return None, None
+
+    def _docker(self, *args, timeout=30, check=True, **kwargs):
+        return subprocess.run([self.docker, *args], capture_output=True, text=True, timeout=timeout, check=check,
+                              stdin=subprocess.DEVNULL, **kwargs).stdout
+
+    def run(self, request, roots, cancelled, execution_id, started_at):
+        name = f"agent-harness-grade-{uuid.uuid4().hex[:16]}"
+        with tempfile.TemporaryDirectory(prefix="ah-grade-") as tmp:
+            inputs, output = Path(tmp) / "inputs", Path(tmp) / "output"
+            inputs.mkdir()
+            output.mkdir(mode=0o777)
+            output.chmod(0o777)  # the container user (65532) writes here
+            shutil.copyfile(self.cases, inputs / "cases.json")
+            argv = [self.docker, "run", "-i", f"--name={name}", *QUALIFIED_RUN_FLAGS,
+                    "--mount", f"type=bind,src={inputs},dst=/inputs,readonly",
+                    "--mount", f"type=bind,src={output},dst=/output", "--workdir=/workspace",
+                    *[f"--env={k}={v}" for k, v in GRADING_ENV.items()],
+                    self.image, "sh", "-c", 'tar -x -C /workspace && exec "$@"', "grade", *self.command]
+            child = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     start_new_session=True)
+            captured, truncated = bytearray(), threading.Event()
+            reader = threading.Thread(target=_drain_capped, args=(child.stdout, captured, truncated), daemon=True)
+            reader.start()
+            try:
+                _write_tar(child.stdin, Path(roots["workspace"]))
+            except OSError:
+                pass
+            finally:
+                try:
+                    child.stdin.close()
+                except OSError:
+                    pass
+            deadline = time.monotonic() + request["timeout_seconds"]  # from the end of the workspace stream
+            outcome = None
+            while child.poll() is None:
+                if cancelled.is_set():
+                    outcome = "cancel"
+                elif time.monotonic() >= deadline:
+                    outcome = "timeout"
+                if outcome:
+                    break
+                time.sleep(0.05)
+            if outcome:
+                self._docker("kill", name, check=False)
+            try:
+                child.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                child.kill()
+            reader.join(5)
+            state = self._state(name)
+            self._docker("rm", "-f", name, check=False)
+            gone = not self._docker("ps", "-a", "--no-trunc", f"--filter=name=^{name}$", "--format={{.ID}}",
+                                    check=False).strip()
+            ended = _now()
+            answers = _read_answers(output) if gone else None
+        oom = bool(state and state.get("OOMKilled"))
+        exit_code = state.get("ExitCode") if state else None
+        if outcome is None:
+            outcome = "error" if oom else ("completed" if gone and type(exit_code) is int else "unknown")
+        fired = "timeout" if outcome == "timeout" else ("oom" if oom else None)
+        artifacts = [] if answers is None else [{"name": "answers", **_seal(answers, roots, request, "answers")}]
+        attempt = {"attempt_id": "attempt-1", "outcome": outcome, "started_at": started_at, "ended_at": ended}
+        return {"outcome": outcome, "exit_code": exit_code if outcome == "completed" else None, "completion": None,
+                "error_code": contract.LIMIT_EXCEEDED if outcome == "error" else None,
+                "drain": "confirmed" if gone else "unconfirmed", "started_at": started_at, "ended_at": ended,
+                "attempts": [attempt], "candidate": None, "artifacts": artifacts, "usage_events": [],
+                "usage_completeness": "unknown", "target": dict(self.target),
+                "limits": {"applied": {**request["limits"], "timeout_seconds": request["timeout_seconds"]},
+                           "fired": fired, "output_truncated": truncated.is_set()}}
+
+    def _state(self, name):
+        try:
+            return json.loads(self._docker("inspect", "--format", "{{json .State}}", name, check=False) or "null")
+        except ValueError:
+            return None
+
+
+def _write_tar(pipe, workspace):
+    """The workspace as a tar stream: regular files and directories only (no links or devices), ``.git`` skipped."""
+    import tarfile
+    with tarfile.open(fileobj=pipe, mode="w|") as archive:
+        for path in sorted(workspace.rglob("*")):
+            relative = path.relative_to(workspace)
+            if ".git" in relative.parts or path.is_symlink():
+                continue
+            if path.is_dir() or path.is_file():
+                archive.add(path, arcname=str(relative), recursive=False)
+
+
+def _drain_capped(pipe, captured, truncated, limit=1 << 20):
+    for chunk in iter(lambda: pipe.read(65536), b""):
+        room = limit - len(captured)
+        if room > 0:
+            captured.extend(chunk[:room])
+        if len(chunk) > room:
+            truncated.set()
+
+
+def _read_answers(output):
+    """``answers.json`` from the output directory: no-follow, regular file, at most 1 MiB; else None."""
+    try:
+        fd = os.open(output / "answers.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        data = os.read(fd, _ANSWERS_LIMIT + 1)
+        return data if len(data) <= _ANSWERS_LIMIT else None
+    finally:
+        os.close(fd)
