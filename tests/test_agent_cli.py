@@ -164,6 +164,48 @@ class AgentCliTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.claude("x", diff_base="HEAD")
 
+    def test_diff_never_runs_git_config_the_agent_wrote(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("old\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        marker_a, marker_b = self.root / "fsmonitor-ran", self.root / "filter-ran"
+        script = self.root / "bin" / "claude"
+        script.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import sys, pathlib
+            if sys.argv[1:2] == ["--version"]: sys.exit(0)
+            sys.stdin.read()
+            with open(".git/config", "a") as config:
+                config.write("[core]\\n\\tfsmonitor = touch {marker_a}\\n"
+                             "[filter \\"x\\"]\\n\\tclean = touch {marker_b}; cat\\n")
+            pathlib.Path(".gitattributes").write_text("* filter=x\\n")
+            pathlib.Path("a.txt").write_text("new\\n")
+            print({json.dumps(CLAUDE_OK)!r})
+            """))
+        script.chmod(0o755)
+        result = self.run_backend(self.claude("x", env=self.env, diff_base=base), self.request("claude", "sonnet"))
+        sealed = (self.root / "evidence" / result["candidate"]["path"]).read_bytes()
+        self.assertFalse(marker_a.exists() or marker_b.exists(), "agent-written git config ran on the host")
+        self.assertIn(b"+new", sealed)
+        self.assertNotIn(b" .git/", sealed.replace(b"a/.gitattributes", b"").replace(b"b/.gitattributes", b""))
+        self.assertNotIn(b"diff --git a/.git/", sealed)
+
+    def test_diff_mode_refuses_an_evidence_root_inside_the_workspace(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("x\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        self.fake("claude", json.dumps(CLAUDE_OK))
+        (ws / "evidence").mkdir()
+        request = self.request("claude", "sonnet")
+        result = execution.launch(request, self.claude("x", env=self.env, diff_base=base), workspace=str(ws),
+                                  evidence_root=str(ws / "evidence")).result(60)
+        self.assertEqual(("error", "LAUNCH_FAILED"), (result["outcome"], result["error_code"]))
+        self.assertFalse(any(c["argv"][:1] == ["-p"] for c in self.calls()))  # the agent never started
+
     def test_login_token_in_candidate_or_output_is_withheld(self):
         token = "tok-" + "x" * 40
         (self.root / ".codex").mkdir()

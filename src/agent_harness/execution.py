@@ -356,8 +356,15 @@ class ProcessBackend:
     def _finish(self, body, request, roots):
         return body
 
+    def _prepare(self, request, roots):
+        """Work before the child starts; False refuses the launch (``error`` / ``LAUNCH_FAILED``)."""
+        return True
+
     def run(self, request, roots, cancelled, execution_id, started_at):
         workspace = Path(roots["workspace"])
+        if not self._prepare(request, roots):
+            now = _now()
+            return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         output = self._output(request, roots)
         try:
             child = subprocess.Popen(self._argv(request), cwd=workspace, env=self.env, start_new_session=True,
@@ -517,10 +524,29 @@ class AgentCliBackend(ProcessBackend):
         path.parent.mkdir(parents=True, exist_ok=True)
         return path.open("wb")
 
+    def _git_dir(self, request, roots):
+        return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/base.git"
+
+    def _prepare(self, request, roots):
+        """Copy the diff base into a Git directory of our own before the agent can touch the workspace's ``.git``."""
+        if self.diff_base is None:
+            return True
+        workspace, evidence = Path(roots["workspace"]).resolve(), Path(roots["evidence_root"]).resolve()
+        if evidence == workspace or workspace in evidence.parents:
+            return False  # the agent could rewrite our Git directory
+        git_dir = self._git_dir(request, roots)
+        try:
+            _git(git_dir, None, "init", "-q", "--bare", str(git_dir))
+            _git(git_dir, None, "fetch", "-q", "--no-tags", str(workspace / ".git"), self.diff_base)
+            _git(git_dir, None, "cat-file", "-e", f"{self.diff_base}^{{commit}}")
+        except (OSError, subprocess.CalledProcessError):
+            return False
+        return True
+
     def _finish(self, body, request, roots):
         secrets = _login_secrets(self.env.get("HOME"))
         if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
-            diff = _workspace_diff(roots["workspace"], self.diff_base)
+            diff = _workspace_diff(self._git_dir(request, roots), roots["workspace"], self.diff_base)
             if _leaks(diff, secrets):
                 return self._withhold(body, request, roots, "candidate")
             body["candidate"] = _seal(diff, roots, request)
@@ -644,15 +670,33 @@ def _leaks(data, secrets):
     return any(value in data for value in secrets) or any(p.search(data) for p in _SECRET_PATTERNS)
 
 
-def _workspace_diff(workspace, base):
-    """``git diff --binary <base>`` of the whole workspace, untracked files included, via a throwaway index."""
+# Git after the agent ran: our own GIT_DIR, no user/system config, no hooks, fsmonitor, filters, external diff or
+# textconv, and a minimal environment, so nothing the agent wrote (.git/config, .gitattributes) runs on the host.
+_GIT_HARDENING = ("-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.attributesFile=/dev/null",
+                  "-c", "diff.external=", "-c", "core.sshCommand=false", "-c", "protocol.allow=never",
+                  "-c", "protocol.file.allow=always")
+
+
+def _git(git_dir, work_tree, *args, index=None):
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent", "LC_ALL": "C",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
+           "GIT_DIR": str(git_dir)}
+    if work_tree is not None:
+        env["GIT_WORK_TREE"] = str(work_tree)
+    if index is not None:
+        env["GIT_INDEX_FILE"] = str(index)
+    return subprocess.run(["git", *_GIT_HARDENING, *args], env=env, check=True, capture_output=True,
+                          stdin=subprocess.DEVNULL).stdout
+
+
+def _workspace_diff(git_dir, workspace, base):
+    """``git diff --binary <base>`` of the whole workspace (untracked included, ``.git`` never) from our GIT_DIR."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
-        git = ["git", "-C", workspace]
-        subprocess.run([*git, "read-tree", base], env=env, check=True, capture_output=True)
-        subprocess.run([*git, "add", "-A", "."], env=env, check=True, capture_output=True)
-        return subprocess.run([*git, "diff", "--cached", "--binary", base], env=env, check=True,
-                              capture_output=True).stdout
+        index = Path(tmp) / "index"
+        _git(git_dir, workspace, "read-tree", base, index=index)
+        _git(git_dir, workspace, "add", "-A", "--", ".", ":(exclude).git", index=index)
+        return _git(git_dir, workspace, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", base,
+                    index=index)
 
 
 def _group_alive(pgid):

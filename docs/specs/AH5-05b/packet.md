@@ -30,8 +30,16 @@ grace=2.0, output_limit=8 MiB, sandbox_probe=None)`, a `ProcessBackend` child (o
   `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN` and `OPENAI_API_KEY` are
   removed from the child's environment, so the CLI uses its own subscription login.
 - Candidate: either `candidate` (one workspace file) or `diff_base` (a full commit id): after `completed` with
-  `drain: confirmed`, `git diff --binary <diff_base>` of the whole workspace, untracked files included, built in a
-  throwaway index (the workspace index is untouched), is sealed by digest.
+  `drain: confirmed`, `git diff --binary <diff_base>` of the whole workspace (untracked included, `.git` never) is
+  sealed by digest. Git never reads the workspace's `.git` after the agent ran:
+  - before launch, `diff_base` is fetched into a Git directory of Harness's own under the evidence root (refused,
+    `LAUNCH_FAILED`, if the evidence root is inside the workspace);
+  - the diff runs with `GIT_DIR` = that directory, `GIT_WORK_TREE` = the workspace and a throwaway index;
+  - no system or user config, a minimal environment, `core.fsmonitor=false`, `core.hooksPath=/dev/null`,
+    `core.attributesFile=/dev/null`, no external diff, `--no-ext-diff --no-textconv`.
+
+  An agent-written `core.fsmonitor`, `filter.<x>.clean` or `.gitattributes` therefore runs nothing on the host
+  (regression test from agent-benchmark's PoC; it fails on `0c4a9a0`).
 - Refusal before launch (`rejected`, nothing started, nothing written; `backend.rejection_reason` says why):
   - provider mismatch → `CAPABILITY_UNSUPPORTED`;
   - CLI not on `PATH` → `BACKEND_UNAVAILABLE`;
