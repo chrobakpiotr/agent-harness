@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — 2026-10-10
+
+- `execution.AgentCliBackend` (AH5-05b): runs `claude -p` / `codex exec` on the CLI's own subscription login, with
+  the prompt on stdin and fixed command lines (no caller arguments). API-key and routing variables are removed and
+  the login method is pinned. Claude Code's Bash sandbox runs without network, failing closed; Codex runs in
+  `--sandbox workspace-write`. A sandbox probe refuses the launch (`CAPABILITY_UNSUPPORTED`, with a reason) instead of
+  falling back to another mode. Usage comes from the CLI's own report, and the raw output is a sealed `agent-output`
+  artifact. Optional candidate: one workspace file, or `diff_base` (`git diff --binary`, built from a Harness-owned Git
+  directory, never the workspace's `.git`). Outputs carrying login credentials are withheld. An evidence root the
+  agent's sandbox can write is refused. `ProcessBackend` behaviour unchanged. `scripts/smoke-agent-cli.py` checks
+  the real CLIs.
+
 ## 0.5.0 — 2026-10-07
 
 - Contract v2 amendment (ADR 0005): candidate targets — an `unqualified` result may carry `target` with
