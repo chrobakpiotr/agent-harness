@@ -151,3 +151,29 @@ checked the privacy of the ref payload and authorized `recover-state`. Two follo
    - Add an explicit, audited owner command that discards the prepared record, with a CAS on its commit. Restore
      can then proceed to the last acknowledged snapshot. Alternatively, document the owner procedure.
    - Discarding is semantically correct: the prepared transaction was never acknowledged.
+
+## Recheck of the follow-ups (Showcase `bbc1273`)
+
+Verdict: **both follow-ups resolved.** Nothing remains open on the Harness side. The recovery write waits only on the
+owner's privacy check of the ref payload and an explicit `recover-state` authorization.
+
+Verified independently. `state_snapshots.py` from `bbc1273` was run in scratch repositories:
+- **Normal and legacy first saves.** Crashes at all six boundaries were tested both with an existing snapshot and as
+  the first save of a legacy tree (no current ref). In every case recovery resolved the transaction:
+  - a legacy crash before any disk write discards the record and leaves the legacy state untouched;
+  - every other crash rolls forward to `consistent`.
+- **External changes are still detected.** A legacy file changed after the crash gives
+  `snapshot-prepared-state-conflict`.
+- **Prepared records without prior digests** (written before this change) still fail closed when there is no
+  current ref.
+- **Crash plus loss of `.agent-state`:** `discard_prepared_snapshot`:
+  - refuses a stale commit (`snapshot-prepared-commit-stale`);
+  - in one ref transaction, creates the audit ref `refs/agent-state-discarded/<feature>/<commit>` and deletes the
+    prepared ref with a CAS on its commit;
+  - is idempotent on replay.
+
+  Restore then brings back the last acknowledged snapshot, and the status is `consistent`.
+- **Showcase's own tests,** run from the exported `bbc1273` tree: `test_state_snapshots`, `test_state_recovery` and
+  `test_sharded_runner`, 33 tests OK.
+
+Note for the owner's privacy check: discard audit refs also carry the operator label.
