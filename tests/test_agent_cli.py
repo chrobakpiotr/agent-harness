@@ -252,6 +252,21 @@ class AgentCliTest(unittest.TestCase):
         self.run_backend(other, self.request("claude", "sonnet", request_id="req-3"))
         self.assertEqual("provider_error", other.error_details["req-3"]["kind"])
 
+    def test_reset_time_from_the_real_claude_session_limit_message(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        message = "You've hit your session limit · resets 2:50pm (Europe/Warsaw)"
+        warsaw = ZoneInfo("Europe/Warsaw")
+        before = datetime(2026, 10, 11, 12, 0, tzinfo=warsaw)
+        self.assertEqual(int(datetime(2026, 10, 11, 14, 50, tzinfo=warsaw).timestamp()),
+                         execution._reset_time(message, now=before))
+        after = datetime(2026, 10, 11, 15, 0, tzinfo=warsaw)  # already past: the next day
+        self.assertEqual(int(datetime(2026, 10, 12, 14, 50, tzinfo=warsaw).timestamp()),
+                         execution._reset_time(message, now=after))
+        self.assertIsNone(execution._reset_time("resets soon (Mars/Base)"))
+        self.assertEqual("quota_exhausted", execution._provider_error(json.dumps(
+            {"is_error": True, "result": message}).encode())["kind"])
+
     def test_evidence_root_writable_by_the_agent_is_refused(self):
         ws = self.root / "workspace"
         self.git("init", "-q")

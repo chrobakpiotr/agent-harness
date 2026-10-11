@@ -653,9 +653,30 @@ def _provider_error(data):
                 error = event.get("error")
                 messages.append(str(error.get("message", "")) if isinstance(error, dict) else str(event.get("message", "")))
     message = " ".join(m for m in messages if m)[:300]
-    reset = re.search(r"\|(\d{10})\b", message)
     return {"kind": "quota_exhausted" if _QUOTA.search(message) else "provider_error",
-            "resets_at": int(reset.group(1)) if reset else None, "message": message}
+            "resets_at": _reset_time(message), "message": message}
+
+
+def _reset_time(message, now=None):
+    """Unix time of the stated reset: ``…|<epoch>`` or ``resets 2:50pm (Europe/Warsaw)`` (the next such time)."""
+    epoch = re.search(r"\|(\d{10})\b", message)
+    if epoch:
+        return int(epoch.group(1))
+    match = re.search(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)\s*\(([A-Za-z_]+(?:/[A-Za-z_+-]+)*)\)", message, re.IGNORECASE)
+    if not match:
+        return None
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        zone = ZoneInfo(match.group(4))
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    hour = int(match.group(1)) % 12 + (12 if match.group(3).lower() == "pm" else 0)
+    current = now or datetime.now(zone)
+    reset = current.astimezone(zone).replace(hour=hour, minute=int(match.group(2) or 0), second=0, microsecond=0)
+    if reset <= current:
+        from datetime import timedelta
+        reset += timedelta(days=1)
+    return int(reset.timestamp())
 
 
 def _claude_report(data):

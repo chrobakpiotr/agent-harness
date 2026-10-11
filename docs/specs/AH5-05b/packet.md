@@ -134,3 +134,14 @@ fails). Result: Claude blocked-by-sandbox for both, 9/9; Codex reads both, as do
    or null>, "message": <first 300 chars>}`, classified from the CLI's own error text (Claude `usage limit
    reached|<epoch>`, Codex `error`/`turn.failed` messages). A contract-level code (e.g. `QUOTA_EXHAUSTED`) would need
    a new contract version.
+
+## Pilot handover (agent-benchmark AB5-07, 2026-10-11)
+
+68 real trials at €0 on subscription logins (Claude Sonnet on Pro, Codex `gpt-6.1-sol` on Plus), graded on the
+qualified Docker target (v0.7.0/v0.8.0 sessions matched the reviewed reference; no limit fired, no container
+left). Every Harness finding from the pilot is fixed (`7dc14d2`, v0.6.1, v0.8.1). Benchmark records `error_details` in
+`backend-notes.json` and grades only completed trials.
+
+Checked on the pilot's real output: both real-003 Claude quota errors classify as `quota_exhausted`. Their message is
+`You've hit your session limit · resets 2:50pm (Europe/Warsaw)`, not `|<epoch>`, so `resets_at` was null. It is now
+parsed as the next occurrence of that time in that zone (real output: 2026-10-12 14:50).
