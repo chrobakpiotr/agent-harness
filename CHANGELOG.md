@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 — 2026-10-11
+
+- `AgentCliBackend.error_details`: `resets_at` is also read from Claude's real session-limit message (`resets 2:50pm
+  (Europe/Warsaw)` → the next such time in that zone), not only from `…|<epoch>`. Verified on the pilot's real quota
+  errors. Contract and digests unchanged.
+
 ## 0.8.1 — 2026-10-11
 
 - `AgentCliBackend`:
