@@ -15,7 +15,7 @@
 ## Evidence (2026-10-11)
 
 - AC1: `__version__` 0.8.1; CHANGELOG `## 0.8.1 — 2026-10-11`; README pins `@v0.8.1`.
-- AC2: `scripts/check-wheel.sh` on the release commit: 220 tests OK, 2 skipped. CI run [exited with code 0] for `8db36fa`: success.
+- AC2: `scripts/check-wheel.sh` on the release commit: 220 tests OK, 2 skipped. CI run 38142063529 for `8db36fa`: success.
 - AC3: `refs/tags/v0.8.1` = `b5458fdf` → commit `8db36faf1cebdb399bc07effc947d850736df323`, pushed with `main`.
   Fresh CPython 3.13 venv from the tag commit: `agent-harness 0.8.1`; the shipped reference matches the installed
   probe digest.
