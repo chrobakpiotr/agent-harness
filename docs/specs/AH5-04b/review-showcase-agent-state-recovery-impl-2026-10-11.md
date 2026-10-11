@@ -108,3 +108,46 @@ if the suite time demands it.
    operator labels and paths.
 3. The owner gives explicit authorization for `recover-state`. Pushing `refs/agent-state/current` is a separate,
    optional decision.
+
+## Recheck of R1 and R2 (Showcase `b422e6c`, `c9ed6c9`)
+
+Verdict: **R1 resolved; R2 accepted on Showcase's evidence.** The recovery write may proceed once the owner has
+checked the privacy of the ref payload and authorized `recover-state`. Two follow-ups do not block this recovery.
+
+### Verified independently
+
+- **Crash at every boundary.** `state_snapshots.py` from `c9ed6c9` was run in scratch repositories, with one good
+  commit followed by a crashing commit that also publishes an immutable record. The crash points were
+  `after-snapshot-publication`, `after-additional-files`, `after-state-replacement`, `after-archive-ref`,
+  `after-feature-current-ref` and `after-repository-current-ref`. After every one of them,
+  `recover_prepared_snapshots` resolved the transaction:
+  - a crash before any disk write discarded the record;
+  - every other crash rolled forward;
+  - the status was then `consistent`, with no prepared ref left.
+- **Crash plus loss of `.agent-state`.** Recovery fails closed (`snapshot-prepared-state-conflict`) and restore
+  refuses (`snapshot-restore-prepared-pending`), as required.
+- **Recovery before reads.**
+  - It runs under the lock in `_load_state_unlocked`, in `cmd_status` and in `cmd_recover_state`.
+  - Pure reads that do not recover die with `STATE_RECOVERY_REQUIRED` until the next ordinary command recovers.
+    That is acceptable.
+  - `restore-state` refuses while a prepared ref exists.
+- **Showcase's own tests.** Run from the exported `c9ed6c9` tree: `test_state_snapshots` and `test_state_recovery`,
+  26 tests OK. Harness did not rerun the 288-test `test_harness` module. Showcase reports it green in a sequential
+  run (2,227 s) and in a four-worker run (831 s).
+
+### Follow-ups (not blocking this recovery)
+
+1. **First snapshot of a legacy tree.** Suppose a repository has a pre-snapshot `.agent-state` and no current ref,
+   and its first snapshot transaction crashes before the state replacement. Recovery then compares against an empty
+   old tree. The unchanged legacy state file is neither old nor new, so recovery reports
+   `snapshot-prepared-state-conflict`, with no supported way out.
+   - Reproduced in a scratch repository.
+   - It does not affect this recovery: Showcase has no `.agent-state` and no current ref, so the first write starts
+     from an empty tree.
+   - Fix before the safeguard reaches repositories that hold legacy state: record each file's prior digest in the
+     prepared manifest, and use those digests as the old tree when there is no current ref.
+2. **Way out after crash plus loss.** In that case `restore-state` says to resolve the prepared snapshot "with an
+   ordinary lifecycle command first", but every ordinary command then fails with the conflict.
+   - Add an explicit, audited owner command that discards the prepared record, with a CAS on its commit. Restore
+     can then proceed to the last acknowledged snapshot. Alternatively, document the owner procedure.
+   - Discarding is semantically correct: the prepared transaction was never acknowledged.
