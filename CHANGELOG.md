@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.3 — 2026-10-11
+
+- `AgentCliBackend("opencode", prompt, api_key_file=…)`: OpenCode on a free OpenRouter model (`vendor/model:free`;
+  any other model refused). macOS only: OpenCode runs under a Seatbelt profile whose only network is a 127.0.0.1
+  relay that holds the key and forwards only the run's model; no DNS, Keychain, `open URL`, Docker socket or login
+  files. The daily free cap gives `error_details` `quota_exhausted` with `resets_at` and stops forwarding. Usage is
+  summed from `step_finish` events; unknown cache counts stay null.
+- Output scan: existing absolute paths in login files (project paths in `~/.claude.json`) are no longer treated as
+  secrets.
+- Contract and digests unchanged.
+
 ## 0.8.2 — 2026-10-11
 
 - `AgentCliBackend.error_details`: `resets_at` is also read from Claude's real session-limit message (`resets 2:50pm
