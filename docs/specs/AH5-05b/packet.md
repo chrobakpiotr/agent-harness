@@ -204,3 +204,13 @@ First real run (agent-benchmark, v0.8.3, real-001, `cohere/north-mini-code:free`
 - There was no candidate, and account usage stayed 0.
 - The benchmark dropped that model (one trial does not fit 50 requests a day) and accepts the key-exposure limit.
   For Claude and Codex runs, a plain `sk-or-v1-…` key is still caught by the `sk-` pattern.
+
+## DNS inside the CLI sandboxes (2026-10-11, macOS)
+
+DNS was checked because a sandbox that blocks connections can still leak data through name lookups. It is blocked
+for all three providers:
+- **Claude Code.** One real `claude -p` run (`haiku`) through `AgentCliBackend` ran this from its Bash tool:
+  `getaddrinfo` failed, `dig` against the system resolver and against `@1.1.1.1` could not bind a socket, and curl
+  failed.
+- **Codex.** `codex sandbox` with `workspace-write`: the same results.
+- **OpenCode.** Its profile denies the resolver service (see above).
