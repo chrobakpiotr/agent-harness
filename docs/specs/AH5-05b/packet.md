@@ -123,3 +123,14 @@ The smoke test is now diagnostic. It runs a variable-prefixed command and a here
 `~/.claude` and `~/.codex` whose read is classified from files, not from the model's word: `read`,
 `blocked-by-sandbox` (ran, failed), `blocked-by-permission` (in `permission_denials`) or `not-run` (a refusal, which
 fails). Result: Claude blocked-by-sandbox for both, 9/9; Codex reads both, as documented; covered by the output scan.
+
+## Consumer findings on v0.8.0 (2026-10-11, agent-benchmark real run)
+
+1. A provider error (`is_error: true`, exit 0) kept a sealed diff candidate, because the diff was sealed before
+   `is_error` was mapped to `error`. Fixed: every result other than `completed` has `candidate: null`, and the
+   sealed file is removed.
+2. Quota exhaustion is now separable without a contract change: on a provider error,
+   `backend.error_details[request_id]` is `{"kind": "quota_exhausted" | "provider_error", "resets_at": <Unix time
+   or null>, "message": <first 300 chars>}`, classified from the CLI's own error text (Claude `usage limit
+   reached|<epoch>`, Codex `error`/`turn.failed` messages). A contract-level code (e.g. `QUOTA_EXHAUSTED`) would need
+   a new contract version.

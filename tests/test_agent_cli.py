@@ -227,6 +227,31 @@ class AgentCliTest(unittest.TestCase):
         result = self.run_backend(backend, self.request("claude", "sonnet"))
         self.assertEqual(("error", None, "candidate"), (result["outcome"], result["candidate"], backend.withheld))
 
+    def test_provider_error_has_no_candidate_and_quota_exhaustion_is_classified(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("x\n")
+        self.git("add", "."); self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        quota = {**CLAUDE_OK, "is_error": True, "subtype": "success", "result": "Claude AI usage limit reached|1760140800"}
+        self.fake("claude", json.dumps(quota))
+        backend = self.claude("x", env=self.env, diff_base=base)
+        result = self.run_backend(backend, self.request("claude", "sonnet"))
+        self.assertEqual(("error", None), (result["outcome"], result["candidate"]))
+        self.assertEqual([], list((self.root / "evidence").rglob("candidate")))
+        self.assertEqual(("quota_exhausted", 1760140800), (backend.error_details["req-1"]["kind"],
+                                                           backend.error_details["req-1"]["resets_at"]))
+        self.fake("codex", json.dumps({"type": "error", "message": "You've hit your usage limit."}) + "\n"
+                  + json.dumps(CODEX_OK[-1]) + "\n")
+        codex = execution.AgentCliBackend("codex", "x", env=self.env)
+        self.run_backend(codex, self.request("codex", "m", request_id="req-2"))
+        self.assertEqual(("quota_exhausted", None), (codex.error_details["req-2"]["kind"],
+                                                     codex.error_details["req-2"]["resets_at"]))
+        self.fake("claude", json.dumps({**CLAUDE_OK, "is_error": True, "result": "tool crashed"}))
+        other = self.claude("x", env=self.env)
+        self.run_backend(other, self.request("claude", "sonnet", request_id="req-3"))
+        self.assertEqual("provider_error", other.error_details["req-3"]["kind"])
+
     def test_evidence_root_writable_by_the_agent_is_refused(self):
         ws = self.root / "workspace"
         self.git("init", "-q")

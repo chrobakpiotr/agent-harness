@@ -486,6 +486,7 @@ class AgentCliBackend(ProcessBackend):
             raise ValueError("diff_base must be a full commit id")
         super().__init__([], candidate=candidate, env=env, grace=grace)
         self.diff_base, self.withheld = diff_base, None
+        self.error_details = {}  # request_id -> {"kind": "quota_exhausted"|"provider_error", "resets_at", "message"}
         self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
@@ -596,6 +597,10 @@ class AgentCliBackend(ProcessBackend):
         if body["outcome"] == "completed" and failed:
             body.update(outcome="error", exit_code=None, error_code="PROVIDER_ERROR")
             body["attempts"][0]["outcome"] = "error"
+            self.error_details[request["request_id"]] = _provider_error(data)
+        if body["outcome"] != "completed" and body["candidate"] is not None:  # only a completed run has a candidate
+            (Path(roots["evidence_root"]) / body["candidate"]["path"]).unlink(missing_ok=True)
+            body["candidate"] = None
         body["resolved_model"] = model
         return body
 
@@ -624,6 +629,33 @@ def _default_probe(provider):
     if sys.platform != "darwin":  # Claude Code's Linux sandbox needs bubblewrap and socat; macOS uses Seatbelt
         return ["sh", "-c", "command -v bwrap >/dev/null && command -v socat >/dev/null && bwrap --ro-bind / / true"]
     return ["claude", "--version"]
+
+
+_QUOTA = re.compile(r"usage limit|rate limit|quota|limit reached|hit your (?:usage )?limit|session limit", re.IGNORECASE)
+
+
+def _provider_error(data):
+    """Classify a provider failure from the CLI's own output: subscription quota exhausted (with the reset time when
+    the CLI states it as a Unix time, e.g. Claude's ``usage limit reached|<epoch>``) or any other provider error."""
+    text = data.decode("utf-8", "replace")
+    messages = []
+    try:
+        doc = json.loads(text)
+        if isinstance(doc, dict):
+            messages.append(str(doc.get("result", "")))
+    except ValueError:
+        for line in text.splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") in ("error", "turn.failed"):
+                error = event.get("error")
+                messages.append(str(error.get("message", "")) if isinstance(error, dict) else str(event.get("message", "")))
+    message = " ".join(m for m in messages if m)[:300]
+    reset = re.search(r"\|(\d{10})\b", message)
+    return {"kind": "quota_exhausted" if _QUOTA.search(message) else "provider_error",
+            "resets_at": int(reset.group(1)) if reset else None, "message": message}
 
 
 def _claude_report(data):
