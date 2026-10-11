@@ -4,4 +4,4 @@ Public API: the execution contract (agent_harness.contract) and the offline laun
 (agent_harness.execution). Importing this package must have no side effects.
 """
 
-__version__ = "0.8.3"
+__version__ = "0.8.4"

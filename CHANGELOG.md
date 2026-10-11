@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.8.4 — 2026-10-11
 
 - `AgentCliBackend.request_counts[request_id]`: requests the OpenCode relay forwarded to OpenRouter.
 - `error_details` `resets_at` is also read from Codex's usage-limit message (`try again at 7:57 PM.`, host local
   time, the next such time); a dated reset stays null.
+- Contract and digests unchanged.
 
 ## 0.8.3 — 2026-10-11
 
