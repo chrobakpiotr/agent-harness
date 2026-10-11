@@ -197,3 +197,10 @@ Limits:
 - Only the key file passed in is unreadable. Claude and Codex sandboxes can read it, and the OpenRouter key is not
   in their scan.
 - The first real calibration trial still has to confirm OpenCode's request count against the 50-a-day cap.
+
+First real run (agent-benchmark, v0.8.3, real-001, `cohere/north-mini-code:free`, 2026-10-11):
+- The agent ran 55 model steps without finishing.
+- The daily cap's 429 became `quota_exhausted`, with `resets_at` from `X-RateLimit-Reset`.
+- There was no candidate, and account usage stayed 0.
+- The benchmark dropped that model (one trial does not fit 50 requests a day) and accepts the key-exposure limit.
+  For Claude and Codex runs, a plain `sk-or-v1-…` key is still caught by the `sk-` pattern.
