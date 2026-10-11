@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0 — 2026-10-11
+
+- `qualification.qualify`:
+  - `target_kind` (`docker-desktop`, `github-runner`, `linux-docker`);
+  - checks that ended only on a Docker command timeout are retried (`retries`, default 2; probe timeout default
+    60 s), with earlier attempts in `evidence/retries.json`;
+  - exited probe containers named in the run's own evidence are removed;
+  - `grading.probe_grading_layout` qualifies the backend's real grading argv (stdin tar, read-only `/inputs`, working
+    directory, exact environment, `/output` cap, timeout) as the tuple fact `grading_layout`.
+- The grading backend moved to `agent_harness.grading` (re-exported from `execution`). It is covered by
+  `qualification.probe_digest()`, and the backend identifies the live target as the report does.
+- The shipped reviewed reference is replaced (job `ref-20261011T082417Z`, grading layout qualified). Sessions on
+  v0.7.0 references do not match v0.8.0.
+
 ## 0.7.0 — 2026-10-10
 
 - `execution.QualifiedDockerBackend` (AH5-04c-2): grading on the qualified Docker target, contract v2. A fresh container
