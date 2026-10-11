@@ -106,8 +106,8 @@ Still unverified: the Linux/container sandbox (bubblewrap/Landlock); run the smo
 | F7 | A nested repository made the diff fail and the result `unknown`. | Diff failure → candidate withheld, `error`. |
 
 The surviving mutations now have tests: each Claude/Codex failure signal alone, probe exception, a bad `diff_base`,
-cancel in diff mode, and that `_withhold` removes the files. Remaining, low: the secret scan matches literal values and
-credential shapes only (a re-encoded token passes); on macOS Claude's login is in the Keychain, so only Codex's file is
+cancel in diff mode, and that `_withhold` removes the files. The secret scan matches literal values, their base64,
+base64url (any alignment) and hex forms, and credential shapes. Remaining, low: on macOS Claude's login is in the Keychain, so only Codex's file is
 matched literally.
 
 ## Calibration fix (2026-10-10, agent-benchmark real-001)
