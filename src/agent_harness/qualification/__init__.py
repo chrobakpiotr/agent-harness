@@ -11,7 +11,7 @@ qualification digest, the reviewed report's digest and the probe digest, so each
 
 import hashlib
 import json
-import time
+import re
 from importlib import resources
 from pathlib import Path
 
@@ -22,18 +22,24 @@ DEFAULT_TARGET = "showcase-docker-desktop-linux-guest"
 DEFAULT_IMAGE = "python@sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5"
 
 
+def _sources():
+    """(name, bytes) of every module the review covers: the probes, this orchestration and the grading backend."""
+    here, package = resources.files(__package__), resources.files("agent_harness")
+    return [(name, here.joinpath(name).read_bytes()) for name in PROBE_MODULES] + [
+        ("../grading.py", package.joinpath("grading.py").read_bytes())]
+
+
 def probe_digest():
     """sha256 over the installed probe and orchestration modules (names and bytes): a change needs a new review.
 
     It names the code installed here, not proof of the code that ran (ADR 0002: authenticity is out of scope)."""
-    here = resources.files(__package__)
-    manifest = {name: hashlib.sha256(here.joinpath(name).read_bytes()).hexdigest() for name in PROBE_MODULES}
+    manifest = {name: hashlib.sha256(data).hexdigest() for name, data in _sources()}
     return "sha256:" + hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
 
 
 def policy_digest():
     """The qualified grading policy: container flags, limits, grading environment and the mandatory checks."""
-    from ..execution import (
+    from ..grading import (
         GRADING_ENV,
         GRADING_LAYOUT,
         QUALIFIED_LIMITS,
@@ -83,39 +89,39 @@ def qualify(job_id, out, *, reviewed=None, target_kind="docker-desktop", target_
     out = out.resolve()
     evidence = out / "evidence"
     evidence.mkdir(parents=True)
-    started = time.time()
     try:
         return _qualify(job_id, out, evidence, reviewed, target_kind, target_id, image, docker, author,
                         timeout_seconds, retries)
     finally:
-        _remove_leftover_probes(docker, started)
+        _remove_leftover_probes(docker, out)
 
 
-def _remove_leftover_probes(docker, since):
-    """Probes that time out can leave their exited containers behind: remove the ones this run created."""
-    import datetime as dt
+def _remove_leftover_probes(docker, out):
+    """Probes that time out can leave their exited containers behind. Remove exactly the containers this run's own
+    evidence names (ids and ``showcase-`` names), and only once they have exited: never anyone else's."""
     import subprocess
-    try:
-        listed = subprocess.run([docker, "ps", "-a", "--filter", "name=^showcase-", "--filter", "status=exited",
-                                 "--format", "{{.ID}} {{.CreatedAt}}"], capture_output=True, text=True, timeout=60,
-                                check=False).stdout.splitlines()
-    except (OSError, subprocess.SubprocessError):
-        return
-    for line in listed:
-        container, _, created = line.partition(" ")
+    names = set()
+    for path in out.rglob("*.json"):
         try:
-            when = dt.datetime.strptime(" ".join(created.split()[:2]), "%Y-%m-%d %H:%M:%S").timestamp()
-        except ValueError:
+            text = path.read_text()
+        except OSError:
             continue
-        if when >= since - 1:
-            subprocess.run([docker, "rm", "-f", container], capture_output=True, timeout=60, check=False)
+        names |= set(re.findall(r"\b[0-9a-f]{64}\b", text)) | set(re.findall(r"\bshowcase-[a-z0-9-]+\b", text))
+    for name in sorted(names):
+        try:
+            state = subprocess.run([docker, "inspect", "--format", "{{.State.Status}}", name], capture_output=True,
+                                   text=True, timeout=60, check=False)
+            if state.returncode == 0 and state.stdout.strip() in ("exited", "dead", "created"):
+                subprocess.run([docker, "rm", "-f", name], capture_output=True, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
 
 
 def _qualify(job_id, out, evidence, reviewed, target_kind, target_id, image, docker, author, timeout_seconds,
              retries):
     from types import SimpleNamespace
 
-    from ..execution import probe_grading_layout
+    from ..grading import probe_grading_layout
     from . import report as runner
     tuple_, errors = live_tuple(target_kind, docker, image, job_id)
     tuple_["probe_digest"] = probe_digest()
@@ -169,8 +175,13 @@ def _qualify(job_id, out, evidence, reviewed, target_kind, target_id, image, doc
         (evidence / "retries.json").write_text(json.dumps(attempts, indent=2, sort_keys=True) + "\n")
     layout_dir = out / "grading-layout"
     layout_dir.mkdir()
-    layout = (probe_grading_layout(image, layout_dir, docker=docker, timeout_seconds=timeout_seconds)
-              if not errors else {"passed": False, "checks": {}, "results": {}, "reason": sorted(set(errors))})
+    if errors:
+        layout = {"passed": False, "checks": {}, "results": {}, "reason": sorted(set(errors))}
+    else:
+        try:
+            layout = probe_grading_layout(image, layout_dir, docker=docker, timeout_seconds=timeout_seconds)
+        except Exception as exc:  # noqa: BLE001 - a broken layout probe is a failed layout, never a pass
+            layout = {"passed": False, "checks": {}, "results": {}, "reason": type(exc).__name__}
     (evidence / "grading-layout.json").write_text(json.dumps(layout, indent=2, sort_keys=True) + "\n")
     tuple_["grading_layout"] = "qualified" if layout["passed"] else "failed"
     checks = runner._persist_check_job_id(list(records.values()), target_id, job_id)
@@ -206,4 +217,4 @@ def _timed_out(probe_json):
         return False
     details = observed.get("details") if isinstance(observed, dict) else None
     return (observed.get("reason_code") == "PROBE_EXCEPTION" and isinstance(details, dict)
-            and details.get("exception") in _RETRYABLE)
+            and (details.get("exception") or details.get("exception_type")) in _RETRYABLE)

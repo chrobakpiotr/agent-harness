@@ -140,9 +140,20 @@ when:
 it. The backend also requires the session's `probe_digest` and `policy_digest` to equal this library's
 `qualification.probe_digest()` (the probe and orchestration modules as installed) and `qualification.policy_digest()`
 (qualified flags, limits, grading environment, the backend's mount layout and entrypoint, the check list). They name
-the installed code, not proof of the code that ran: authenticity stays out of scope. Known gap: the backend's
-`/output` bind mount is not exercised by the probes; it is bounded by the host (polled, killed above the answers
-limit, `fired: disk`) and is part of the policy digest, so changing it needs a new review. A result's `target.qualification_digest` is the session's digest; the session record returned by
+the installed code, not proof of the code that ran: authenticity stays out of scope. `probe_digest()` covers the
+probe modules, `qualification/__init__.py` and `grading.py` (the backend and its layout probe), so changing how
+grading runs or how it is judged needs a new review. `qualify()` also runs `grading.probe_grading_layout` through
+the backend's real argv:
+- the stdin tar into `/workspace`;
+- `/inputs` read-only (`EROFS`);
+- the working directory;
+- an environment of exactly the image's ENV plus `GRADING_ENV` (and `HOSTNAME`, `PWD`, `LC_CTYPE`);
+- more than the answers limit in `/output` is killed as `disk`;
+- the wall clock.
+
+Its verdict is the tuple fact `grading_layout`, so a session must reproduce it. A check that ended only on a Docker
+command timeout is re-run (at most `retries` times); earlier attempts go to `evidence/retries.json`, which is not
+bound into the report. A result's `target.qualification_digest` is the session's digest; the session record returned by
 `qualify()` (AH5-04c-1) also names the reviewed report's digest and the probe digest, so every grade traces to
 one independent review. Reports without `probe_digest` (such as the accepted 04b report) remain valid reports, but
 they cannot serve as the reviewed reference for sessions until a run with the moved probes is reviewed.

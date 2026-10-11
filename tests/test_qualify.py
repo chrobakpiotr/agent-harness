@@ -9,7 +9,7 @@ from importlib import resources
 from pathlib import Path
 from unittest import mock
 
-from agent_harness import contract, execution, qualification
+from agent_harness import contract, execution, grading, qualification
 from agent_harness.qualification import report as runner
 
 # Showcase `tooling/agent-harness/qualification/<file>` blobs at main 830c5e6 (provenance.md): byte-identical copies.
@@ -42,7 +42,7 @@ class QualifyTest(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.layout = {"passed": True, "checks": {"stub": True}, "results": {}}
-        patcher = mock.patch.object(execution, "probe_grading_layout", lambda *a, **k: self.layout)
+        patcher = mock.patch.object(grading, "probe_grading_layout", lambda *a, **k: self.layout)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -106,7 +106,6 @@ class QualifyTest(unittest.TestCase):
         self.assertEqual({"not-run"}, {c["result"] for c in result["report_doc"]["checks"]})
 
     def test_probe_flags_equal_the_backend_flags_and_digests_cover_code_and_layout(self):
-        from agent_harness import execution
         from agent_harness.qualification import q_probes
         probe_flags = q_probes.DockerProbeTarget("python@sha256:" + "0" * 64)._base_args()
         workspace = [f for f in execution.QUALIFIED_RUN_FLAGS if f.startswith("--tmpfs=/workspace")]
@@ -118,10 +117,14 @@ class QualifyTest(unittest.TestCase):
         copy.mkdir()
         for name in qualification.PROBE_MODULES:
             copy.joinpath(name).write_bytes(resources.files("agent_harness.qualification").joinpath(name).read_bytes())
+        copy.joinpath("grading.py").write_bytes(resources.files("agent_harness").joinpath("grading.py").read_bytes())
         with mock.patch.object(qualification.resources, "files", lambda _package: copy):
             self.assertEqual(before, qualification.probe_digest())
-            copy.joinpath("q_probes.py").write_bytes(copy.joinpath("q_probes.py").read_bytes() + b"#")
-            self.assertNotEqual(before, qualification.probe_digest())
+            for changed in ("q_probes.py", "grading.py"):  # the grading backend is covered too
+                original = copy.joinpath(changed).read_bytes()
+                copy.joinpath(changed).write_bytes(original + b"#")
+                self.assertNotEqual(before, qualification.probe_digest(), changed)
+                copy.joinpath(changed).write_bytes(original)
         policy = qualification.policy_digest()
         with mock.patch.dict(execution.GRADING_LAYOUT, {"options": ["-i"]}):
             self.assertNotEqual(policy, qualification.policy_digest())
@@ -175,6 +178,55 @@ class QualifyTest(unittest.TestCase):
             result = qualification.qualify("r2", self.root / "r2", reviewed=reviewed, retries=2)
         self.assertFalse(result["qualified"])
         self.assertEqual(2, len(json.loads((self.root / "r2" / "evidence" / "retries.json").read_text())["B8"]))
+
+    def test_only_docker_timeouts_are_retried(self):
+        reviewed = self.reviewed_reference()
+        seen = {"B2": 0, "B3": 0}
+
+        def mixed(self, check_id, name, check_dir):
+            if check_id == "B2":
+                seen["B2"] += 1
+                return {"status": "fail", "reason_code": "COUNTEREXAMPLE", "stdout": "", "stderr": "", "details": {}}
+            if check_id == "B3":
+                seen["B3"] += 1
+                raise ValueError("not a timeout")
+            return {"status": "pass", "reason_code": "OBSERVED", "stdout": "", "stderr": "", "details": {}}
+        with mock.patch.object(FakeTarget, "execute_b1_b10", mixed):
+            result = qualification.qualify("f1", self.root / "f1", reviewed=reviewed)
+        self.assertEqual(({"B2": 1, "B3": 1}, [], False), (seen, result["retried"], result["qualified"]))
+
+    def test_lifecycle_timeouts_are_retried_too(self):
+        path = self.root / "probe.json"
+        path.write_text(json.dumps({"reason_code": "PROBE_EXCEPTION", "details": {"exception_type": "TimeoutExpired"}}))
+        self.assertTrue(qualification._timed_out(path))
+        path.write_text(json.dumps({"reason_code": "PROBE_EXCEPTION", "details": {"exception_type": "KeyError"}}))
+        self.assertFalse(qualification._timed_out(path))
+
+    def test_a_layout_probe_that_raises_is_a_failed_layout(self):
+        reviewed = self.reviewed_reference()
+
+        def broken(*a, **k):
+            raise RuntimeError("docker went away")
+        with mock.patch.object(grading, "probe_grading_layout", broken):
+            result = qualification.qualify("l2", self.root / "l2", reviewed=reviewed)
+        self.assertEqual((False, "failed"), (result["qualified"], result["report_doc"]["tuple"]["grading_layout"]))
+
+    def test_cleanup_removes_only_exited_containers_named_in_its_own_evidence(self):
+        out = self.root / "run"
+        (out / "evidence" / "B9").mkdir(parents=True)
+        mine = "a" * 64
+        (out / "evidence" / "B9" / "probe.json").write_text(json.dumps({"container_id": mine,
+                                                                        "name": "showcase-probe-1234"}))
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "exited\n" if argv[1] == "inspect" else "", "")
+        with mock.patch("subprocess.run", fake_run):
+            qualification._remove_leftover_probes("docker", out)
+        removed = sorted(argv[-1] for argv in calls if argv[1] == "rm")
+        self.assertEqual(sorted([mine, "showcase-probe-1234"]), removed)  # nothing else is ever listed or removed
+        self.assertFalse(any(argv[1] == "ps" for argv in calls))
 
     def test_a_failed_grading_layout_never_qualifies(self):
         reviewed = self.reviewed_reference()
