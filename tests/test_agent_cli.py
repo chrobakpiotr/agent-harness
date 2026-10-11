@@ -606,6 +606,10 @@ class OpenCodeTest(CliCase):
                            "cache_write_tokens": 0}, False, None), execution._opencode_report(data))
         self.assertTrue(execution._opencode_report(data + b'\n{"type": "error"}')[1])
         self.assertEqual((None, True, None), execution._opencode_report(b'{"type": "text"}'))
+        no_cache = {"type": "step_finish", "part": {"tokens": {"input": 7, "output": 2}}}
+        self.assertEqual(({"input_tokens": 197, "output_tokens": 28, "cache_read_tokens": None,
+                           "cache_write_tokens": None}, False, None),
+                         execution._opencode_report(data + b"\n" + json.dumps(no_cache).encode()))
 
     def test_opencode_refuses_paid_models_and_missing_or_shared_keys(self):
         self.fake_opencode("http://127.0.0.1:1")

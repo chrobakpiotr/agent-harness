@@ -177,7 +177,7 @@ OpenCode has no OS sandbox and its permission rules are command patterns. Equal 
   the daily quota.
 - **Key.** It comes from `api_key_file` (refused if group- or other-readable) or `OPENROUTER_API_KEY`, and is added
   to the output and candidate scan.
-- **Usage.** Usage is summed over OpenCode's `step_finish` events. Reasoning tokens count as output, and cache reads
+- **Usage.** Usage is summed over OpenCode's `step_finish` events; a cache count missing from any step stays null. Reasoning tokens count as output, and cache reads
   are reported apart from input (`separate`).
 
 Fixed alongside:

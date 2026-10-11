@@ -834,7 +834,7 @@ def _opencode_report(data):
     """(units, failed, model) summed over the ``step_finish`` events of ``opencode run --format json``.
 
     OpenCode reports input without cache reads (``cache.read`` apart) and reasoning apart from output; reasoning is
-    counted as output.
+    counted as output. A cache count missing from any step stays null (unknown), never 0.
     """
     totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     steps, failed = 0, False
@@ -849,14 +849,18 @@ def _opencode_report(data):
         elif kind == "step_finish":
             try:
                 tokens = event["part"]["tokens"]
-                values = (tokens["input"], tokens["output"], tokens.get("reasoning", 0),
-                          tokens["cache"]["read"], tokens["cache"]["write"])
-            except (KeyError, TypeError):
+                cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+                values = {"input_tokens": tokens["input"], "output_tokens": tokens["output"],
+                          "reasoning": tokens.get("reasoning", 0),
+                          "cache_read_tokens": cache.get("read"), "cache_write_tokens": cache.get("write")}
+            except (KeyError, TypeError, AttributeError):
                 return None, True, None
-            if any(type(v) is not int or v < 0 for v in values):
+            if any(v is not None and (type(v) is not int or v < 0) for v in values.values()) or None in (
+                    values["input_tokens"], values["output_tokens"], values["reasoning"]):
                 return None, True, None
-            for key, value in zip(totals, (values[0], values[1] + values[2], values[3], values[4]), strict=True):
-                totals[key] += value
+            values["output_tokens"] += values.pop("reasoning")
+            for key, value in values.items():
+                totals[key] = None if value is None or totals[key] is None else totals[key] + value
             steps += 1
     if not steps:
         return None, True, None
