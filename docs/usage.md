@@ -54,6 +54,7 @@ result = execution.launch(request, backend, workspace=ws, evidence_root=evidence
     forwards only that model.
   - Pass the key as a mode-600 file, so the sandbox can deny reading it.
   - When the daily free cap is hit, the result is `quota_exhausted` with `resets_at`. Nothing more is forwarded.
+  - `backend.request_counts[request_id]` is the number of requests the relay forwarded to OpenRouter.
   - Details and limits: packet `AH5-05b`.
 
 ## 3. Qualifying a grading session: `qualification.qualify`

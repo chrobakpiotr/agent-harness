@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `AgentCliBackend.request_counts[request_id]`: requests the OpenCode relay forwarded to OpenRouter.
+
 ## 0.8.3 — 2026-10-11
 
 - `AgentCliBackend("opencode", prompt, api_key_file=…)`: OpenCode on a free OpenRouter model (`vendor/model:free`;

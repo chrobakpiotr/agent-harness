@@ -631,7 +631,8 @@ class OpenCodeTest(CliCase):
         upstream = FakeOpenRouter(self)
         self.fake_opencode(upstream.url)
         self.env["OPENROUTER_API_KEY"] = "sk-or-v1-from-env-" + "e" * 30
-        result = self.run_backend(self.opencode(upstream.url), self.request("opencode", self.MODEL))
+        backend = self.opencode(upstream.url)
+        result = self.run_backend(backend, self.request("opencode", self.MODEL))
         self.assertEqual(("completed", 0), (result["outcome"], result["exit_code"]), result)
         probe = self.probe()
         self.assertEqual(["run", "--format", "json", "--pure", "--title", "req-1", "-m",
@@ -642,6 +643,7 @@ class OpenCodeTest(CliCase):
         self.assertEqual("openrouter/" + self.MODEL, probe["config"]["small_model"])
         self.assertEqual((200, 403), (probe["relay"], probe["relay_other_model"]))
         self.assertEqual([("/api/v1/chat/completions", "Bearer sk-or-v1-" + "k" * 40, self.MODEL)], upstream.seen)
+        self.assertEqual({"req-1": 1}, backend.request_counts)  # the refused paid-model request is not counted
         for way_out in ("upstream_direct", "dns", "key_file", "write_evidence"):
             self.assertNotEqual("allowed", probe[way_out], way_out)
         self.assertEqual("allowed", probe["write_workspace"])

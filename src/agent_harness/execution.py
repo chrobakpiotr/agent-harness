@@ -514,6 +514,7 @@ class AgentCliBackend(ProcessBackend):
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
         self.rejection_reasons = {}  # request_id -> why it was refused
+        self.request_counts = {}  # request_id -> requests the OpenCode relay forwarded to OpenRouter
 
     @property
     def rejection_reason(self):
@@ -625,6 +626,7 @@ class AgentCliBackend(ProcessBackend):
         try:
             return super().run(request, roots, cancelled, execution_id, started_at)
         finally:
+            self.request_counts[request["request_id"]] = self._relay.requests
             self._relay.close()
             shutil.rmtree(self._private, ignore_errors=True)
 
