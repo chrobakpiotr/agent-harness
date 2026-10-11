@@ -4,7 +4,7 @@
     "exit_code": 0,
     "protected_path_written": false
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "PROTECTED_WRITE_GRANDCHILD",
   "reason_code": "PROTECTED_WRITE_DENIED",
   "status": "pass",

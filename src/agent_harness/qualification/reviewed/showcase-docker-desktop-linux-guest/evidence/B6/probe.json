@@ -16,7 +16,7 @@
     "tmpfs_mounts_match": true,
     "unexpected_external_mounts": []
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "EXACT_ENVIRONMENT_NO_INHERITED_CREDENTIALS",
   "reason_code": "HOST_ENV_AND_CREDENTIALS_ABSENT",
   "status": "pass",

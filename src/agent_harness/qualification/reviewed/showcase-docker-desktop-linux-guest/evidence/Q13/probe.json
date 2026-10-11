@@ -3,11 +3,11 @@
   "details": {
     "cancel_requested": true,
     "cancelled_and_drained": true,
-    "container_id": "9660f5864db107adfa58c727bd0aa43aa74fe64de3b3fef441a13ead8185c36c",
-    "controller_pid": 39192,
+    "container_id": "74d6939adf85689ead75680275854e40950c4af3602accc7d807668d4da188a3",
+    "controller_pid": 78667,
     "generation": 1
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "CANCEL_EXECUTION_UNIT",
   "reason_code": "WHOLE_UNIT_CANCELLED_AND_DRAINED",
   "status": "pass",

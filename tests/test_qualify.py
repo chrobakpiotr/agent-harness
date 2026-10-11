@@ -227,6 +227,15 @@ class QualifyTest(unittest.TestCase):
         removed = sorted(argv[-1] for argv in calls if argv[1] == "rm")
         self.assertEqual(sorted([mine, "showcase-probe-1234"]), removed)  # nothing else is ever listed or removed
         self.assertFalse(any(argv[1] == "ps" for argv in calls))
+        for rc, status in ((1, ""), (0, "running")):  # not a container (image/network id), or still running: keep
+            calls.clear()
+
+            def other(argv, rc=rc, status=status, **kwargs):
+                calls.append(argv)
+                return subprocess.CompletedProcess(argv, rc if argv[1] == "inspect" else 0, status + "\n", "")
+            with mock.patch("subprocess.run", other):
+                qualification._remove_leftover_probes("docker", out)
+            self.assertFalse(any(argv[1] == "rm" for argv in calls), (rc, status))
 
     def test_a_failed_grading_layout_never_qualifies(self):
         reviewed = self.reviewed_reference()

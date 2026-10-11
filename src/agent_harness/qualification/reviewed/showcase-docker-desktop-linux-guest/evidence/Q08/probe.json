@@ -2,16 +2,16 @@
   "check_id": "Q08",
   "details": {
     "container_exited": true,
-    "container_id": "cf12c02089cb3b719186aa79deadba0f8e752720d78e602ef9b4450a5181f2fc",
+    "container_id": "5039628a1f1f895eb60a3eb9618c403027c9212dd9f1c7eb9f1fb8214a19251e",
     "descendant_visible": true,
     "ready": true,
     "removed": true
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "CONTAINMENT_NEW_PROCESS_GROUP",
   "reason_code": "CONTAINER_DESCENDANTS_DRAINED",
   "status": "pass",
   "stderr": "\n\n\n\n",
-  "stdout": "cf12c02089cb3b719186aa79deadba0f8e752720d78e602ef9b4450a5181f2fc\n\n8\nPID                 PPID                PGID                SID                 COMMAND\n60680               60651               60680               60680               docker-init\n60712               60680               60712               60680               python3\n60814               60712               60814               60680               python3\n\nFlag --time has been deprecated, use --timeout instead\ncf12c02089cb3b719186aa79deadba0f8e752720d78e602ef9b4450a5181f2fc\n\nexited\n",
+  "stdout": "5039628a1f1f895eb60a3eb9618c403027c9212dd9f1c7eb9f1fb8214a19251e\n\n8\nPID                 PPID                PGID                SID                 COMMAND\n13768               13744               13768               13768               docker-init\n13780               13768               13780               13768               python3\n13781               13780               13781               13768               python3\n\nFlag --time has been deprecated, use --timeout instead\n5039628a1f1f895eb60a3eb9618c403027c9212dd9f1c7eb9f1fb8214a19251e\n\nexited\n",
   "target_id": "showcase-docker-desktop-linux-guest"
 }

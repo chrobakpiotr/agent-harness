@@ -1,97 +1,108 @@
 Independent qualification review
 
-subject: sha256:a59e74b4bdc2ba173367e81d9c906aa41a95bc85588d6956fb974428d85a9e2e
+subject: sha256:a3d4a70aac3d0b56a1099a61681364efbec24c8c67ad30bf9db35df928a9caf0
 verdict: pass
-reviewer: harness-independent-reviewer-20261010b
-date: 2026-10-10
-report: /Users/pau/.cache/agent-harness-qualify/reference-20261010T194859Z/report.json (author agent-harness-qualify, created_at 2026-10-10T19:50:27Z)
+reviewer: harness-independent-reviewer-20261011b
+date: 2026-10-11
+report: /Users/pau/.cache/agent-harness-qualify/reference-20261011T082417Z/report.json (author agent-harness-qualify, created_at 2026-10-11T08:25:21Z)
 target: showcase-docker-desktop-linux-guest
-job_id: ref-20261010T194859Z
+job_id: ref-20261011T082417Z
 tuple: host Docker_Desktop, engine DockerEngine_29.8.2, kernel 7.0.14-linuxkit,
        workload_image sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5,
-       probe_digest sha256:e3f5d77bcd1e095f2a05ee0677907f224af0acf2ca4d29c2d4572656a6031c84
+       probe_digest sha256:ee87222a9ca342aa981e2599402f9bd2d06e93fe6957708b3116cdba00c6638b,
+       grading_layout qualified
 policy_digest: sha256:bbf60e97a0afa5e405401f15daa661b37af8cbfc7f7f064ad39ecdc7c3370077
-code: /Users/pau/IdeaProjects/agent-harness HEAD b18c8bc
+code: /Users/pau/IdeaProjects/agent-harness HEAD e985ab7 (working tree clean)
 
 Subject
-- contract.review_subject(report) = the subject above; equals session.json qualification_digest.
+- contract.review_subject(report) = the subject above; equals contract.qualification_digest(report) and
+  session.json qualification_digest.
 
 Report and evidence integrity
-- Exactly Q01-Q16 and B1-B10, each once, all result pass; contract.validate_qualification_report accepts the report.
-- Each check has one evidence file <ID>/probe.json; recorded sha256 and size match the bytes on disk; all 26 digests distinct.
-- Every probe.json has check_id equal to its check, status pass, target_id showcase-docker-desktop-linux-guest, job_id ref-20261010T194859Z.
-- qualification_passes(report, evidence) is False before a review is attached, as expected.
+- contract.validate_qualification_report accepts the report. Exactly Q01-Q16 and B1-B10, each once, all pass.
+- One evidence file per check (<ID>/probe.json); recorded sha256 and size match the bytes on disk; 26 distinct paths.
+- Every probe.json: check_id equals its check, status pass, target_id showcase-docker-desktop-linux-guest,
+  job_id ref-20261011T082417Z. Q11-Q16 execution-identity.json name the same job_id and the workload image digest.
+- No evidence/retries.json; session.json retried [] (nothing re-run). qualification_passes is False before a
+  review is attached, as expected; capability.json NOT_QUALIFIED accordingly; session target_kind docker-desktop.
+- No containers left on the engine after the run.
 
-Binding to code and live target
-- qualification.probe_digest() at HEAD = tuple.probe_digest. qualification.policy_digest() at HEAD = report policy_digest.
-- b_probes.py, q_lifecycle.py, q_probes.py, report.py byte-identical to Showcase 830c5e6 tooling/agent-harness/qualification/.
-- __init__.py (in PROBE_MODULES, unmodified vs HEAD) runs run_q01_q10, run_q11_q16, run_b1_b10 against the three Docker
-  probe targets when the tuple is fully observed, or records every check not-run with TARGET_IDENTITY_UNAVAILABLE when
-  not; records come from the probes unchanged except job_id/target_id stamping (_persist_check_job_id), and
-  assemble_report records each probe's status. capability/session are derived from contract.qualification_passes. Faithful.
-- DockerProbeTarget._base_args() + the b_probes /workspace tmpfs (size=251658240) == execution.QUALIFIED_RUN_FLAGS
-  exactly; DockerGradingProbeTarget inherits _base_args; B8 disk and B10 run with the full flag set.
-- Live, read-only: docker version 29.8.2; docker info linux|Docker Desktop|7.0.14-linuxkit; image inspect RepoDigests
-  python@sha256:9d72651c...15d5. Matches the tuple. No leftover showcase-* containers.
+Code and digests
+- qualification.probe_digest() = sha256:ee87222a...638b = tuple.probe_digest. It covers __init__.py, b_probes.py,
+  q_lifecycle.py, q_probes.py, report.py and ../grading.py.
+- qualification.policy_digest() = sha256:bbf60e97...0077 = report policy_digest (and session/capability), same as
+  the previous Harness reference.
+- q_probes.py, q_lifecycle.py, b_probes.py, report.py are byte-identical (sha256) to Showcase 830c5e6
+  tooling/agent-harness/qualification/.
+- grading.QUALIFIED_RUN_FLAGS = Showcase q_probes._base_args (network none, read-only root, uid 65532, cap-drop ALL,
+  no-new-privileges, pids 64, memory/swap 512m, cpus 1, /tmp tmpfs 16m, /dev/shm ro 1m) plus the B8/B9
+  /workspace tmpfs size=251658240,mode=1777 (b_probes WORKSPACE_QUOTA_BYTES). QUALIFIED_LIMITS 256 MiB disk,
+  1 MiB output, 512 MiB memory, 64 pids, 1 cpu.
+
+Live tuple (read-only)
+- qualification.live_tuple('docker-desktop', 'docker', DEFAULT_IMAGE, job_id) returns host Docker_Desktop, kernel
+  7.0.14-linuxkit, engine DockerEngine_29.8.2, workload_image sha256:9d7265...15d5, no errors: equals the tuple.
+  docker version: Docker Desktop 4.94.0, server 29.8.2; image Id and RepoDigest match.
 
 Per-check findings
-- Q01 PERMITTED_WRITE: exit 0, stdout allowed-write, protected_path_written false. pass.
-- Q02 PROTECTED_WRITE_DIRECT: stdout denied, protected_path_written false. pass.
-- Q03 PROTECTED_WRITE_CHILD: child gets EROFS on /protected, stdout child-denied, not written. pass.
-- Q04 PROTECTED_WRITE_GRANDCHILD: grandchild EROFS, stdout grandchild-denied, not written. pass.
-- Q05 CONTAINMENT_CHILD: descendant visible in docker top (docker-init/python3/python3), container exited and removed. pass.
-- Q06 CONTAINMENT_GRANDCHILD: grandchild pid recorded, visible, exited, removed. pass.
-- Q07 CONTAINMENT_PARENT_EXIT: child started, parent exit stopped the unit (exited 0), removed. pass.
-- Q08 CONTAINMENT_NEW_PROCESS_GROUP: child in its own PGID still inside the container, drained, removed. pass.
-- Q09 CONTAINMENT_NEW_SESSION: child in its own SID still contained, drained, removed. pass.
-- Q10 CONTAINMENT_BACKGROUND_SHELL: backgrounded sh/sleep contained, drained, removed. pass.
-- Q11 EXECUTION_IDENTITY_DURABLE: identity fsynced, read after controller exit, two controller pids, generation 1. pass.
-- Q12 EXECUTION_IDENTITY_STALE_REJECTED: persisted generation 2, supplied 1, rejected. pass.
-- Q13 CANCEL_EXECUTION_UNIT: cancel requested, whole unit cancelled and drained; identity terminal process_table_empty. pass.
-- Q14 DRAIN_EXECUTION_UNIT: process table present before, empty after drain. pass.
-- Q15 RESTART_ACTIVE: controller killed, same active generation recovered, cleanup drained. pass.
-- Q16 RESTART_DRAINED: terminal record fsynced, relaunch attempted after controller kill, not admitted. pass.
-- B1 HIDDEN_MATERIAL_ABSENT: hidden bundle created outside target, not mounted, canary absent in container. pass.
-- B2 HIDDEN_EXPECTED_VALUES_UNREADABLE: host expected-value file created, path not mounted, unreadable. pass.
-- B3 FRESH_DESTROYED_SANDBOX: second sandbox does not see the first's marker. pass.
-- B4 FILESYSTEM_AND_MOUNT_BOUNDARIES: uid 65532, root ro, input ro, workspace rw, tmpfs; mountinfo valid, exact external
-  allowlist, tmpfs and daemon mounts match, no protected overlaps or unexpected mounts. pass.
-- B5 NO_NETWORK_EGRESS_DNS_OR_METADATA: only lo active (tunnel stubs down), no non-loopback routes, TCP/UDP egress and
-  metadata ENETUNREACH, DNS fails. pass.
-- B6 EXACT_ENVIRONMENT_NO_INHERITED_CREDENTIALS: host env and file canaries absent, ANTHROPIC_API_KEY/AWS_ACCESS_KEY_ID
-  not inherited, mounts exact. pass.
-- B7 NONROOT_NO_CAPS_NO_NEW_PRIVS_SECCOMP: uid 65532, CapEff 0, NoNewPrivs 1, Seccomp 2 (filter), raw socket, setuid
-  and mount blocked. pass.
-- B8 RESOURCE_LIMITS_AND_BOUNDED_OUTPUT: cgroup exact cpu.max 100000 100000, memory.max 536870912, memory.swap.max 0,
-  pids.max 64; disk 240 MiB workspace (251658240) + 16 MiB /tmp (16777216) = 268435456 then ENOSPC, /dev/shm write
-  blocked, both tmpfs; memory OOM-killed exit 137; pids errno 11 at 63 children; wall timeout stopped by container id,
-  exit 137; output captured 1048576 bytes = required max, truncated true. pass.
-- B9 BOUNDED_ARTIFACT_AFTER_SANDBOX_DESTROYED: container removed (exit 0) before the 12-byte artifact was read; bytes
-  match written. pass.
-- B10 PER_GRADE_TARGET_AND_LIMIT_PROVENANCE: re-validated here: contract.validate_request(request) and
-  contract.validate_result(result, request) accept; request_digest recomputes to the result's; candidate target
-  validates with validate_target(qualified=False) and is rejected with qualified=True (qualification_digest null);
-  isolation_level unqualified, outcome completed, exit 0, drain confirmed, applied limits equal request limits incl.
-  timeout_seconds 10, fired null; observed cgroup limits exact. pass.
+- Q01: permitted /workspace write observed, protected path untouched.
+- Q02/Q03/Q04: protected write denied directly, from a child and a grandchild (EROFS in stderr), marker absent.
+- Q05/Q06/Q08/Q09/Q10: descendant visible in docker top (child, grandchild, new process group, new session,
+  background shell + sleep), container stopped, exited, removed.
+- Q07: parent exit drained the unit (container already not running), removed.
+- Q11: identity durable, fsynced, read after controller exit (two controller pids).
+- Q12: stale generation 1 rejected against persisted generation 2.
+- Q13: cancel requested, whole unit cancelled and drained.
+- Q14: process table present before, empty after drain.
+- Q15: controller killed, same active generation recovered, cleanup drained.
+- Q16: controller killed, terminal record fsynced, relaunch attempted and refused (launch_admitted false).
+- B1: hidden bundle created outside the target, not mounted, canary absent.
+- B2: host expected value created, path not mounted, unreadable.
+- B3: second fresh sandbox does not see the first one's marker.
+- B4: uid 65532, root ro, input ro, workspace rw, tmpfs, mountinfo valid, exact external allowlist, daemon and tmpfs
+  mounts match, no protected overlaps or unexpected mounts.
+- B5: no active non-loopback interface or route; TCP/UDP egress and metadata ENETUNREACH; DNS fails.
+- B6: host env canary, AWS_ACCESS_KEY_ID, ANTHROPIC_API_KEY absent; host file canary absent; mounts exact.
+- B7: CapEff 0, NoNewPrivs 1, Seccomp 2, uid 65532; raw socket, setuid, mount blocked.
+- B8: configured cgroup limits exact (cpu.max 100000 100000, memory.max 536870912, memory.swap.max 0, pids.max 64);
+  disk limit 268435456 = workspace 251658240 (240 MiB) + tmp 16777216 (16 MiB) tmpfs, overflow ENOSPC, /dev/shm
+  write blocked; memory OOM-killed (137, oom_killed true); pids: 63 children then EAGAIN; output captured exactly
+  1048576 bytes of a required max 1048576, truncated true; wall clock: container-timeout, stopped by id, exit 137.
+- B9: 12-byte artifact read after the container was removed (remove exit 0), sha256 matches the written bytes.
+- B10: v2 request (limits = QUALIFIED_LIMITS, 10 s timeout) and v2 result validate with candidate target
+  {id showcase-docker-desktop-linux-guest, image_digest sha256:9d7265...15d5, qualification_digest null};
+  applied limits equal the request, cgroup limits observed exactly, completed, exit 0, drain confirmed.
+
+Grading layout (evidence/grading-layout.json)
+- All 7 checks true, passed true.
+- grade: completed, drain confirmed, answers sealed after container removal (sealed file equals the reported
+  answers); cwd /workspace; marker equals the streamed workspace/pkg/marker.txt (stdin tar works); cases equals the
+  host cases.json via /inputs; write to /inputs gave errno 30 (EROFS) - with a read-only root this is only
+  distinguishable from a missing mount because cases were read, which they were.
+- env: exactly the image's Config.Env (PATH, GPG_KEY, PYTHON_VERSION, PYTHON_SHA256; checked live with docker image
+  inspect) + GRADING_ENV (PYTHONPATH, PYTHONDONTWRITEBYTECODE, HOME=/tmp) + HOSTNAME/PWD/LC_CTYPE; no
+  AGENT_HARNESS_HOST_CANARY and the marker value appears nowhere in env.
+- output-flood: fired disk, outcome error, no answers, drain confirmed. timeout: fired timeout, outcome timeout,
+  drain confirmed.
+- probe_grading_layout calls QualifiedDockerBackend.run itself (instance built without __init__, so qualification
+  binding and the live-tuple refusal are not exercised, which is correct before a qualification exists); run()
+  builds the argv from QUALIFIED_RUN_FLAGS, GRADING_LAYOUT and GRADING_ENV, the same code path every session uses.
+  It therefore exercises the backend's real argv.
 
 Comparison
-- Showcase accepted run (AH5-04B-QUAL-001 evidence/selected, job local-20261008T205033Z-7939417fefb5): same host,
-  engine, kernel, image; all 26 checks pass with the same reason codes and details equal once per-run identifiers
-  (container/execution ids, pids, random paths, artifact digest, timestamps) are set aside, including B8 wall/memory
-  and B10 request/result shape. Its policy_digest differs by design (Showcase spec digest vs Harness policy digest).
-- Earlier Harness run reference-20261010T192515Z: same 26 passes with equivalent details; probe_digest
-  sha256:5c8955f0... and policy_digest sha256:da778059... differ because b18c8bc added __init__.py to the probe digest
-  and the grading layout to the policy digest. That run cannot serve as the reference for HEAD; this one can.
+- Accepted Showcase run (AH5-04B-QUAL-001 evidence/selected): same host, engine, kernel, image; all 26 checks have the
+  same status, reason_code and details keys; B4, B5, B7, B8, B10 detail values identical apart from ids/digests.
+  Its policy_digest (sha256:460f59a4...) differs because Harness policy_digest also covers the grading environment,
+  layout and limits; expected and not a drift.
+- Previous Harness reference ref-20261010T204452Z: same tuple and policy_digest; probe_digest differs
+  (57eb7778... -> ee87222a...) because grading.py is now covered. Same 26 statuses/reason codes/details keys. Grading
+  layout now checks env exactly (was a superset check) and records inputs_errno 30 (was inputs_writable false).
 
-Observations (not failures)
-- Q11-Q16 lifecycle containers (q_lifecycle.py) use the qualified flags minus the /dev/shm and /workspace tmpfs plus
-  --init and an /evidence bind; verbatim from Showcase and identical to the accepted run.
-- The backend's /output bind mount is not exercised by the probes (ADR 0002 amendment known gap; covered by policy digest).
-- job_id is a local correlation id; evidence proves structure and binding, not who produced it or when (ADR 0002:
-  authenticity out of scope).
-- During review the working tree gained an untracked src/agent_harness/qualification/reference.py and a pyproject.toml
-  package-data edit (mtimes after this run). Neither is in PROBE_MODULES; probe_digest and policy_digest still equal the
-  report. If reference.py is ever added to PROBE_MODULES, this review no longer applies.
-
-Scope: this review qualifies only this tuple + probe_digest + policy_digest on this Docker Desktop Linux guest. It
-grants no launch authority and makes no claim about other hosts, GitHub runners or production.
+Concerns (non-blocking)
+- probe_digest does not cover execution.py (_seal, _now used by grading.py) or contract.py; a change there could
+  alter sealing or validation without a new review. Consider adding them.
+- /output is host-bounded by 20 ms polling (answers limit + 64 KiB slack), not by a tmpfs; a fast writer can exceed
+  that before the kill. The flood case only proves the kill fires, not the peak bytes written.
+- The layout's backend stdout cap (_drain_capped) is not exercised by the layout probe (B8 covers truncation through
+  the Showcase probe path, not the backend); stdout is discarded by the backend, so impact is low.
+- LC_CTYPE/HOSTNAME/PWD are excluded by name regardless of value; the marker-not-in-env check limits the risk.

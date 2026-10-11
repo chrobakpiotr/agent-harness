@@ -156,3 +156,21 @@ grading argv, part of `config_digest`) runs with an empty environment plus what 
 - Operational note: under load a probe can hit its Docker command timeout (`PROBE_EXCEPTION`, `not-run`); the
   session then does not qualify. Use `timeout_seconds=60`, run the session without other Docker load, and retry
   with a new `job_id`. Changing the default in code would change `probe_digest` and void the review.
+
+## Retries, Linux targets, grading-layout qualification (2026-10-11)
+
+- `qualify(target_kind=docker-desktop|github-runner|linux-docker, timeout_seconds=60, retries=2)`. A check that
+  ended only on a Docker command timeout is re-run; earlier attempts go to `evidence/retries.json`.
+- `grading.probe_grading_layout` (the backend moved to `agent_harness/grading.py`, covered by `probe_digest`) checks
+  the backend's real argv. Its verdict is the tuple fact `grading_layout`.
+- Exited probe containers named in the run's own evidence are removed.
+- Independent evaluations (two rounds) found nothing that lets a session qualify wrongly; their conditions are
+  fixed, and the last two (tests) do not touch the digested code.
+- Reviewed reference replaced: job `ref-20261011T082417Z`, all 26 checks and the grading layout pass, review
+  `harness-independent-reviewer-20261011b` pass.
+- Known limits:
+  - `probe_digest` does not cover helpers in `execution.py`/`contract.py`;
+  - `/output` is bounded by 20 ms polling, not a tmpfs;
+  - a Q05–Q10 container left after a timeout during `top`/`stop`/`inspect` is not named in the evidence and so is
+    not removed;
+  - `retries.json` is not bound into the report.

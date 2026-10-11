@@ -1,13 +1,13 @@
 {
   "check_id": "Q14",
   "details": {
-    "container_id": "be356e3b38b30d615da619705636f9d6c8111ef06a2756030d38ac1e44e3d73e",
-    "controller_pid": 39242,
+    "container_id": "6beaec93940daa9c083678549c99200982abda3cee03cbe0c4e39c357e44b69c",
+    "controller_pid": 78683,
     "generation": 1,
     "process_table_before": true,
     "process_table_empty_after_drain": true
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "DRAIN_EXECUTION_UNIT",
   "reason_code": "DRAINED_WITH_PROCESS_TABLE_PROOF",
   "status": "pass",

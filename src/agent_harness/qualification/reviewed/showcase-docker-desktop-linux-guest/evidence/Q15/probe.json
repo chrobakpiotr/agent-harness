@@ -2,17 +2,17 @@
   "check_id": "Q15",
   "details": {
     "cleanup_drained": true,
-    "container_id": "ed1baa38aaf62d4fc59bad0dde78ddd99af6fa504433ed1643e404071e62b6ba",
+    "container_id": "2a928b4017923fc77c696dd669d2e2d0dfc67b1d883c022cc84afbc9d2e617f5",
     "controller_killed": true,
     "controller_pids": [
-      39263,
-      39286
+      78690,
+      78697
     ],
-    "execution_id": "65b33d586c594f89a6f53ab5267996cf",
+    "execution_id": "cde75b7430474499be024db8412c6a52",
     "generation": 1,
     "same_active_generation_recovered": true
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "RESTART_ACTIVE",
   "reason_code": "RESTART_ACTIVE",
   "status": "pass",

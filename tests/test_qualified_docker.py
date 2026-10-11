@@ -36,7 +36,11 @@ if args[:1] == ["version"]: print(os.environ.get("FAKE_ENGINE", "29.8.2")); sys.
 if args[:1] == ["info"]:
     os_type = "linux|" if any("OSType" in a for a in args) else ""
     print(os_type + "Docker Desktop|" + os.environ.get("FAKE_KERNEL", "7.0.14-linuxkit")); sys.exit(0)
-if args[:2] == ["image", "inspect"]: print(json.dumps([os.environ.get("FAKE_IMAGE", args[-1])])); sys.exit(0)
+if args[:2] == ["image", "inspect"]:
+    if any("Config.Env" in a for a in args):
+        if os.environ.get("FAKE_LAYOUT") == "no-inspect": sys.exit(1)
+        print(json.dumps(["PATH=/usr/bin", "LANG=C.UTF-8"])); sys.exit(0)
+    print(json.dumps([os.environ.get("FAKE_IMAGE", args[-1])])); sys.exit(0)
 if args[:1] == ["run"]:
     name = next(a.split("=", 1)[1] for a in args if a.startswith("--name="))
     mounts = {}
@@ -49,20 +53,37 @@ if args[:1] == ["run"]:
         archive.extractall(workspace, filter="data")
     (state_dir / name).write_text(json.dumps({"Running": True, "OOMKilled": False, "ExitCode": None}))
     out = pathlib.Path(mounts["/output"])
+    command = " ".join(args)
+    if "inputs_errno" in command:  # the grading-layout probe's report script, played per FAKE_LAYOUT
+        layout = os.environ.get("FAKE_LAYOUT", "ok")
+        env = {"PATH": "/usr/bin", "LANG": "C.UTF-8", "HOSTNAME": "x", "PWD": "/workspace",
+               "PYTHONPATH": "/workspace", "PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"}
+        if layout == "extra-env":
+            env["AWS_SECRET_ACCESS_KEY"] = "leaked"
+        (out / "answers.json").write_text(json.dumps({
+            "cwd": "/tmp" if layout == "cwd" else "/workspace", "env": env,
+            "inputs_errno": 13 if layout == "errno" else 30,
+            "cases": json.loads(pathlib.Path(mounts["/inputs"], "cases.json").read_text()),
+            "marker": (workspace / "pkg" / "marker.txt").read_text()}))
+        mode = "layout-done"
+    elif "flood.bin" in command:
+        (out / "flood.bin").write_bytes(b"x" * (3 << 20)); time.sleep(5)
+    elif "time.sleep(60)" in command:
+        mode = "sleep"
     if mode == "sleep":
         time.sleep(60)
     if mode == "flood":
         sys.stdout.write("x" * (2 << 20)); sys.stdout.flush()
     if mode == "flood-output":
         (out / "big.bin").write_bytes(b"x" * (3 << 20))
-        time.sleep(30)
+        time.sleep(3)
     if mode == "dir":
         (out / "answers.json").mkdir()
     if mode == "symlink":
         (out / "answers.json").symlink_to("/etc/passwd")
     elif mode == "big":
         (out / "answers.json").write_bytes(b"x" * ((1 << 20) + 1))
-    elif mode not in ("sleep", "dir", "flood-output"):
+    elif mode not in ("sleep", "dir", "flood-output", "layout-done"):
         cases = json.loads(pathlib.Path(mounts["/inputs"], "cases.json").read_text())
         (out / "answers.json").write_text(json.dumps({c["id"]: {"value": 1} for c in cases["cases"]}))
     oom = mode == "oom"
@@ -310,6 +331,22 @@ class QualifiedDockerTest(unittest.TestCase):
         result = self.grade(self.backend(), self.request("s"))
         self.assertEqual(("unconfirmed", []), (result["drain"], result["artifacts"]))
         self.assertNotEqual("completed", result["outcome"])
+
+    def test_grading_layout_probe_fails_on_each_broken_property(self):
+        from agent_harness import grading
+        for i, (layout, failing) in enumerate((("ok", None), ("errno", "inputs mounted read-only"),
+                                               ("extra-env", "environment is exactly the image's ENV plus GRADING_ENV"),
+                                               ("cwd", "working directory is /workspace"),
+                                               ("no-inspect", "environment is exactly the image's ENV plus GRADING_ENV"))):
+            with self.subTest(layout):
+                os.environ["FAKE_LAYOUT"] = layout
+                out = self.root / f"layout-{i}"
+                out.mkdir()
+                result = grading.probe_grading_layout(IMAGE, out, docker=self.docker, timeout_seconds=10)
+                self.assertEqual(failing is None, result["passed"], result["checks"])
+                if failing:
+                    self.assertFalse(result["checks"][failing])
+        os.environ.pop("FAKE_LAYOUT", None)
 
     @unittest.skipUnless(os.environ.get("AGENT_HARNESS_REAL_DOCKER") == "1", "opt-in real Docker run")
     def test_real_docker_grades_one_request(self):

@@ -1,0 +1,51 @@
+{
+  "checks": {
+    "/output over the answers limit is killed as disk": true,
+    "environment is exactly the image's ENV plus GRADING_ENV": true,
+    "grade completed with answers after destroy": true,
+    "inputs mounted read-only": true,
+    "wall clock fires as timeout": true,
+    "working directory is /workspace": true,
+    "workspace streamed in": true
+  },
+  "passed": true,
+  "results": {
+    "grade": {
+      "answers": {
+        "cases": {
+          "probe": "0c4ad997d94f4b3091b52fd9160a7745"
+        },
+        "cwd": "/workspace",
+        "env": {
+          "GPG_KEY": "7169605F62C751356D054A26A821E680E5FA6305",
+          "HOME": "/tmp",
+          "HOSTNAME": "84afbfb7f0e1",
+          "LC_CTYPE": "C.UTF-8",
+          "PATH": "/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "PWD": "/workspace",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONPATH": "/workspace",
+          "PYTHON_SHA256": "f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d",
+          "PYTHON_VERSION": "3.13.16"
+        },
+        "inputs_errno": 30,
+        "marker": "0c4ad997d94f4b3091b52fd9160a7745"
+      },
+      "drain": "confirmed",
+      "fired": null,
+      "outcome": "completed"
+    },
+    "output-flood": {
+      "answers": null,
+      "drain": "confirmed",
+      "fired": "disk",
+      "outcome": "error"
+    },
+    "timeout": {
+      "answers": null,
+      "drain": "confirmed",
+      "fired": "timeout",
+      "outcome": "timeout"
+    }
+  }
+}

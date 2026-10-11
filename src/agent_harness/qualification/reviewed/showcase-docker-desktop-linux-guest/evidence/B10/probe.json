@@ -22,7 +22,7 @@
       }
     },
     "container_state": {
-      "container_id": "e0dfb6c5a968c0219da7df4cc2c11e22875e6394024c90bc2e09b2c7d8d8daad",
+      "container_id": "c7649b3457fb1d3fe18e51fcfdb310178882d4f2952c012d889af61032d1cb12",
       "exit_code": 0,
       "oom_killed": false,
       "status": "exited"
@@ -47,20 +47,20 @@
       "max_attempts": 1,
       "model": "pinned-workload-image",
       "provider": "showcase-docker-grading-probe",
-      "request_id": "b10-f9254de2ea854e049860031c1ae664df",
+      "request_id": "b10-0dbd5662892b42eea62dbd4c04bbea6c",
       "settings": {},
       "task_digest": "sha256:a53c59096bc8741d7f05d4bc18177becffa9e7844919e7c32fbcbf61a2c29509",
       "timeout_seconds": 10,
-      "trial_id": "b10-trial-f9254de2ea854e049860031c1ae664df"
+      "trial_id": "b10-trial-0dbd5662892b42eea62dbd4c04bbea6c"
     },
     "result": {
       "artifacts": [],
       "attempts": [
         {
-          "attempt_id": "b10-attempt-8591e8690f004cf898acfb864ba19601",
-          "ended_at": "2026-10-10T19:50:26.622835Z",
+          "attempt_id": "b10-attempt-5fd0422cf92f4cf394ac0ab2ee29dec7",
+          "ended_at": "2026-10-11T08:25:16.209245Z",
           "outcome": "completed",
-          "started_at": "2026-10-10T19:50:25.300512Z"
+          "started_at": "2026-10-11T08:25:15.326526Z"
         }
       ],
       "cancel_requested": false,
@@ -68,9 +68,9 @@
       "completion": null,
       "contract_version": 2,
       "drain": "confirmed",
-      "ended_at": "2026-10-10T19:50:26.622835Z",
+      "ended_at": "2026-10-11T08:25:16.209245Z",
       "error_code": null,
-      "execution_id": "b10-exec-10d1f204b8af489397d11f67f747b08f",
+      "execution_id": "b10-exec-1911aceb0bbd48c2989528d8d5c4b2d8",
       "exit_code": 0,
       "isolation_level": "unqualified",
       "limits": {
@@ -86,10 +86,10 @@
         "output_truncated": false
       },
       "outcome": "completed",
-      "request_digest": "sha256:a24918ce8496ed7363cd97a2a1b5bae0197d67ca1d7177bf43e00e62e63f2e1b",
-      "request_id": "b10-f9254de2ea854e049860031c1ae664df",
+      "request_digest": "sha256:92933759cd2071ff293e830baaec28fab86c77cbc44ea0690410d58510b982e8",
+      "request_id": "b10-0dbd5662892b42eea62dbd4c04bbea6c",
       "resolved_model": null,
-      "started_at": "2026-10-10T19:50:25.300512Z",
+      "started_at": "2026-10-11T08:25:15.326526Z",
       "target": {
         "id": "showcase-docker-desktop-linux-guest",
         "image_digest": "sha256:9d72651cf7018c1f6a1dd6fd02bd68286631c33620bc0f37b0675b21aab915d5",
@@ -102,7 +102,7 @@
       }
     }
   },
-  "job_id": "ref-20261010T194859Z",
+  "job_id": "ref-20261011T082417Z",
   "name": "PER_GRADE_TARGET_AND_LIMIT_PROVENANCE",
   "reason_code": "CANDIDATE_RESULT_VALIDATED",
   "status": "pass",
