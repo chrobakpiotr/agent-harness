@@ -765,21 +765,26 @@ def _provider_error(data):
 
 
 def _reset_time(message, now=None):
-    """Unix time of the stated reset: ``…|<epoch>`` or ``resets 2:50pm (Europe/Warsaw)`` (the next such time)."""
+    """Unix time of the stated reset: ``…|<epoch>``, Claude's ``resets 2:50pm (Europe/Warsaw)`` or Codex's ``try again
+    at 7:57 PM.`` (host local time); the next such time. A time after a date (``at Oct 14th, …``) is not matched."""
     epoch = re.search(r"\|(\d{10})\b", message)
     if epoch:
         return int(epoch.group(1))
     match = re.search(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)\s*\(([A-Za-z_]+(?:/[A-Za-z_+-]+)*)\)", message, re.IGNORECASE)
-    if not match:
-        return None
-    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-    try:
-        zone = ZoneInfo(match.group(4))
-    except (ZoneInfoNotFoundError, ValueError):
-        return None
+    if match:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            zone = ZoneInfo(match.group(4))
+        except (ZoneInfoNotFoundError, ValueError):
+            return None
+        current = (now or datetime.now(zone)).astimezone(zone)
+    else:
+        match = re.search(r"try again at\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)\b", message, re.IGNORECASE)
+        if not match:
+            return None
+        current = now or datetime.now().astimezone()  # the CLI states the host's local time
     hour = int(match.group(1)) % 12 + (12 if match.group(3).lower() == "pm" else 0)
-    current = now or datetime.now(zone)
-    reset = current.astimezone(zone).replace(hour=hour, minute=int(match.group(2) or 0), second=0, microsecond=0)
+    reset = current.replace(hour=hour, minute=int(match.group(2) or 0), second=0, microsecond=0)
     if reset <= current:
         reset += timedelta(days=1)
     return int(reset.timestamp())

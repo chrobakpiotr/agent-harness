@@ -273,6 +273,25 @@ class AgentCliTest(CliCase):
         self.assertEqual("quota_exhausted", execution._provider_error(json.dumps(
             {"is_error": True, "result": message}).encode())["kind"])
 
+    def test_reset_time_from_the_real_codex_usage_limit_message(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        message = ("You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit "
+                   "https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 7:57 PM.")
+        output = "\n".join(json.dumps(e) for e in ({"type": "error", "message": message},
+                                                     {"type": "turn.failed", "error": {"message": message}}))
+        warsaw = ZoneInfo("Europe/Warsaw")  # stands for the host's local zone
+        before = datetime(2026, 10, 11, 19, 0, tzinfo=warsaw)
+        self.assertEqual(int(datetime(2026, 10, 11, 19, 57, tzinfo=warsaw).timestamp()),
+                         execution._reset_time(message, now=before))
+        after = datetime(2026, 10, 11, 20, 0, tzinfo=warsaw)
+        self.assertEqual(int(datetime(2026, 10, 12, 19, 57, tzinfo=warsaw).timestamp()),
+                         execution._reset_time(message, now=after))
+        details = execution._provider_error(output.encode())
+        self.assertEqual("quota_exhausted", details["kind"])
+        self.assertIsNotNone(details["resets_at"])
+        self.assertIsNone(execution._reset_time("try again at Oct 14th, 2026 7:57 PM."))  # a dated reset: unknown
+
     def test_encoded_login_token_is_caught_in_any_alignment(self):
         import base64
         token = b"tok-" + b"q" * 40
