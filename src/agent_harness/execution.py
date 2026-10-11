@@ -758,8 +758,23 @@ def _login_secrets(home):
     return values
 
 
+def _encodings(secret):
+    """The secret as written and in the encodings a model command could use to copy it out unnoticed: hex, and
+    base64/base64url at each of the three byte alignments (the stable middle part of each encoding)."""
+    import base64
+    forms = {secret, secret.hex().encode(), secret.hex().upper().encode()}
+    for encode in (base64.b64encode, base64.urlsafe_b64encode):
+        for shift in range(3):
+            encoded = encode(b"\0" * shift + secret).rstrip(b"=")
+            middle = encoded[4:-4]  # independent of what precedes or follows the secret
+            if len(middle) >= 16:
+                forms.add(middle)
+    return forms
+
+
 def _leaks(data, secrets):
-    return any(value in data for value in secrets) or any(p.search(data) for p in _SECRET_PATTERNS)
+    forms = {form for secret in secrets for form in _encodings(secret)}
+    return any(form in data for form in forms) or any(p.search(data) for p in _SECRET_PATTERNS)
 
 
 # Git after the agent ran: our own GIT_DIR, no user/system config, no hooks, fsmonitor, filters, external diff or

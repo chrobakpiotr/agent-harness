@@ -51,7 +51,8 @@ if args[:1] == ["run"]:
     workspace = root / "seen-workspace"
     with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as archive:
         archive.extractall(workspace, filter="data")
-    (state_dir / name).write_text(json.dumps({"Running": True, "OOMKilled": False, "ExitCode": None}))
+    (state_dir / name).write_text(json.dumps({"Running": True, "OOMKilled": False, "ExitCode": None,
+                                              "Pid": os.getpid()}))
     out = pathlib.Path(mounts["/output"])
     command = " ".join(args)
     if "inputs_errno" in command:  # the grading-layout probe's report script, played per FAKE_LAYOUT
@@ -92,7 +93,13 @@ if args[:1] == ["run"]:
 if args[:1] == ["kill"]:
     p = resolve(args[1])
     if p.exists():
+        pid = json.loads(p.read_text()).get("Pid")
         p.write_text(json.dumps({"Running": False, "OOMKilled": False, "ExitCode": 137}))
+        if pid:  # like a real kill: the `docker run` client returns once its container is gone
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
     sys.exit(0)
 if args[:1] == ["inspect"]:
     p = resolve(args[-1])

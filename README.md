@@ -46,6 +46,9 @@ Fixtures shipped in the package: `success`, `fail`, `timeout`, `unknown-terminal
 Execution `outcome`, harness `completion` and a consumer's grade are three separate facts; the
 contract never merges them.
 
+Running coding agents (`AgentCliBackend`), qualifying a grading session (`qualification.qualify`) and grading on the
+qualified target (`QualifiedDockerBackend`): see [`docs/usage.md`](docs/usage.md).
+
 ## Development
 
 Agents start at `AGENTS.md`. Verification: `scripts/check-wheel.sh`.

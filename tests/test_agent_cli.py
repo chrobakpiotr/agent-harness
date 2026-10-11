@@ -267,6 +267,16 @@ class AgentCliTest(unittest.TestCase):
         self.assertEqual("quota_exhausted", execution._provider_error(json.dumps(
             {"is_error": True, "result": message}).encode())["kind"])
 
+    def test_encoded_login_token_is_caught_in_any_alignment(self):
+        import base64
+        token = b"tok-" + b"q" * 40
+        for prefix in (b"", b"a", b"ab", b"abc"):
+            for encode in (base64.b64encode, base64.urlsafe_b64encode):
+                blob = b"answer: " + encode(prefix + token + b"tail") + b"\n"
+                self.assertTrue(execution._leaks(blob, {token}), (prefix, encode.__name__))
+            self.assertTrue(execution._leaks(b"x" + (prefix + token).hex().encode(), {token}))
+        self.assertFalse(execution._leaks(b"nothing secret here", {token}))
+
     def test_evidence_root_writable_by_the_agent_is_refused(self):
         ws = self.root / "workspace"
         self.git("init", "-q")
