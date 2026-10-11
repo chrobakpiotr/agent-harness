@@ -27,7 +27,7 @@ backend = execution.AgentCliBackend("claude", prompt, diff_base=base_commit)  # 
 result = execution.launch(request, backend, workspace=ws, evidence_root=evidence).result()
 ```
 
-- The request's `provider` must be `claude` or `codex`, and its `model` is passed to the CLI.
+- The request's `provider` must be `claude`, `codex` or `opencode`, and its `model` is passed to the CLI.
 - **Fixed command lines.** The prompt goes in on stdin, so it can never act as a flag; there are no caller arguments.
 - **Credentials.** API keys and routing variables are removed from the CLI's environment, and the login method is
   pinned to the subscription. No spend.
@@ -48,6 +48,13 @@ result = execution.launch(request, backend, workspace=ws, evidence_root=evidence
 - **Provider errors.** They are `error` / `PROVIDER_ERROR`, and `backend.error_details[request_id]` says
   `quota_exhausted` (with `resets_at` when the CLI states it) or `provider_error`.
 - **Real CLIs.** Check them before a run: `PYTHONPATH=src python3 scripts/smoke-agent-cli.py`.
+- **OpenCode on OpenRouter (macOS).** Call `AgentCliBackend("opencode", prompt, api_key_file="~/…/openrouter.key")`
+  with a request model of the form `vendor/model:free`.
+  - OpenCode runs under a Seatbelt profile whose only network is a relay on 127.0.0.1. The relay holds the key and
+    forwards only that model.
+  - Pass the key as a mode-600 file, so the sandbox can deny reading it.
+  - When the daily free cap is hit, the result is `quota_exhausted` with `resets_at`. Nothing more is forwarded.
+  - Details and limits: packet `AH5-05b`.
 
 ## 3. Qualifying a grading session: `qualification.qualify`
 

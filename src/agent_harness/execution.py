@@ -14,6 +14,7 @@ reusing the ID is ``BINDING_MISMATCH``. Executions still running at interpreter 
 
 import atexit
 import hashlib
+import http.server
 import json
 import os
 import re
@@ -25,8 +26,10 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import __version__, contract
@@ -356,6 +359,9 @@ class ProcessBackend:
     def _output(self, request, roots):
         return subprocess.DEVNULL
 
+    def _env(self, request, roots):
+        return self.env
+
     def _finish(self, body, request, roots):
         return body
 
@@ -370,7 +376,8 @@ class ProcessBackend:
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         output = self._output(request, roots)
         try:
-            child = subprocess.Popen(self._argv(request, roots), cwd=workspace, env=self.env, start_new_session=True,
+            child = subprocess.Popen(self._argv(request, roots), cwd=workspace, env=self._env(request, roots),
+                                     start_new_session=True,
                                      stdin=subprocess.DEVNULL if self._stdin is None else subprocess.PIPE,
                                      stdout=output, stderr=subprocess.DEVNULL)
             if self._stdin is not None:  # fed from a thread: a child that never reads still times out
@@ -435,7 +442,7 @@ class ProcessBackend:
 
 # Credentials and routing that would bill an API or cloud account instead of the CLI's own subscription login.
 _BILLING_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
-                "CLAUDE_CODE_USE_VERTEX", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_API_KEY")
+                "CLAUDE_CODE_USE_VERTEX", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_API_KEY", "OPENROUTER_API_KEY")
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # Claude Code's own Bash sandbox: no network, never an unsandboxed fallback (`failIfUnavailable`), sandboxed Bash
 # allowed without a prompt in `-p` mode. WebFetch/WebSearch run outside the sandbox and are disallowed separately.
@@ -455,10 +462,21 @@ _CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "all
 _SECRET_PATTERNS = (re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"), re.compile(rb"\bsk-[A-Za-z0-9_-]{32,}"),
                     re.compile(rb'"(?:refresh_token|access_token|id_token)"\s*:'))
 _CODEX_SANDBOX = "workspace-write"
+# OpenCode has no sandbox of its own: it runs under a macOS Seatbelt profile whose only network is a harness-owned
+# relay on 127.0.0.1 (`_OpenRouterRelay`), which holds the OpenRouter key and forwards only the run's `:free` model.
+# Shell commands inherit the profile: no network, no DNS, no Docker socket, no Keychain, no LaunchServices
+# (`open URL`), no login files, writes only where the other CLIs' sandboxes allow them (`_agent_writable_roots`).
+# ponytail: an allow-default profile with targeted denies; a deny-default profile is the upgrade if a hole shows up.
+_OPENCODE_SECRETS = ("~/.local/share/opencode", "~/.config/opencode", "~/Library/Keychains")
+_OPENCODE_ENV = {"OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_MODELS_FETCH": "1",
+                 "OPENCODE_DISABLE_SHARE": "1", "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+                 "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1", "OPENCODE_DISABLE_LSP_DOWNLOAD": "1",
+                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1"}
+_OPENROUTER = "https://openrouter.ai/api/v1"
 
 
 class AgentCliBackend(ProcessBackend):
-    """A coding-agent CLI (``claude`` or ``codex``) run as a ``ProcessBackend`` child, on the CLI's own login.
+    """A coding-agent CLI (``claude``, ``codex`` or ``opencode``) run as a ``ProcessBackend`` child, on the CLI's own login.
 
     The command line is fixed per provider; the request's ``provider`` must match and its ``model`` is passed
     through. API-key variables are removed from the child's environment, so a run never bills an API account.
@@ -472,14 +490,19 @@ class AgentCliBackend(ProcessBackend):
     capabilities = ("cancel", "usage")
 
     def __init__(self, provider, prompt, *, candidate=None, diff_base=None, env=None, grace=2.0,
-                 output_limit=8 << 20, sandbox_probe=None):
-        if provider not in ("claude", "codex"):
-            raise ValueError("provider must be 'claude' or 'codex'")
+                 output_limit=8 << 20, sandbox_probe=None, api_key_file=None, upstream=_OPENROUTER):
+        if provider not in ("claude", "codex", "opencode"):
+            raise ValueError("provider must be 'claude', 'codex' or 'opencode'")
         if not isinstance(prompt, str) or not prompt:
             raise ValueError("prompt must be a non-empty string")
         env = dict(os.environ if env is None else env)
+        # OpenCode's key: a mode-600 file, else OPENROUTER_API_KEY; read at launch, never passed to the child.
+        self.api_key_file, self._env_key, self.upstream = api_key_file, env.get("OPENROUTER_API_KEY"), upstream
         for name in _BILLING_ENV:
             env.pop(name, None)
+        if provider == "opencode":
+            for name in [n for n in env if n.startswith("OPENCODE_")]:
+                env.pop(name)
         if candidate is not None and diff_base is not None:
             raise ValueError("candidate and diff_base are exclusive")
         if diff_base is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", diff_base):
@@ -513,6 +536,14 @@ class AgentCliBackend(ProcessBackend):
             return "CAPABILITY_UNSUPPORTED", f"evidence root is writable by the agent's sandbox ({writable[0]})"
         if shutil.which(self.provider, path=self.env.get("PATH")) is None:
             return "BACKEND_UNAVAILABLE", f"{self.provider} executable not found on PATH"
+        if self.provider == "opencode":
+            if not request["model"].endswith(":free") or request["model"].startswith("openrouter/"):
+                return "CAPABILITY_UNSUPPORTED", "opencode runs only OpenRouter `:free` models (`vendor/model:free`)"
+            if self._api_key() is None:
+                return "BACKEND_UNAVAILABLE", "no OpenRouter key: api_key_file (mode 600) or OPENROUTER_API_KEY"
+            profile_paths = (roots["workspace"], tempfile.gettempdir(), self.env.get("HOME") or "", self.api_key_file or "")
+            if any(c in str(p) for p in profile_paths for c in '"\\'):
+                return "CAPABILITY_UNSUPPORTED", "a path cannot be written into the sandbox profile"
         try:
             probe = subprocess.run(self.sandbox_probe, check=False, env=self.env, stdin=subprocess.DEVNULL,
                                    capture_output=True, timeout=60)
@@ -532,8 +563,70 @@ class AgentCliBackend(ProcessBackend):
             return ["claude", "-p", "--model", model, "--output-format", "json",
                     "--permission-mode", "acceptEdits", "--settings", json.dumps(settings),
                     "--disallowedTools", "WebFetch,WebSearch"]
+        if self.provider == "opencode":  # `--title` skips a title request, one of the 50 free requests a day
+            return ["/usr/bin/sandbox-exec", "-p", self._profile(roots), shutil.which("opencode", path=self.env.get("PATH")),
+                    "run", "--format", "json", "--pure", "--title", request["request_id"][:64], "-m",
+                    f"openrouter/{model}"]
         return ["codex", "exec", "-m", model, "--sandbox", _CODEX_SANDBOX, "-c", 'forced_login_method="chatgpt"',
                 "--skip-git-repo-check", "--json", "--ephemeral", "-"]
+
+    def _api_key(self):
+        if self.api_key_file is None:
+            return self._env_key or None
+        try:
+            path = Path(self.api_key_file).expanduser()
+            if path.stat().st_mode & 0o077:  # readable by others: refuse rather than use it
+                return None
+            return path.read_text().strip() or None
+        except OSError:
+            return None
+
+    def _profile(self, roots):
+        home = Path(self.env.get("HOME") or Path.home())
+        secrets = [home / p.removeprefix("~/") for p in _LOGIN_PATHS + _OPENCODE_SECRETS]
+        if self.api_key_file is not None:
+            secrets.append(Path(self.api_key_file).expanduser().resolve())
+        mine = [Path(roots["workspace"]).resolve(), self._private.resolve()]
+        writable = _agent_writable_roots(roots["workspace"]) + mine
+
+        def paths(items):
+            return " ".join(f'(subpath "{p}")' for p in items)
+        return "\n".join([
+            "(version 1)", "(allow default)", "(deny network*)",
+            '(allow network-bind network-inbound (local ip "localhost:*"))',  # OpenCode's in-process server
+            f'(allow network-outbound (remote ip "localhost:{self._relay.port}"))',
+            ('(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SecurityServer")'
+             ' (global-name "com.apple.securityd.xpc") (global-name-prefix "com.apple.coreservices.")'
+             ' (global-name-prefix "com.apple.lsd."))'),
+            f"(deny file-read* {paths(secrets)})", f"(allow file-read* {paths(mine)})",
+            "(deny file-write*)", f'(allow file-write* {paths(writable)} (subpath "/dev"))'])
+
+    def _env(self, request, roots):
+        if self.provider != "opencode":
+            return self.env
+        config = {"autoupdate": False, "share": "disabled", "small_model": f"openrouter/{request['model']}",
+                  "provider": {"openrouter": {"options": {"baseURL": f"http://127.0.0.1:{self._relay.port}/api/v1",
+                                                          "apiKey": "harness-relay"},
+                                              "models": {request["model"]: {"tool_call": True}}}},
+                  # the OS sandbox is the boundary, as for the other CLIs; web tools would only waste requests
+                  "permission": {"*": "allow", "webfetch": "deny", "websearch": "deny"}}
+        # OpenCode takes its project directory from PWD, not from the process's working directory
+        env = {**self.env, **_OPENCODE_ENV, "OPENCODE_CONFIG_CONTENT": json.dumps(config),
+               "PWD": str(Path(roots["workspace"]).resolve())}
+        for name in ("CONFIG", "DATA", "STATE", "CACHE"):  # OpenCode's own config, auth and sessions: private
+            env[f"XDG_{name}_HOME"] = str(self._private / name.lower())
+        return env
+
+    def run(self, request, roots, cancelled, execution_id, started_at):
+        if self.provider != "opencode":
+            return super().run(request, roots, cancelled, execution_id, started_at)
+        self._relay = _OpenRouterRelay(self._api_key(), request["model"], self.upstream)
+        self._private = Path(tempfile.mkdtemp(prefix="agent-harness-opencode-"))
+        try:
+            return super().run(request, roots, cancelled, execution_id, started_at)
+        finally:
+            self._relay.close()
+            shutil.rmtree(self._private, ignore_errors=True)
 
     def _output_path(self, request, roots):
         return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/agent-output"
@@ -562,6 +655,8 @@ class AgentCliBackend(ProcessBackend):
 
     def _finish(self, body, request, roots):
         secrets = _login_secrets(self.env.get("HOME"))
+        if self.provider == "opencode" and self._relay.key:
+            secrets.add(self._relay.key.encode())
         if self.diff_base is not None and body["outcome"] == "completed" and body["drain"] == "confirmed":
             if _has_hardlinks(Path(roots["workspace"])):  # a hardlink can carry any same-volume host file
                 return self._withhold(body, request, roots, "candidate")
@@ -586,18 +681,20 @@ class AgentCliBackend(ProcessBackend):
             return self._withhold(body, request, roots, "agent-output")
         body["artifacts"] = [{"name": "agent-output", "path": str(path.relative_to(roots["evidence_root"])),
                               "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": size}]
-        units, failed, model = (_claude_report if self.provider == "claude" else _codex_report)(data)
+        units, failed, model = {"claude": _claude_report, "codex": _codex_report,
+                                "opencode": _opencode_report}[self.provider](data)
         if units is not None:
             body["usage_events"] = [{"contract_version": request["contract_version"], "event_id": "usage-1",
                                      "attempt_id": "attempt-1", "source": "provider", "kind": "summary",
                                      "units": units,
-                                     "cache_semantics": "separate" if self.provider == "claude"
-                                     else "included_in_input"}]
+                                     "cache_semantics": "included_in_input" if self.provider == "codex"
+                                     else "separate"}]
             body["usage_completeness"] = "complete" if None not in units.values() else "partial"
         if body["outcome"] == "completed" and failed:
             body.update(outcome="error", exit_code=None, error_code="PROVIDER_ERROR")
             body["attempts"][0]["outcome"] = "error"
-            self.error_details[request["request_id"]] = _provider_error(data)
+            quota = self._relay.quota if self.provider == "opencode" else None
+            self.error_details[request["request_id"]] = quota or _provider_error(data)
         if body["outcome"] != "completed" and body["candidate"] is not None:  # only a completed run has a candidate
             (Path(roots["evidence_root"]) / body["candidate"]["path"]).unlink(missing_ok=True)
             body["candidate"] = None
@@ -624,6 +721,10 @@ def _agent_writable_roots(workspace):
 
 
 def _default_probe(provider):
+    if provider == "opencode":  # Seatbelt only; there is no Linux equivalent wired up, so the probe fails there
+        if sys.platform != "darwin":
+            return ["sh", "-c", "echo 'opencode runs only under the macOS Seatbelt sandbox' >&2; exit 1"]
+        return ["/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)(deny network*)", "/usr/bin/true"]
     if provider == "codex":  # one command in the sandbox mode the run uses (codex-cli 0.160: `codex sandbox -- cmd`)
         return ["codex", "sandbox", "-c", f'sandbox_mode="{_CODEX_SANDBOX}"', "--", "true"]
     if sys.platform != "darwin":  # Claude Code's Linux sandbox needs bubblewrap and socat; macOS uses Seatbelt
@@ -651,7 +752,11 @@ def _provider_error(data):
                 continue
             if isinstance(event, dict) and event.get("type") in ("error", "turn.failed"):
                 error = event.get("error")
-                messages.append(str(error.get("message", "")) if isinstance(error, dict) else str(event.get("message", "")))
+                if isinstance(error, dict):  # OpenCode: {"name": "APIError", "data": {"message": …}}
+                    data = error.get("data")
+                    messages.append(str(error.get("message") or (data.get("message", "") if isinstance(data, dict) else "")))
+                else:
+                    messages.append(str(event.get("message", "")))
     message = " ".join(m for m in messages if m)[:300]
     return {"kind": "quota_exhausted" if _QUOTA.search(message) else "provider_error",
             "resets_at": _reset_time(message), "message": message}
@@ -674,7 +779,6 @@ def _reset_time(message, now=None):
     current = now or datetime.now(zone)
     reset = current.astimezone(zone).replace(hour=hour, minute=int(match.group(2) or 0), second=0, microsecond=0)
     if reset <= current:
-        from datetime import timedelta
         reset += timedelta(days=1)
     return int(reset.timestamp())
 
@@ -726,6 +830,130 @@ def _codex_report(data):
     return units, failed, None
 
 
+def _opencode_report(data):
+    """(units, failed, model) summed over the ``step_finish`` events of ``opencode run --format json``.
+
+    OpenCode reports input without cache reads (``cache.read`` apart) and reasoning apart from output; reasoning is
+    counted as output.
+    """
+    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    steps, failed = 0, False
+    for line in data.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        kind = event.get("type") if isinstance(event, dict) else None
+        if kind == "error":
+            failed = True
+        elif kind == "step_finish":
+            try:
+                tokens = event["part"]["tokens"]
+                values = (tokens["input"], tokens["output"], tokens.get("reasoning", 0),
+                          tokens["cache"]["read"], tokens["cache"]["write"])
+            except (KeyError, TypeError):
+                return None, True, None
+            if any(type(v) is not int or v < 0 for v in values):
+                return None, True, None
+            for key, value in zip(totals, (values[0], values[1] + values[2], values[3], values[4]), strict=True):
+                totals[key] += value
+            steps += 1
+    if not steps:
+        return None, True, None
+    return totals, failed, None
+
+
+class _OpenRouterRelay:
+    """The only network an OpenCode run has: 127.0.0.1, one ``:free`` model, chat completions, key added here.
+
+    After OpenRouter's daily free-model cap (a 429 naming ``per-day``) it forwards nothing more and answers 402,
+    which OpenCode does not retry, so a stopped trial spends no further requests. Other errors pass through.
+    """
+
+    def __init__(self, key, model, upstream=_OPENROUTER):
+        self.key, self.model, self.upstream = key, model, upstream
+        self.requests, self.quota = 0, None
+        relay = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                relay._relay(self)
+
+            def do_GET(self):
+                relay._answer(self, 403, "only chat completions")
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    @staticmethod
+    def _answer(handler, status, message, body=None):
+        body = body or json.dumps({"error": {"message": message, "code": status}}).encode()
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    def _relay(self, handler):
+        try:
+            body = handler.rfile.read(int(handler.headers.get("Content-Length") or 0))
+            model = json.loads(body).get("model")
+        except (ValueError, AttributeError):
+            return self._answer(handler, 400, "invalid request")
+        if handler.path != "/api/v1/chat/completions" or model != self.model:
+            return self._answer(handler, 403, f"only chat completions of {self.model}")
+        if self.quota is not None:
+            return self._answer(handler, 402, self.quota["message"])
+        self.requests += 1
+        request = urllib.request.Request(self.upstream + "/chat/completions", data=body, method="POST",
+                                         headers={"Authorization": f"Bearer {self.key}",
+                                                  "Content-Type": "application/json"})
+        try:
+            upstream = urllib.request.urlopen(request, timeout=300)
+        except urllib.error.HTTPError as error:
+            data = error.read()
+            if error.code == 429 and b"per-day" in data:
+                self.quota = {"kind": "quota_exhausted", "resets_at": _openrouter_reset(error.headers, data),
+                              "message": data.decode("utf-8", "replace")[:300]}
+                return self._answer(handler, 402, self.quota["message"])
+            return self._answer(handler, error.code, "", data)
+        except OSError as error:
+            return self._answer(handler, 502, f"OpenRouter unreachable: {error}")
+        with upstream:  # streamed as it arrives (server-sent events), ended by closing the connection
+            handler.send_response(upstream.status)
+            handler.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
+            handler.send_header("Connection", "close")
+            handler.end_headers()
+            while chunk := upstream.read1(65536):
+                handler.wfile.write(chunk)
+                handler.wfile.flush()
+        handler.close_connection = True
+
+
+def _openrouter_reset(headers, data):
+    """Unix time of the cap's reset: ``X-RateLimit-Reset`` (milliseconds) when given, else the next UTC midnight."""
+    value = headers.get("X-RateLimit-Reset")
+    if value is None:
+        try:
+            value = json.loads(data)["error"]["metadata"]["headers"]["X-RateLimit-Reset"]
+        except (ValueError, KeyError, TypeError):
+            pass
+    try:
+        return int(value) // 1000
+    except (TypeError, ValueError):
+        midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        return int(midnight.timestamp())
+
+
 def _has_hardlinks(workspace):
     for path in workspace.rglob("*"):
         if ".git" in path.relative_to(workspace).parts:
@@ -741,7 +969,7 @@ def _login_secrets(home):
     values = set()
     if not home:
         return values
-    for relative in (".codex/auth.json", ".claude/.credentials.json", ".claude.json"):
+    for relative in (".codex/auth.json", ".claude/.credentials.json", ".claude.json", ".local/share/opencode/auth.json"):
         try:
             doc = json.loads((Path(home) / relative).read_text())
         except (OSError, ValueError):
@@ -753,9 +981,16 @@ def _login_secrets(home):
                 stack.extend(item.values())
             elif isinstance(item, list):
                 stack.extend(item)
-            elif isinstance(item, str) and len(item) >= 20:
+            elif isinstance(item, str) and len(item) >= 20 and not _existing_path(item):  # e.g. project paths
                 values.add(item.encode())
     return values
+
+
+def _existing_path(value):
+    try:
+        return Path(value).is_absolute() and Path(value).exists()
+    except (OSError, ValueError):
+        return False
 
 
 def _encodings(secret):

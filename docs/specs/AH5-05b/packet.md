@@ -145,3 +145,55 @@ left). Every Harness finding from the pilot is fixed (`7dc14d2`, v0.6.1, v0.8.1)
 Checked on the pilot's real output: both real-003 Claude quota errors classify as `quota_exhausted`. Their message is
 `You've hit your session limit · resets 2:50pm (Europe/Warsaw)`, not `|<epoch>`, so `resets_at` was null. It is now
 parsed as the next occurrence of that time in that zone (real output: 2026-10-12 14:50).
+
+## Third provider: `opencode` on a free OpenRouter model (agent-benchmark AB5-07 request, 2026-10-11)
+
+`AgentCliBackend("opencode", prompt, api_key_file=…)` runs `opencode run --format json --pure --title <request_id>
+-m openrouter/<model>` with the prompt on stdin. The request's `model` must be `vendor/model:free`; any other model
+is refused before launch.
+
+OpenCode has no OS sandbox and its permission rules are command patterns. Equal conditions with Claude and Codex
+(shell commands without network) therefore come from outside it:
+
+- **Seatbelt.** OpenCode and everything it starts run under `/usr/bin/sandbox-exec` with a generated profile:
+  - no network except one 127.0.0.1 port, the relay;
+  - no DNS, Keychain, LaunchServices (`open URL`) or Docker socket;
+  - no reads of the CLI login paths, OpenCode's own config and auth, or the key file;
+  - writes only to the workspace, the temporary directories and a private directory that holds OpenCode's state
+    (removed after the run). These are the same writable roots as the other CLIs, so the evidence-root refusal is
+    unchanged.
+  - Linux has no equivalent wired up, so the probe fails there (`rejected` / `CAPABILITY_UNSUPPORTED`).
+- **Relay.** OpenCode's `openrouter` provider points at a harness-owned HTTP relay on 127.0.0.1 with a dummy key. The
+  relay:
+  - forwards only `POST /api/v1/chat/completions` of the run's model to `https://openrouter.ai/api/v1`;
+  - adds the key itself, so the key is never in argv, the environment, or the sandbox;
+  - streams the response back.
+
+  OpenCode's default title model is a paid model (`google/gemini-nano-banana-2.1`, seen on the wire). The relay
+  refuses it, `small_model` is pinned to the run's model, and `--title` skips the title request.
+- **Daily cap.** The first 429 that names `per-day` sets `error_details[request_id]` to `quota_exhausted` with
+  `resets_at` from `X-RateLimit-Reset`, or the next UTC midnight. After that, every request is answered with a 402
+  and nothing more is forwarded. Measured with a fake upstream: OpenCode retries a 429 nine times, which would spend
+  the daily quota.
+- **Key.** It comes from `api_key_file` (refused if group- or other-readable) or `OPENROUTER_API_KEY`, and is added
+  to the output and candidate scan.
+- **Usage.** Usage is summed over OpenCode's `step_finish` events. Reasoning tokens count as output, and cache reads
+  are reported apart from input (`separate`).
+
+Fixed alongside:
+- OpenCode takes its project directory from `PWD`, so the backend sets `PWD` to the workspace.
+- The login-file scan no longer treats existing absolute paths (project paths in `~/.claude.json`) as secrets. It
+  withheld a real run's output that printed the working directory.
+
+Verified offline, with no OpenRouter request spent. The unit tests use a fake OpenCode inside the real sandbox. In
+an end-to-end run, OpenCode 1.19.0 talked to a fake upstream and its bash tool ran `pwd; touch; curl
+https://example.com; echo hi > out.txt`. The candidate held `out.txt`, curl could not resolve the host, and usage was
+parsed.
+
+Limits:
+- The profile allows by default and denies specific things. A deny-default profile is the upgrade if a hole shows
+  up.
+- Shell commands can reach the relay, which means more requests to the same free model, never another model or host.
+- Only the key file passed in is unreadable. Claude and Codex sandboxes can read it, and the OpenRouter key is not
+  in their scan.
+- The first real calibration trial still has to confirm OpenCode's request count against the 50-a-day cap.
