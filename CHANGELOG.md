@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1 — 2026-10-11
+
+- `AgentCliBackend`:
+  - a result other than `completed` never carries a candidate (it was sealed before `is_error` became `error`);
+  - `error_details[request_id]` classifies provider errors as `quota_exhausted` (with `resets_at` when the CLI
+    states it) or `provider_error`.
+- Contract and probe digests unchanged; the v0.8.0 reviewed reference stays valid.
+
 ## 0.8.0 — 2026-10-11
 
 - `qualification.qualify`:
