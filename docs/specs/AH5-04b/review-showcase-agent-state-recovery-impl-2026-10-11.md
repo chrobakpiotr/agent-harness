@@ -177,3 +177,30 @@ Verified independently. `state_snapshots.py` from `bbc1273` was run in scratch r
   `test_sharded_runner`, 33 tests OK.
 
 Note for the owner's privacy check: discard audit refs also carry the operator label.
+
+## Review of Showcase `a24b8ae` (Harness initiative; the recovery epoch was created on it)
+
+Verdict: **accept.** There is one test gap and no blocking finding. A read-only check of the recovered Showcase
+state:
+- `.agent-state` matches `refs/agent-state/current` (`3d6e9b6`), and no prepared ref is left;
+- the epoch is `showcase-recovery-20261011-a24b8ae`, with `max_rework_attempts` 2;
+- T-009 is pending.
+
+What the commit does, checked against the code:
+- **Packet revisions** (`publish_revision`) are now staged and written in the same snapshot transaction as the state
+  (`save_state(..., additional_files=…)`), in `replan-task` and in `materialize-packet-history`. The latter now also
+  runs under the lifecycle lock. A revision path outside the state root is refused, and an existing revision with
+  different bytes is still a collision.
+- **Identity bridges** (`publish_immutable_bridge`) are published the same way. The `state` passed in is the value
+  read under the lock and is not changed before the save, so the snapshot cannot carry an unintended state change.
+- **The incident fence** applies only to `SDD-OBS-001`, so an unrelated feature is not blocked (new test).
+- **Remaining writers.** Every remaining immutable-authority writer goes through `save_state`
+  (`publish_completion_authority`, revisions and bridges). No writer of `.agent-state` outside a snapshot is left in
+  `harness.py`.
+
+Test gap (non-blocking): `test_canonical_legacy_history_materialization_is_verified_and_idempotent` no longer deletes
+the canonical root revision, because deleting a file from `.agent-state` now trips the snapshot guard, as intended.
+The revision then already exists, so `publish_revision` returns early, and the path that stages a missing revision
+and saves it is no longer exercised. Rebuild the fixture so that the legacy root revision is absent from the first
+snapshot (lineage recorded, file never published). Then assert that materialization writes the revision in one
+snapshot and that a second run is idempotent.
