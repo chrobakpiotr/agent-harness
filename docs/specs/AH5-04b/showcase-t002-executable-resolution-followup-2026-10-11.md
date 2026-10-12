@@ -149,3 +149,49 @@ Order:
 
 Whether this replan uses any of T-003's retry budget is decided by Showcase's existing replan rules. It needs no
 human grant beyond the usual operator attribution.
+
+## Review of the T-003 replan proposal (2026-10-12)
+
+Reviewed `docs/specs/SDD-OBS-001/planning/T-003.json`, sha256 `8d38db8b86f8c08f355b47b3798e16ec18145d8ef7e64db08020c5d1dfed98b4`
+(hash verified, file untracked).
+
+Verdict: **accept with one required change.** Run `replan-task` only after the change is made and the file is
+re-hashed.
+
+Verified:
+- **Identity and criteria.** The ID, role, `depends_on` (T-001, T-002) and `acceptance_criteria` are unchanged;
+  VC-016 and VC-017 are listed.
+- **`allowed_paths`.** It adds the four shared-core files, `verify.py` and their tests. Overlap check against every
+  other builder: the paths are shared only with ancestors (T-001: `verify.py` and `tests/test_verify.py`; T-002: the
+  shared core and its tests) and with the descendant T-009 (`runner.py`, executor, supervisor and their tests).
+  There is no parallel builder, so the overlap rule holds.
+- **`verification`.** T-003's runner command, plus T-002's verification command exactly as in `tasks.json`.
+- **Requirements 1–5,** in the objective and the test seam:
+  1. one resolver for backends, allowlisted commands and control-plane Python, with a test proving it is the only
+     resolution and launch path;
+  2. trusted canonical search paths only, refusing relative, empty, worktree, control-task-area, sandbox-home,
+     `$TMPDIR` and group/other-writable directories, with the toolchain selectors validated;
+  3. path and sha256 bound at planning/admission and checked again at launch;
+  4. absolute `argv[0]` and a trusted child `PATH`, with the `./gradlew` exception stated;
+  5. control-plane Python launched with `-I` and an environment allowlist.
+- **The VC-016 cases.** Both the direct and the runner path are covered and must first fail on the current code:
+  fake `python3`, `git`, `sandbox-exec` and `codex` on `PATH`; bytes changed after qualification;
+  `PYTHONPATH`/`PYTHONSTARTUP`/`sitecustomize`; `JAVA_HOME` pointing into the worktree; a shadowing package under
+  the working directory.
+- **Bounded drainage after a timeout.** An unconfirmed drain is never treated as terminal, and no false-green
+  postcondition is evaluated.
+
+Required change:
+- **R1. `test_verify.py` must gate completion.** The proposal allows edits to `verify.py` and
+  `tests/test_verify.py`, but `verification` never runs `test_verify.py`. Direct-path VC-016 tests placed there would
+  not gate T-003, and a regression in T-001's `verify.py` tests would go unnoticed. Add T-001's test command
+  unchanged: `python3 -m unittest tooling/agent-harness/tests/test_verify.py
+  tooling/agent-harness/tests/test_verification_profile.py -v`.
+
+Non-blocking:
+- **Name the excluded variables** in the test seam, so "import/startup and loader injection variables" is testable
+  as a fixed list: `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `PYTHONUSERBASE`, `NODE_OPTIONS`, `LD_PRELOAD`,
+  `LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV`, `ENV`, `GIT_EXEC_PATH`, `JAVA_TOOL_OPTIONS`.
+- **State that the interpreter lies outside every worktree.** The interpreter used for control-plane Python must be
+  resolved like every other executable, and must lie outside every worktree. The objective implies this through the
+  single resolver; saying it explicitly avoids a `sys.executable` shortcut.
