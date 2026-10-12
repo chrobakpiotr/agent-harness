@@ -82,3 +82,60 @@ to keep building on. Route, the same as for T-002's stale base:
    verification and evaluated independently, as with T-002.
 5. **No retry grant is needed.** T-004 has used no attempts in this epoch, and removing a stale pre-epoch worktree is
    not a task attempt.
+
+## Follow-up (2026-10-12): fixture review, the T-900 route corrected, T-004 restart verified
+
+### Correction to section 1 and to earlier notes
+
+T-900's `allowed_paths` is `tooling/agent-harness/tests/**` (plus its evidence directory), and its verification
+runs `python3 -m unittest discover -s tooling/agent-harness/tests -v`. Two Harness statements were therefore wrong:
+- "`test_verification_sandbox.py` is owned only by T-002 and T-003" (section 1 above). T-900 owns it too, through
+  the glob.
+- "`test_verification_backend_qualification.py` is not run by any task's verification" (in the third-replan
+  decision in `showcase-t002-executable-resolution-followup-2026-10-11.md`). T-900's `discover` runs it.
+
+Harness's ownership checks matched exact file names in the commands and missed the glob and `discover`. The
+decision to keep that test out of T-003 stands, for the independence reason given there.
+
+### 2. T-900 guard tests: the route
+
+**No T-003 correction is needed.** The lifecycle refuses a second correction of the same completion, and nothing
+here needs one:
+- T-900 adds the two exclusion-guard tests (section 1) and rewrites the stale `shutil.which` mock as part of its own
+  evaluation, inside its `allowed_paths`. Its `discover` command gates them.
+- Put the guard tests in a new T-900-owned module, for example
+  `tests/test_verification_t900_resolver_guards.py`, rather than editing T-003's `test_verification_sandbox.py`.
+  This keeps the builder's tests and the evaluator's tests apart, so the evaluation's additions are attributable.
+- Fixing `test_verification_backend_qualification.py` in place is fine, since it is the evaluator's own test.
+- If a new guard test fails, that is an evaluation finding against T-003. Production code is not changed in T-900,
+  because T-900 is an evaluator. A required fix then goes through T-003's lifecycle, as a new attempt or reopen under
+  Showcase's rules, not through a second correction of the same completion.
+
+### 1. CI fixture fix: accept
+
+Reviewed the uncommitted diff in `tests/test_harness.py` and `tests/test_verification_completion_boundary.py`
+(59 insertions, 16 deletions):
+- **Real ancestry.** Each fixture commits a feature base (`docs`), then a later task checkpoint (a file in the task's
+  path), and records them as `base_commit` and `checkpoint_commit`. The fake checkpoint `'c' * 40` becomes the real
+  checkpoint.
+- **A genuine stale case.** `assert_stale_checkpoint_refused` uses the repository's root commit, which precedes the
+  base, and expects `COMPLETION_STALE_BASE`. It runs in `test_m4_03`, inherited by the three fixture classes. The
+  boundary module adds `test_unplanned_legacy_completion_refuses_stale_checkpoint`.
+- **`mkdir(..., exist_ok=True)`** in the linked-worktree tests follows from `docs/` now being committed.
+- **No change to `harness.py`,** and no skip, mock or weakening of `require_task_commit_ancestry`.
+- **Tests rerun by Harness** on an export of `HEAD` with the two files replaced:
+  - the four `test_harness` cases (`test_m4_03` ×3, `test_m43_41_49_c2…`) pass;
+  - `test_verification_completion_boundary.py` passes 6 of 7.
+  - The seventh, `test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs`
+    (`SECRET_BEARING_CANDIDATE_UNSEALABLE`), errors identically on the unmodified `HEAD` on this host. It is not
+    caused by this diff, and CI does not report it.
+  - The module can only be loaded after `test_harness` (it imports `harness` first), which `discover` provides. That
+    is pre-existing.
+- **Commit once Showcase's full `test_harness` and `test_verification_completion_boundary` run is green,** and record
+  the CI run.
+
+### 3. T-004: restart verified
+
+- `refs/archive/showcase/SDD-OBS-001/T-004/00196494…` points at the pre-incident commit.
+- T-004 is `running`, attempt 1, and its worktree HEAD is T-003's `05b63a6`.
+- Its in-progress `orchestrate.py` change is reviewed when Showcase hands it over.
