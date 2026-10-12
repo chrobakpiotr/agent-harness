@@ -502,3 +502,53 @@ T-003 is `completed`, attempt 5, at checkpoint `916af0b`.
   should be committed the same way.
 - **Next:** the T-900 independent evaluation, which includes updating the stale `shutil.which` mock in
   `test_verification_backend_qualification.py`.
+
+## Review of the T-003 attempt-5 repair (control-interpreter plan binding, 2026-10-12)
+
+Context: the independent evaluation of `916af0b` (`evidence/evaluations/T-003-attempt-5-independent-followup.json`)
+failed T-003 with one required finding. The control-plane interpreter was validated and digest-bound only at launch
+(`bind_control_interpreter`). It did not go through the shared resolver, and it was not bound in the plan, as
+requirement 3 demands for every executable. **Harness missed this when accepting B2 above:** B2 asked for "validated
+and digest-bound by the same resolver rules" and was accepted for a launch-time binding. The finding is correct.
+
+T-003 is `running` for repair, attempt 5, under an active completion correction. The worktree diff on `916af0b`,
+`eaa76883…`, matches the evidence manifest's `code_diff_sha256`. All six changed files are within `allowed_paths`.
+
+Verdict: **accept after R1.**
+
+Verified:
+- **The binding lives in the plan.** `execution_plan_record` adds `control_executable_binding`, produced by
+  `resolve_executable(sys.executable, active_interpreter=True)`. That mode accepts only the exact active
+  interpreter: absolute, canonical, outside the worktree, the sandbox home and `$TMPDIR`, in a secure directory, and
+  digest-bound. `bind_control_interpreter` is removed, so the shared resolver is again the only resolution path.
+- **Validation checks it.** `validate_plan_record` requires the key and re-hashes the binding. It also requires the
+  binding to name the current interpreter and, with a repository, recomputes it. The runner's `resolve_accepted`
+  reaches `validate_plan_record(…, reconstruct=True)` through `resolve_accepted_verification_plan`.
+- **Launch uses it.** The runner launches the plan's `control_executable_binding` after `verify_executable_binding`,
+  and refuses a missing binding (`PLAN_BINDING_MISMATCH`). The interpreter is no longer chosen at launch.
+- **Plans of the older shape are refused,** because the key set changed. That is consistent with "replanned, never
+  upgraded".
+- **Tests rerun by Harness** in `python:3.13.16-slim` with cryptography 49.0.0, on an export with the diff applied:
+  27, 59, 141 and 28 OK.
+  - In the evidence (`evaluations/T-003-attempt-5-repair/manifest.json`, sha256 `64ecfffc…`), every
+    `log_sha256` matches and every log ends `OK` with the same counts.
+  - The new tests cover:
+    - refusal before launch when the control binding is missing or changed;
+    - the control interpreter resolved through the shared resolver and bound in the plan;
+    - a swap after planning being rejected;
+    - the resolver accepting only the exact active interpreter.
+
+Required:
+- **R1. Restore the test that an active interpreter inside the worktree is refused.**
+  `test_control_interpreter_inside_worktree_is_refused` was removed. Its replacement passes a fake, non-active
+  binary located in the worktree, which is refused as `not-active-control-interpreter` before the exclusion is ever
+  reached.
+  - Mutation check: with the exclusion check in the `active_interpreter` branch disabled, every test in the sandbox,
+    authority and runner modules still passes.
+  - Add a test in which the active interpreter (`sys.executable`, patched to a copy inside the worktree, or the
+    worktree set to contain it) gives `executable-path-excluded`. Do the same for the sandbox home and `$TMPDIR`.
+
+Notes:
+- **Evidence.** The evaluation and repair evidence (`evaluations/T-003-attempt-5-independent-followup.json` and
+  `evaluations/T-003-attempt-5-repair/`) are untracked. Commit them with the repair, as was done for attempt 5.
+- **T-900.** The `shutil.which` mock in the evaluator test stays T-900's follow-up, as the evaluator recorded.
