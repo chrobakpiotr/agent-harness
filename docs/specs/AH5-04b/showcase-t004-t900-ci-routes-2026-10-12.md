@@ -365,3 +365,28 @@ If it fails, it is a T-900 finding against T-005 (or T-004), fixed through that 
 The adapter depends on T-004's private `_load_state_unlocked`, plus `lifecycle_state_lock`. A public read-only helper
 in `harness.py` (for example, one returning the scope and generation under the lock) would make this less brittle
 at integration. That is T-004's or T-009's file, and a later change.
+
+## T-005 completion check and the consolidated T-900 scope (2026-10-12)
+
+**T-005: verified.** T-005 is `completed`, attempt 2, at `c06108e`, whose parent is `b6a023c`. `git diff --binary
+b6a023c c06108e` hashes to `cb9faa11…`, the reviewed diff, and touches only `telemetry.py` and
+`tests/test_telemetry.py`. The completion evidence and logs are committed in `f811efc`.
+
+**What T-900's evaluation must add, all inside T-900's `tests/**` and gated by its `discover` command:**
+
+1. **Executable-resolution guards** (section 1 above). Two tests in a T-900-owned module, with roots under
+   `pathlib.Path.home()`, each failing when only its own guard is disabled:
+   - a declared search directory inside an excluded root raises `executable-search-path-excluded`;
+   - an executable under an excluded worktree nested inside a trusted directory raises `executable-path-excluded`.
+2. **The stale discovery test.** Rewrite `test_verification_backend_qualification.py`'s
+   `test_discovery_does_not_qualify_a_candidate` against `resolve_executable` instead of `shutil.which`.
+3. **End-to-end `record-manual` on the merged tree** (T-005 review), unstubbed, using a real feature and its
+   lifecycle state, a committed issuer registry and a signed Ed25519 attestation. Assert:
+   - the record and the ledger entry publish in one snapshot;
+   - the generation is unchanged;
+   - an exact replay is idempotent;
+   - a conflicting replay and a stale generation are refused;
+   - no transition or coverage is granted.
+
+A failure in any of these is a T-900 finding against the owning builder task (T-003, T-004 or T-005), fixed through
+that task's lifecycle. It is never fixed by T-900 editing production code.
