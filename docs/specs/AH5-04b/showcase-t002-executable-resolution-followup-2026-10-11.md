@@ -439,3 +439,15 @@ Send the proposal's sha256. Harness confirms that the diff is exactly that path 
 
 Note: T-003 is on attempt 4 against `max_rework_attempts: 2`. Showcase confirms, under its existing rules, that
 these replans are accounted for correctly and are not silently consuming or bypassing the rework budget.
+
+Confirmed (2026-10-12): `replan-proposals/T-003.json`, sha256 `d9902a1763a38e5087305d373fd30d1893e43c97b7ce3d8343d8ee7d95a477dc`
+(hash verified), against the active revision `6208bb…` (T-003 `running`, attempt 4).
+- **The only differences:**
+  - the added path `tooling/agent-harness/verification/fingerprint.py`;
+  - `test_seam`, which keeps the active text verbatim and appends the accepted sentence (the same wording, only
+    without code formatting).
+- **Everything else is identical:** `id`, `title`, `objective`, `role`, `depends_on`, `risk_tags`,
+  `acceptance_criteria`, `verification`, `test_mode` and `agent_profile`.
+- **Attempt 4 is accounted for.** The state records one consumed owner retry grant for T-003, which explains attempt
+  4 under `max_rework_attempts: 2`. Showcase states that a running-task replan does not consume an attempt.
+- **Next step:** run `replan-task T-003 --expected-status running`.
