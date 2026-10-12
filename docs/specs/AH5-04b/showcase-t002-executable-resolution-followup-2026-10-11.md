@@ -254,3 +254,31 @@ Unchanged: the ID, `depends_on`, `acceptance_criteria` and the objective.
 Process: Showcase writes the proposal and sends its path and sha256. Harness reviews it, and Showcase then runs
 `replan-task T-003 --expected-status running` with the current CAS values. T-003 stays incomplete until the plan and
 admission binding and the launch-time checks are implemented and verified.
+
+## Review of the second T-003 replan proposal (2026-10-12)
+
+Reviewed `docs/specs/SDD-OBS-001/planning/T-003.json`, sha256 `92f2b478e142d95bc42b18dc38f690b9a324a30c285eca1a589812a102ed166f`
+(hash verified). It was compared field by field with T-003's active packet revision `sha256:fc07592a…`. T-003 is
+`running`, attempt 2, feature generation 1.
+
+Verdict: **accept.** Showcase may run `replan-task T-003 --expected-status running` with the current CAS values and
+operator attribution.
+
+- **Unchanged.** `title`, `objective`, `role`, `depends_on`, `risk_tags`, `acceptance_criteria` and `test_mode` are
+  byte-identical to the active revision.
+- **`allowed_paths`.** It adds exactly the twelve paths approved in "T-003 scope for plan/admission binding" (above)
+  and removes nothing:
+  - `model.py`, `profile.py`, `planner.py`, `serialization.py`, `store.py`, `authority.py`;
+  - `verification-profiles/showcase.json`;
+  - the profile, store, authority, profile-showcase and applicability tests.
+- **`verification`.** Nothing is removed. The R1 command for T-001 (`test_verify.py`, `test_verification_profile.py`)
+  is still present, next to the runner and T-002 commands. The authority, profile-showcase and applicability command
+  is added, and all three test modules exist.
+- **`test_seam`.** The active text is kept verbatim as a prefix. The appended sentence covers:
+  - plan or admission refusing absent or mismatched executable bindings;
+  - old plans planned again, never upgraded in place;
+  - an executable swapped between planning and launch failing at launch;
+  - an invalid toolchain directory refused when the profile is loaded.
+
+T-003 still completes only after the plan and admission binding and the launch-time checks are implemented and
+verified. Harness reviews that implementation.
