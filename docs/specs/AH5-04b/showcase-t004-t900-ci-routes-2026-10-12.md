@@ -139,3 +139,67 @@ Reviewed the uncommitted diff in `tests/test_harness.py` and `tests/test_verific
 - `refs/archive/showcase/SDD-OBS-001/T-004/00196494…` points at the pre-incident commit.
 - T-004 is `running`, attempt 1, and its worktree HEAD is T-003's `05b63a6`.
 - Its in-progress `orchestrate.py` change is reviewed when Showcase hands it over.
+
+## Review of T-004 attempt 1 (checkpoint `fa88d52`, 2026-10-12)
+
+`fa88d52`'s parent is `05b63a6` (T-003). It changes exactly T-004's four `allowed_paths`: `harness.py`,
+`orchestrate.py`, `tests/test_harness.py` and `tests/test_orchestrate.py`. T-004 is `running`, attempt 1. Its
+criteria include VC-016.
+
+Verdict: **changes required (R1).** Everything else reviewed is accepted.
+
+### Verified
+
+- **Admission and the lifecycle lock.** `lifecycle_state_lock` takes the verifier's `repository_lock`, admits
+  repository verification, then takes the lifecycle lock and runs the prepared-snapshot redo before yielding.
+  `locked_state` uses it by default.
+  - Order checked across sites: the repository lock always comes before the lifecycle lock.
+  - `assert_repository_verification_drained` takes and releases the repository lock before `locked_state`; it is
+    never nested inside the lifecycle lock.
+  - `heartbeat` deliberately skips admission (`admission_guard=False`), so a lease can be renewed while verification
+    runs.
+  - No inversion found.
+- **Resume without spending an attempt.**
+  - `resume-verification` requires a task `escalated` on `verification-blocked`, the current accepted plan
+    reconstructed for exactly this attempt and generation, and the prior passing builder result's digest. It records
+    `verification_resume_pending` with `failed` status and operator/reason attribution.
+  - `start` then activates the resume without incrementing `attempts` and without relaunching the builder. Before
+    activating, it re-resolves the accepted plan and the builder-result digest.
+  - The orchestrator's `run_resumed_verification` reruns only the exact accepted plan.
+- **Fail-closed result parsing.** `verification_evidence_summary` keeps only allowlisted fields and checks:
+  - outcome, category, exit-code consistency;
+  - PASS requiring every planned gate, in order, each PASS;
+  - gate field formats, and finite, bounded, non-negative numbers.
+
+  Anything else is `MALFORMED_VERIFICATION_RESULT`, and a family or profile mismatch is `PLAN_BINDING_MISMATCH`.
+  Raw command output is never persisted.
+- **Manual-observation registration.** It runs under `locked_state`, with a feature-generation CAS and a
+  re-resolved trusted scope. The record is staged in the snapshot transaction. It is idempotent: an exact replay
+  (excluding `registered_at`) reuses the stored bytes, and anything else is `MANUAL_EVIDENCE_OBSERVATION_CONFLICT`.
+  The ledger entry is added in the same transaction. The docstring scopes signer authentication to T-005.
+- **Tests rerun by Harness** on an export of `fa88d52`, in `python:3.13.16-slim` with cryptography 49.0.0:
+  `test_harness.py` gave 308 OK (sharded runner, 6 workers, 125 s), and `test_orchestrate.py` passed (exit 0).
+
+### Required
+
+- **R1 (VC-016). The orchestrator's control-Python launches bypass the executable-resolution controls.**
+  `orchestrate.py` starts `verify.py` as `[sys.executable, HERE/'verify.py', 'run', …]`, with `cwd=worktree`, the
+  inherited environment, no `-I` and no check against the plan's `control_executable_binding`. It does so in two
+  places:
+  - `run_started_task` (line 404) — pre-existing at base `05b63a6`;
+  - the new `run_resumed_verification` (line 496).
+
+  T-003 secured only `runner.py`'s launch, because `orchestrate.py` was outside its scope. Harness's T-003 reviews
+  did not flag this third launch path either. T-004 owns `orchestrate.py` and lists VC-016, so both launches are
+  T-004's to fix.
+  - Fix: launch the accepted plan's `control_executable_binding` after `verify_executable_binding`, with `-I` and
+    `verification_sandbox._safe_env(...)`, exactly as `runner.run_verification` does. Preferably share one helper
+    rather than keep two copies. Refuse a missing or changed binding as `PLAN_BINDING_MISMATCH` before launch.
+  - Tests, for both orchestrator paths:
+    - `PYTHONPATH`/`PYTHONSTARTUP` injection does not reach `verify.py` (marker absent);
+    - a changed interpreter after planning is refused before launch;
+    - the launched argv is the bound absolute interpreter with `-I`.
+
+### Note
+
+The CI fixture patch on `main` must be preserved when T-004 is integrated, as stated in section 2.
