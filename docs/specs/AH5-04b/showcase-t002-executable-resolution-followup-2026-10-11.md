@@ -94,3 +94,58 @@ terminal.
    VC-016 tests and resolves the timeout note.
 3. Only then can T-003 close. The alternative is a contract revision that explicitly narrows VC-016, accepted
    through the normal spec-change path.
+
+## Registration route (2026-10-12)
+
+**Use `replan-task` on T-003.** No new task, no reopen of T-002, no feature replacement, no `.agent-state` edit.
+
+Why this route fits the accepted contract and the lifecycle:
+
+- **VC-016 already belongs to T-003.** It is in T-003's acceptance criteria, next to VC-010, VC-015 and VC-017.
+  T-002's acceptance criteria do not include it. So T-002's completed attempt met its own contract and stays
+  untouched. The shared-core change is the work that T-003's existing criterion requires; only T-003's permitted
+  surface was too narrow.
+- **`replan-task` is the supported operation for this.** It takes a CAS-bound running task (T-003 is `running`,
+  attempt 1) and a full in-feature proposal whose `allowed_paths` and `verification` may change. It validates:
+  - the paths are safe;
+  - the criteria exist in the accepted spec or verification contract;
+  - the dependencies are planned tasks.
+
+  The task-ID set and the DAG stay unchanged, and the new packet revision enters T-003's lineage through the normal
+  publication path.
+- **No parallel write collision.** The shared-core files are owned only by T-002 (an ancestor of T-003) and T-009
+  (a descendant). `verify.py` is owned only by T-001 (an ancestor). The validator checks overlapping
+  `allowed_paths` only between builders that can run in parallel, so widening T-003 is admissible. T-009 later
+  builds on T-003's result.
+
+Alternatives, rejected:
+- **Reopen T-002.** T-002 did not fail its contract. `reopen` also refuses while a descendant (T-003) is running,
+  and it would prune descendant workspaces, discarding T-003's attempt.
+- **Standalone feature.** The DAG does not model cross-feature dependencies. T-003 could not bind the fix's
+  checkpoint, and two lifecycles would edit the same files.
+- **`reconcile-feature` with a new task ID.** It rejects changes to the task-ID set by design.
+
+Proposal for `docs/specs/SDD-OBS-001/replan-proposals/T-003.json`. Fields not listed stay as they are now:
+
+- `allowed_paths`: keep `runner.py` and `tests/test_runner.py`, and add:
+  - `tooling/agent-harness/verification_sandbox.py`, `verification_command.py`, `verification/executor.py`,
+    `verification/supervisor.py`, `verify.py`;
+  - their test modules (`tests/test_verification_sandbox.py`, `test_verification_command.py`,
+    `test_verification_executor.py`, `test_verification_supervisor.py`, and the `verify.py` tests).
+- `verification`: keep the runner command, and add T-002's verification command unchanged, so the shared core
+  stays green. If any `verify.py` tests exist, add their command too.
+- `objective`: append requirements 1–5 above, in one sentence each.
+- `test_seam`: append the VC-016 tests above. Each runs on the direct path and on the runner path, and must first
+  fail on the current code (red-green-refactor).
+- `acceptance_criteria`: unchanged. VC-016 and VC-017 are already listed.
+
+Order:
+1. Showcase writes the proposal.
+2. Harness reviews it as a contract change before it is applied.
+3. `replan-task T-003` runs with `--expected-status running` and the current feature generation, under the normal
+   reason and operator attribution.
+4. T-003 implements the change, and Harness reviews the result against requirements 1–5, the VC-016 tests and the
+   bounded post-timeout wait.
+
+Whether this replan uses any of T-003's retry budget is decided by Showcase's existing replan rules. It needs no
+human grant beyond the usual operator attribution.
