@@ -235,3 +235,25 @@ Required:
   and before `subprocess.run`.
   - Test, on both paths: a mismatched task, attempt or plan record raises before any subprocess starts
     (`subprocess.run` asserted not called).
+
+## Review of the T-004 R2 fix (`64b2501`, 2026-10-12)
+
+`64b2501`'s parent is `d4e7e08`. It changes only `orchestrate.py` and `tests/test_orchestrate.py`.
+
+Verdict: **accept.** T-004 may complete through the lifecycle.
+
+- **The checks come first.** `run_accepted_verification` now takes keyword-only, required `expected_task_id` and
+  `expected_task_attempt`, plus an optional `expected_record`. It refuses `PLAN_BINDING_MISMATCH` on any mismatch of
+  plan ID, task, attempt (which must be an `int`) or the exact record. It does this right after
+  `resolve_accepted_verification_plan` and before the binding check and `subprocess.run`.
+  - `run_started_task` passes the exact `plan_record` it prepared.
+  - `run_resumed_verification` passes the resume's task and attempt.
+  - The checks that used to run after the launch are removed.
+- **Tests rerun by Harness** on an export of `64b2501`, in `python:3.13.16-slim` with cryptography 49.0.0:
+  `test_orchestrate.py` gave 16 OK.
+  - Mutation check: with the task-ID check disabled, 1 test fails.
+  - `test_harness.py` does not import `orchestrate`, and neither it nor `harness.py` changed since `d4e7e08`, so
+    Harness's 308-OK run on `d4e7e08` covers this commit.
+
+On completion: bind the verification evidence into the completion record, committed rather than untracked, and keep
+the CI fixture patch on `main` in mind for T-004's integration.
