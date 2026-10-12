@@ -195,3 +195,62 @@ Non-blocking:
 - **State that the interpreter lies outside every worktree.** The interpreter used for control-plane Python must be
   resolved like every other executable, and must lie outside every worktree. The objective implies this through the
   single resolver; saying it explicitly avoids a `sys.executable` shortcut.
+
+## T-003 scope for plan/admission binding (2026-10-12)
+
+**Decision: replan T-003 again, widening `allowed_paths` to the profile, plan and admission modules.** The objective
+and the test seam stay unchanged. Showcase is right that the active packet cannot meet requirements 2 and 3:
+- the profile model has no field for declared toolchain directories;
+- the plan does not bind executable identities;
+- the immutable execution records in `verification/store.py` are outside the packet.
+
+Alternatives considered, rejected:
+- **Bind only in the sandbox qualification** (`policy_identity` in `verification_sandbox.py`). That detects a swap
+  between qualification and launch, but not between planning and launch. The objective says planning/admission.
+- **A control-repository constant instead of profile-declared toolchain directories.** That is security-equivalent,
+  since both are control-repository content. But it changes the objective's wording, so it would need a spec change
+  through the normal path. It is not worth that when widening is admissible.
+- **Ambient `PATH`, or deferring the binding.** Both would violate VC-016 and the active packet.
+
+Admissibility. Owners of the added paths, against T-003:
+
+| Owner | Relation to T-003 | Paths |
+|---|---|---|
+| T-001 | ancestor | `model.py`, `profile.py`, `planner.py`, `serialization.py`, `test_verification_profile.py`, `test_verify.py` |
+| T-002 | ancestor | `store.py`, `test_verification_store.py` |
+| T-006 | descendant | `verification-profiles/showcase.json` |
+| T-009 | descendant | `authority.py`, `store.py`, `test_verification_store.py` |
+
+No builder that runs in parallel with T-003 owns any of them, so the overlap rule holds. T-006 and T-009 later build
+on T-003's result.
+
+Proposal content. Keep everything in the active T-003 revision and add:
+- **`allowed_paths`:**
+  - `verification/model.py`, `verification/profile.py`, `tests/test_verification_profile.py`: a toolchain-directory
+    field in the profile, validated by requirement 2's rules (absolute, canonical, outside every worktree, the
+    control task area, the sandbox home and `$TMPDIR`, and not writable by group or others, including ancestors);
+  - `verification/planner.py` and `verification/serialization.py`: each execution unit's command identity carries
+    the resolved canonical path and sha256 of its executable and of the backend executable;
+  - `verification/store.py` and `tests/test_verification_store.py`: admission and plan-store validation of those
+    bindings, and the launch-time recheck against the stored binding;
+  - `verification/authority.py` and `tests/test_verification_authority.py`, only as far as plan-authority
+    construction needs the new fields;
+  - `verification-profiles/showcase.json`, `tests/test_verification_profile_showcase.py` and
+    `tests/test_verification_profile_applicability.py`: declare the real toolchain directories, so Showcase's own
+    `./gradlew`, `npm` and `python3` verification keeps working once ambient `PATH` is gone. Without this, every
+    later task's verification fails closed until T-006.
+- **`verification`:** keep the current commands, including T-001's and T-002's. Add
+  `python3 -m unittest tooling/agent-harness/tests/test_verification_authority.py
+  tooling/agent-harness/tests/test_verification_profile_showcase.py
+  tooling/agent-harness/tests/test_verification_profile_applicability.py -v`.
+- **`test_seam`:** append the following.
+  - A plan or admission record without executable bindings, or with bindings that no longer match, is refused. An
+    existing plan from before this change is stale and must be planned again; it is never upgraded silently.
+  - Changing a bound executable between planning and launch fails at launch.
+  - A profile toolchain directory that violates requirement 2 is refused when the profile is loaded.
+
+Unchanged: the ID, `depends_on`, `acceptance_criteria` and the objective.
+
+Process: Showcase writes the proposal and sends its path and sha256. Harness reviews it, and Showcase then runs
+`replan-task T-003 --expected-status running` with the current CAS values. T-003 stays incomplete until the plan and
+admission binding and the launch-time checks are implemented and verified.
