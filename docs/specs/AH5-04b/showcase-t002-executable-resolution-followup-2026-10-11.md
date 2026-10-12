@@ -488,3 +488,17 @@ Notes for completion:
 - **Carried-over non-blocking points:** state that `/usr/local/bin` is in the fixed trusted set, and consider an
   ownership check in `_secure_directory`. A static scan that keeps `shutil.which` out of the verification modules
   would make B4's runtime proof permanent.
+
+## T-003 completion check (2026-10-12)
+
+T-003 is `completed`, attempt 5, at checkpoint `916af0b`.
+- **Ancestry.** Its parent is `b6a023c` (T-002), and it descends from `06d7f5d` (T-001).
+- **It is the reviewed code.** `git diff --binary b6a023c 916af0b` hashes to `fe150f9e…`, exactly the diff Harness
+  accepted (20 files).
+- **The evidence verifies.** `evidence/task-completions/T-003-attempt-5/b5-linux/manifest.json` hashes to
+  `3597e11c…`. Its four logs match their recorded sha256s (26, 59, 142 and 26 tests), and it binds the same diff.
+- **Gap: the evidence is untracked.** `T-003-attempt-5.json` and `T-003-attempt-5/` are untracked in Git. That is
+  the same exposure that lost evidence with the original `.agent-state`. Commit them; T-002's completion evidence
+  should be committed the same way.
+- **Next:** the T-900 independent evaluation, which includes updating the stale `shutil.which` mock in
+  `test_verification_backend_qualification.py`.
