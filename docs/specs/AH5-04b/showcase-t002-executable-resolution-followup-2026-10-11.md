@@ -307,3 +307,14 @@ unchanged.
 Process: the same as before. Showcase writes the proposal (the active revision's content plus this path), sends its
 sha256, and runs `replan-task T-003 --expected-status running` after Harness confirms that the diff is exactly this
 one path.
+
+Confirmed (2026-10-12): proposal sha256 `9d62ac1979f8b8dcd5c1bbd51daa90f8e24dd4db6879f0d1cbd6737181ae2024` (hash
+verified) against the active revision `55c47faa…` (T-003 `running`, attempt 3, generation 1).
+- **The only difference** is the added path `tooling/agent-harness/schemas/verification-profile.schema.json`.
+- **Everything else is identical:** `title`, `objective`, `role`, `depends_on`, `risk_tags`, `acceptance_criteria`,
+  `verification`, `test_mode`, `test_seam` and `agent_profile`. The proposal's `id` equals the packet's `task`
+  (T-003).
+- **Versioning:** schema version 1 with an optional `toolchain_directories`, where an absent field means no declared
+  toolchain directories. That is one of the two accepted options. It must be covered by the profile tests and the
+  schema-parity test.
+- **Next step:** run `replan-task T-003 --expected-status running`.
