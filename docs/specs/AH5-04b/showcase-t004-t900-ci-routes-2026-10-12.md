@@ -203,3 +203,35 @@ Verdict: **changes required (R1).** Everything else reviewed is accepted.
 ### Note
 
 The CI fixture patch on `main` must be preserved when T-004 is integrated, as stated in section 2.
+
+## Review of the T-004 R1 fix (`d4e7e08`, 2026-10-12)
+
+`d4e7e08`'s parent is `fa88d52`. It changes only `orchestrate.py` and `tests/test_orchestrate.py`, within T-004's
+paths.
+
+Verdict: **accept after R2.** R1 is resolved.
+
+- **One helper for both paths.** `run_accepted_verification` resolves the accepted plan and requires
+  `control_executable_binding`, the profile hash and `verify_executable_binding`. It then launches the bound
+  absolute interpreter with `-I`, `verification_sandbox._safe_env(...)` and the same argv as the runner. Both
+  `run_started_task` and `run_resumed_verification` use it.
+- **Mutation checks** on the `test_orchestrate.py` suite (15 tests): with `-I` removed from the argv, 3 tests fail;
+  with `verify_executable_binding` skipped, 2 tests fail.
+- **Tests rerun by Harness** on an export of `d4e7e08`, in `python:3.13.16-slim` with cryptography 49.0.0:
+  - `test_harness.py`: 308 OK with `run_test_harness_sharded.py --jobs 6`, in 122 s;
+  - `test_orchestrate.py`: 15 OK.
+
+  This supplies the passing `test_harness` run that Showcase's stopped sharded run lacked.
+
+Required:
+- **R2. Refuse before launching, not after.** `run_accepted_verification` launches `verify.py` before its callers
+  check the plan's identity:
+  - `run_resumed_verification` checks `accepted.get('task_id') != task_id or accepted.get('task_attempt') !=
+    attempt` only after the call. In `fa88d52` that check ran before launch, so this is a regression.
+  - `run_started_task` compares `accepted_plan != plan_record` after the launch.
+
+  A mismatched plan is therefore executed before it is refused. Pass the expected `task_id`, `task_attempt` and,
+  for a started task, the exact `plan_record` into the helper. Check them after `resolve_accepted_verification_plan`
+  and before `subprocess.run`.
+  - Test, on both paths: a mismatched task, attempt or plan record raises before any subprocess starts
+    (`subprocess.run` asserted not called).
