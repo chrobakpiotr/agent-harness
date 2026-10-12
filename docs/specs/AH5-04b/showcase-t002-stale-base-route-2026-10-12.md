@@ -119,3 +119,36 @@ Non-blocking:
 - **Test the repair path.** Add a test that `complete-repair` refuses a stale checkpoint. The code path exists; only
   normal completion is tested.
 - **Test a dependency-free task.** Add a case where an existing worktree's HEAD does not descend from `base_commit`.
+
+## Review of the T-002 repair checkpoint `b6a023c` (2026-10-12)
+
+Verdict: **accept.** T-002 may complete through `complete-repair`, and T-003 may start afterwards.
+
+Verified independently:
+- **The guard.** `805d5bd` makes a dependency-free task with a missing or invalid `base_commit` fail closed (R1
+  resolved). `70819de` records the correction evidence: the chain `77813d4 → 0462412 → 238029e`, plus an
+  `--is-ancestor` check of `77813d4` against `06d7f5d` that exits 1.
+- **Archive.** `refs/archive/showcase/SDD-OBS-001/T-002/238029e…` points at `238029e`.
+- **Ancestry.** `b6a023c`'s parent is `06d7f5d`, the accepted T-001 checkpoint.
+- **Scope.** `06d7f5d..b6a023c` changes only files within T-002's `allowed_paths`: the store, executor, supervisor,
+  command, sandbox and their tests. No T-001-owned file is touched.
+- **Fidelity of the port.** Compared with the corrected `238029e`, T-002's files are byte-identical except one line in
+  `verification/store.py`: the registered `build.gradle` input hash goes from `47c36c…` (the pre-incident
+  `build.gradle`) to `4e6329…`, the accepted T-001's `build.gradle`. All 41 pinned trusted-input hashes in
+  `store.py` match the files at `b6a023c`.
+- **Fresh verification, rerun by Harness.** T-002's verification command was run on an export of `b6a023c` in
+  `python:3.13.16-slim` with cryptography 49.0.0: 130 tests OK.
+  - Showcase's evidence (`.agent-runs/SDD-OBS-001-T-002-repair-from-06d7f5d/verification/result.json`) names the same
+    command, image digest, Python, cryptography, checkpoint and base. Its stdout and stderr hashes match the stored
+    logs, which end in `Ran 130 tests … OK`, with exit code 0.
+  - On macOS the module needing cryptography cannot import, because there is no 49.0.0 wheel for this host. That
+    matches why the evidence was produced on Linux.
+- **Lifecycle.** T-002 is `running`, attempt 1, for the repair. `checkpoint_commit` still names `238029e` until
+  `complete-repair` records `b6a023c`.
+
+Notes:
+- **Historical work.** The ported content includes the pre-incident attempt's store and supervisor work. That is
+  acceptable because it is verified fresh on the accepted base. The completion record should say that the content
+  came from `0462412..238029e` and was re-verified at `b6a023c`.
+- **Evidence location.** The verification evidence currently lives under `.agent-runs/`. Bind it into the
+  completion evidence, as the normal completion flow does, so it is not only in an ignored run directory.
