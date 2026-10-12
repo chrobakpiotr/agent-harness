@@ -282,3 +282,28 @@ operator attribution.
 
 T-003 still completes only after the plan and admission binding and the launch-time checks are implemented and
 verified. Harness reviews that implementation.
+
+## Adding the profile schema to T-003 (2026-10-12)
+
+Request: add `tooling/agent-harness/schemas/verification-profile.schema.json` to T-003's `allowed_paths`. T-003 is
+`running`, attempt 3, on revision `sha256:55c47faa…`.
+
+Verdict: **accept, as a one-path replan.** `objective`, `acceptance_criteria`, `verification` and `test_seam` stay
+unchanged.
+
+- **The path is needed.** The schema's top level is `additionalProperties: false`, with exactly `schema_version` and
+  `gates`. `test_verification_profile.py`'s `test_profile_schema_fields_match_runtime_gate_loader` asserts that exact
+  set. So the approved toolchain-directory field cannot be added to the profile model without the schema, and T-003's
+  required verification would fail.
+- **The overlap rule holds.** The only other owner is T-001, an ancestor. That test file is already in T-003's scope.
+- **Version the change explicitly.** T-003 chooses one of these, states it, and tests it:
+  - keep `schema_version` 1 with the field optional, where an absent field means no declared toolchain
+    directories (the system set only);
+  - or move to `schema_version` 2 with the field required, updating `showcase.json` in the same change.
+
+  Either way, a plan built from a profile of the other shape is stale and must be planned again, as the seam
+  already requires.
+
+Process: the same as before. Showcase writes the proposal (the active revision's content plus this path), sends its
+sha256, and runs `replan-task T-003 --expected-status running` after Harness confirms that the diff is exactly this
+one path.
