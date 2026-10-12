@@ -83,3 +83,39 @@ Checked by Harness (read-only, 2026-10-12). The only completed tasks are T-001 a
 
 So T-002 is the only affected completion. Re-run the check after step 4, and before any later task completes, until
 step 1's guard is in place.
+
+## Review of the stale-base fix (Showcase, uncommitted `harness.py` and `test_harness.py`, 2026-10-12)
+
+Verdict: **accept with one required change.** Once it is made, proceed with steps 2–5 of the route.
+
+Verified:
+- **Worktree reuse.** `prepare_task_worktree` reuses a clean existing worktree only when its HEAD descends from every
+  dependency's `checkpoint_commit`, checked with `git merge-base --is-ancestor`. A dependency-free task must descend
+  from `base_commit` instead.
+  - The check runs after the dirty-worktree and protocol checks.
+  - A rejected worktree is left untouched.
+  - Both start paths that reuse a worktree go through this function.
+- **Completion.** `cmd_complete` and `cmd_complete_repair` apply the same check to the checkpoint before any record
+  is written.
+- **Missing objects.** A missing candidate or required commit fails closed with distinct `…_BASE_INVALID` and
+  `…_BASE_UNAVAILABLE` codes.
+- **Tests.**
+  - In Showcase's checkout the three new tests pass: stale reuse refused, valid reuse kept, stale completion
+    refused.
+  - Mutation check: against `HEAD`'s `harness.py` without the fix, both refusal tests fail and the valid-reuse test
+    still passes. So the tests really exercise the guard.
+- **Real state.** The read-only ancestry check of all completed tasks (above) is what this guard now enforces at
+  start and at completion.
+
+Required change:
+- **R1. An unknown base must fail closed.** For a dependency-free task, `task_base_commits` returns `[]` when
+  `base_commit` is missing or invalid. Both the reuse check and the completion check then pass without checking
+  anything.
+  - `stage_first_task_base` already refuses an existing worktree that has no recorded base, so this is reachable
+    only with damaged or legacy state.
+  - Still, the guard must not depend on that: raise `…_BASE_UNAVAILABLE` instead of returning `[]`.
+
+Non-blocking:
+- **Test the repair path.** Add a test that `complete-repair` refuses a stale checkpoint. The code path exists; only
+  normal completion is tested.
+- **Test a dependency-free task.** Add a case where an existing worktree's HEAD does not descend from `base_commit`.
