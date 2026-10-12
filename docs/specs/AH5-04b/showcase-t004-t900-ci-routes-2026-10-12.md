@@ -257,3 +257,51 @@ Verdict: **accept.** T-004 may complete through the lifecycle.
 
 On completion: bind the verification evidence into the completion record, committed rather than untracked, and keep
 the CI fixture patch on `main` in mind for T-004's integration.
+
+## T-004 completion, the CI fixture commit, and the T-005 route (2026-10-12)
+
+### T-004 and the fixture commit: verified
+
+- **T-004.** `completed`, attempt 1, at `64b2501` (the reviewed R2 commit). The evidence is committed in `c1326ae`:
+  `.agent-runs/SDD-OBS-001-T-004-attempt-1/` with the completion record, the environment, and the verification
+  stdout, stderr and exit code, all tracked.
+- **The fixture maintenance commit `e43a170`** changes only `tests/test_harness.py`,
+  `tests/test_verification_completion_boundary.py` and its evidence under
+  `.agent-runs/CI-38250839389-fixture-maintenance/`. There is no production change. Since the Harness review, two
+  fixture-only additions in the boundary module:
+  - The fixture task's `allowed_paths` gains `tooling/agent-harness/**` inside the test's own temporary repository,
+    and the checkpoint file is moved there.
+  - The accepted-plan fixture passes the real feature base as `base_sha`, instead of the checkpoint. That is the
+    correct base for a plan, and it explains why all 7 boundary tests now pass.
+
+  Both are acceptable. It is recorded as passing on Linux (297 harness tests, 6 workers; boundary 7/7). The
+  transient Git ref-lock message from a fixture subprocess, with exit code 0, is noise.
+- **Integration.** When T-004 is integrated, keep `e43a170`'s fixture changes in both files. T-004's own
+  `test_harness.py` work overlaps them, so resolve by keeping both.
+
+### T-005: the expired lease, a casualty of the stale-worktree defect
+
+Facts:
+- T-005 is `running`, attempt 1, owner `codex`. It was claimed on 2026-10-11 at 21:20 UTC, in the new epoch, two
+  minutes after T-002's stale completion. Its lease expired at 21:57 UTC.
+- Its worktree is clean, with HEAD at `38042d5` ("agent checkpoint SDD-OBS-001 T-005", 2026-10-09). That is the
+  pre-incident attempt, which merges the pre-incident T-004 `0019649`. It descends from neither accepted T-001
+  `06d7f5d` nor accepted T-002 `b6a023c`.
+- So this attempt started on a pre-incident worktree through the stale-worktree reuse defect, which `805d5bd` has
+  since fixed. Nothing was done in the new epoch: no commit beyond the pre-incident ones, and no dirty file.
+
+Route, using lifecycle commands only and no `.agent-state` edit:
+1. **Recover the lease** with `recover-stale` (or `release` by the recorded owner), giving the reason explicitly:
+   `lease expired; attempt 1 started on pre-incident worktree 38042d5 through the stale-worktree reuse defect fixed
+   in 805d5bd; no new-epoch work performed`.
+   - Both commands leave T-005 `failed` with `attempts: 1`; neither gives the attempt back.
+   - `recover-stale` acts on every expired lease, so first confirm that T-005 is the only one.
+2. **Preserve the history, then remove the stale workspace.** Create archive refs for `38042d5` (and its
+   pre-incident merge parent `f052609`, if not already reachable) under `refs/archive/showcase/SDD-OBS-001/T-005/`.
+   Then run `worktree-remove T-005`. Otherwise the next start refuses it with `WORKTREE_STALE_BASE`, as the guard
+   intends.
+3. **Start T-005.** This becomes attempt 2, built from T-002 `b6a023c`, which contains T-001. Use the pre-incident
+   content only as reference, verified fresh.
+4. **The rework budget.** Attempt 1 was used up by a lifecycle defect, not by builder work. If T-005 later exhausts
+   `max_rework_attempts: 2`, the owner may grant one retry under `authorize-retry`, citing this record. Do not grant
+   it in advance.
