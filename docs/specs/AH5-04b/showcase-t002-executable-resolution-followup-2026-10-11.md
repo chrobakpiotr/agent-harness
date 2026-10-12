@@ -404,3 +404,38 @@ Verdict: **changes required (B1–B5).** T-003 must not complete yet.
 - The process backend's gate (`[sys.executable, '-c', gate, …]`) runs outside the sandbox without `-I`. No
   injection is possible: a worktree `sitecustomize.py`/`usercustomize.py` was tested and not loaded, and the gate's
   environment is allowlisted. Add `-I` anyway, for consistency with requirement 5.
+
+## Third T-003 replan request: `fingerprint.py` and the backend-qualification test (2026-10-12)
+
+T-003 is `running`, attempt 4, on revision `sha256:6208bb…`. Showcase reports that B1–B4 are implemented, with
+runner 26, the shared core 142 and authority/profile 26 OK in one Linux environment, and three B5 failures left.
+
+Verdict: **accept `verification/fingerprint.py`; do not add `tests/test_verification_backend_qualification.py`.**
+
+- **`tooling/agent-harness/verification/fingerprint.py`: accept.**
+  - It is needed: the protected prefixes `('.git', '.agent-state')` are compared case-sensitively at line 83, which
+    is where B5's production fix belongs.
+  - The only other owner is T-001, an ancestor.
+  - It is covered by T-003's existing `test_verify.py` command.
+- **`tooling/agent-harness/tests/test_verification_backend_qualification.py`: reject.**
+  - Its owner is T-900, the independent evaluator.
+  - It is not run by any task's `verification`, T-003's included, so it does not gate T-003.
+  - A builder rewriting the evaluator's own test would weaken the independence that T-900 exists for.
+  - Instead, T-003 proves the new discovery behaviour in its own scope (`tests/test_verification_sandbox.py`):
+    discovery uses the shared resolver, ignores the inherited `PATH`, and discovery alone still never qualifies a
+    backend.
+  - T-003's completion handoff states that `discover_backends` no longer calls `shutil.which`, so T-900's test
+    mocking it is stale and T-900 updates it during evaluation.
+
+Proposal: the active revision `6208bb…` plus `tooling/agent-harness/verification/fingerprint.py` in
+`allowed_paths`. Nothing else changes, including the `objective` and `verification`. Append to `test_seam`:
+
+> Case variants of protected control paths (`.git`, `.agent-state` and their nested forms) are refused consistently
+> on case-sensitive and case-insensitive filesystems. Backend discovery uses the shared resolver, ignores the
+> inherited `PATH`, and discovery alone never qualifies a backend; this is tested in T-003's own sandbox tests.
+
+Send the proposal's sha256. Harness confirms that the diff is exactly that path plus this sentence before
+`replan-task`.
+
+Note: T-003 is on attempt 4 against `max_rework_attempts: 2`. Showcase confirms, under its existing rules, that
+these replans are accounted for correctly and are not silently consuming or bypassing the rework budget.
