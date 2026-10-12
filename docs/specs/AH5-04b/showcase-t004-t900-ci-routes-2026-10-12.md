@@ -312,3 +312,56 @@ T-005 route checked (2026-10-12):
 - **The restart is clean:** T-005 is `running`, attempt 2, on a clean worktree at `b6a023c`, which descends from
   T-001 and T-002.
 - **No other task** is running.
+
+## Review of T-005 attempt 2 (uncommitted worktree diff on `b6a023c`, 2026-10-12)
+
+The diff (`git diff --binary`, sha256 `cb9faa11…`) changes only T-005's `allowed_paths`, `telemetry.py` and
+`tests/test_telemetry.py`. T-005 depends on T-001 and T-002 only.
+
+Verdict: **accept for completion.** End-to-end verification against T-004's real API goes into T-900's evaluation
+scope (below).
+
+### Verified
+
+- **The packet command,** rerun by Harness in `python:3.13.16-slim` with cryptography 49.0.0 on an export of
+  `b6a023c` with the diff applied: `test_telemetry.py` gave 22 OK.
+- **Against T-004's accepted API**, on a combined tree (T-004 `64b2501` plus this diff; the paths do not overlap):
+  - `test_telemetry.py` gave 22 OK.
+  - Every lifecycle name the adapter uses exists in `64b2501`: `lifecycle_state_lock`, `load_validated`,
+    `_load_state_unlocked`, `resolve_manual_review_scope`, `register_manual_observation`, `git_common_dir`.
+  - The adapter's exact calls bind against the real signatures (`inspect.signature(...).bind`).
+  - `register_manual_observation` returns a dict with `record_path`, which the adapter reads.
+- **The adapter's lifecycle use.** It resolves the trusted scope under `lifecycle_state_lock`, captures the feature
+  generation, verifies the signed attestation against that scope and the report digest, and stores content-addressed
+  snapshots. It then submits through `register_manual_observation` with `expected_feature_generation`.
+  - That API re-takes the lock, applies the generation CAS and re-resolves the scope, so the gap between the
+    pre-check and the submit is safe.
+  - When an API is missing, the adapter fails closed (`MANUAL_EVIDENCE_AUTHORITY_UNAVAILABLE`). It never reads
+    `.agent-state` directly and never grants coverage or transitions.
+
+### Gap: the DAG, verified at integration
+
+`record-manual` needs T-004's lifecycle API, and T-004's docstring names T-005 as its caller. But T-005 does not
+depend on T-004, so T-005's base cannot contain that API, and its tests stub all of it (`create=True`).
+
+Replanning T-005 to depend on T-004 would move its base and cost a restart. That is not worth it, because:
+- the adapter fails closed;
+- the signatures are verified above;
+- T-900 (an evaluator that depends on every builder and owns `tests/**`) evaluates the merged tree.
+
+**Requirement for T-900:** an unstubbed end-to-end `record-manual` test on the merged tree, built from a real
+feature fixture with lifecycle state, a committed issuer registry and a signed Ed25519 attestation. Assert that:
+- the record is staged in `.agent-state/manual-observations/<feature>/` together with its ledger entry, in one
+  snapshot;
+- the feature generation is unchanged;
+- an exact replay is idempotent, and a conflicting replay is refused;
+- a stale generation (a CAS mismatch) is refused;
+- the registration authorizes no transition and no obligation coverage.
+
+If it fails, it is a T-900 finding against T-005 (or T-004), fixed through that task's lifecycle.
+
+### Non-blocking
+
+The adapter depends on T-004's private `_load_state_unlocked`, plus `lifecycle_state_lock`. A public read-only helper
+in `harness.py` (for example, one returning the scope and generation under the lock) would make this less brittle
+at integration. That is T-004's or T-009's file, and a later change.
