@@ -305,3 +305,10 @@ Route, using lifecycle commands only and no `.agent-state` edit:
 4. **The rework budget.** Attempt 1 was used up by a lifecycle defect, not by builder work. If T-005 later exhausts
    `max_rework_attempts: 2`, the owner may grant one retry under `authorize-retry`, citing this record. Do not grant
    it in advance.
+
+T-005 route checked (2026-10-12):
+- **Lease recovered** with the recorded reason; `lease_recovered_at` is 20:56:39 UTC.
+- **Archive refs** exist for `38042d5` and `f052609`.
+- **The restart is clean:** T-005 is `running`, attempt 2, on a clean worktree at `b6a023c`, which descends from
+  T-001 and T-002.
+- **No other task** is running.
