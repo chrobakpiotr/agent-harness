@@ -451,3 +451,40 @@ Confirmed (2026-10-12): `replan-proposals/T-003.json`, sha256 `d9902a1763a38e508
 - **Attempt 4 is accounted for.** The state records one consumed owner retry grant for T-003, which explains attempt
   4 under `max_rework_attempts: 2`. Showcase states that a running-task replan does not consume an attempt.
 - **Next step:** run `replan-task T-003 --expected-status running`.
+
+## Review of the T-003 B1–B5 implementation (diff `fe150f9e…`, 2026-10-12)
+
+T-003 is `running`, attempt 5, on revision `sha256:7019712b…`. The worktree diff on base `b6a023c` matches the stated
+sha256. All 20 changed files are within the active `allowed_paths`.
+
+Verdict: **accept.** T-003 may complete through the lifecycle.
+
+- **B1.** `verify.py` adds only its own canonical directory to `sys.path` before importing control modules. The real
+  launch `python -I tooling/agent-harness/verify.py --help` now exits 0 (it failed before on every interpreter).
+  `test_runner_launches_verify_under_isolated_active_interpreter` covers it.
+- **B2.** The runner launches `bind_control_interpreter(sys.executable)`: the running control interpreter, never
+  `python3` from `PATH`. It is validated (absolute, canonical, secure directory, outside the worktree), digest-bound
+  and rechecked before launch. There are tests for the active binary and for refusing an interpreter inside the
+  worktree.
+- **B3.** `_binding_for_gate` selects exactly one plan binding for the gate, matching `command_hash`. The executor
+  passes `plan_id` and `expected_executable_binding` through `supervisor.run` into `backend.prepare`, which refuses a
+  mismatch. `test_resolved_plan_binding_is_forwarded_and_swap_fails_before_payload` and
+  `test_plan_id_and_executable_binding_reach_backend_prepare` cover the chain.
+- **B4.** `discover_backends` uses the shared resolver. A `shutil.which` patched to raise proves that neither
+  discovery nor the command bridge looks executables up any other way. The only remaining `shutil.which` calls are
+  `runner.py`'s agent-CLI lookups, exempt as agreed.
+- **B5.** `fingerprint.py` treats case variants of `.git` and `.agent-state` as protected on every filesystem. The
+  former Linux failures pass.
+- **Tests rerun by Harness** on an export with the diff applied, in `python:3.13.16-slim` with cryptography 49.0.0:
+  26, 59, 142 and 26 OK, matching Showcase's evidence. In the evidence (`/tmp/showcase-T003-b5-evidence/`) the
+  manifest sha256 `3597e11c…` matches, every log's sha256 matches its manifest entry, every log ends `OK` with the
+  stated count, and the manifest binds this diff and packet revision.
+- **T-900.** `test_verification_backend_qualification.py` fails as expected, because it still mocks `shutil.which`.
+  It stays T-900's to update. Keep the note in T-003's completion handoff.
+
+Notes for completion:
+- **Bind the evidence durably.** It lives under `/tmp`, so copy it into T-003's completion evidence through the
+  normal flow before `/tmp` is cleared.
+- **Carried-over non-blocking points:** state that `/usr/local/bin` is in the fixed trusted set, and consider an
+  ownership check in `_secure_directory`. A static scan that keeps `shutil.which` out of the verification modules
+  would make B4's runtime proof permanent.
