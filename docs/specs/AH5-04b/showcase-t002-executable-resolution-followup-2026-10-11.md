@@ -318,3 +318,89 @@ verified) against the active revision `55c47faa…` (T-003 `running`, attempt 3,
   toolchain directories. That is one of the two accepted options. It must be covered by the profile tests and the
   schema-parity test.
 - **Next step:** run `replan-task T-003 --expected-status running`.
+
+## Review of the T-003 implementation (worktree diff `a74c583b…`, 2026-10-12)
+
+Reviewed the uncommitted diff in `SDD-OBS-001/T-003` on base `b6a023c`. The sha256 matches. All 16 changed files
+are within the active revision's `allowed_paths`.
+
+Verdict: **changes required (B1–B5).** T-003 must not complete yet.
+
+### Verified as designed
+
+- **`resolve_executable`/`trusted_executable_directories`:**
+  - absolute canonical directories only;
+  - the worktree, the sandbox home and `$TMPDIR` are excluded;
+  - a directory, or any of its ancestors, that is writable by group or others is refused;
+  - relative or `.`-style names are refused;
+  - the resolved executable must lie in a trusted directory, and is returned with its sha256.
+- **The environment.** `_safe_env` drops the inherited `PATH` and sets the trusted one. `JAVA_HOME`, `JDK_HOME`,
+  `SDKROOT` and `DEVELOPER_DIR` pass only when validated and declared by the profile. Everything else is an
+  allowlist.
+- **The profile.** Schema v1 gains an optional `toolchain_directories`, validated and fingerprinted. The schema
+  and the parity test are updated.
+- **Planning binding.** `execution_plan_record` stores `executable_bindings` (gate, `command_hash`, path and
+  sha256). `validate_plan_record` re-hashes them and re-resolves against the repository, and `resolve_execution`
+  rebuilds the record and compares it, so a swap before resolution gives `PLAN_BINDING_MISMATCH`.
+- **The `./gradlew` exception** is explicit: a regular file inside the worktree, not a symlink, bound by digest.
+- **Bounded drain** after a timeout reports `UNCERTAIN`, never success.
+- **Tests rerun by Harness** on an export with the diff applied, in `python:3.13.16-slim` with cryptography
+  49.0.0:
+  - runner: 25 OK;
+  - store, executor, supervisor, command and sandbox: 136 OK (the supervisor module included);
+  - authority, profile-showcase and applicability: 26 OK;
+  - `test_verify` and profile: 2 failures (B5).
+
+### Required changes
+
+- **B1. The runner's control-Python launch is broken in real use.** `[python, '-I', HERE/'verify.py', …]` fails
+  with `ModuleNotFoundError: No module named 'verification'` on every interpreter, 3.13.16 included. The cause:
+  `-I` removes the script's directory from `sys.path`. Reproduced both on macOS and in the Linux container.
+  `test_runner.py` mocks `subprocess.run`, so it never sees this.
+  - Fix: keep `-I`, and have `verify.py` put its own resolved control directory on `sys.path` explicitly (it is
+    trusted control code). Alternatively, launch a fixed `-I -c` bootstrap that does the same.
+  - Add a runner test that really starts the control Python, without mocking the launch.
+- **B2. The wrong interpreter is selected.** The runner resolves `python3` by name from the trusted directories.
+  On this host that is `/usr/bin/python3`, i.e. Python 3.9.6: it cannot even import `verification/supervisor.py`
+  (`str | None` raises `TypeError`), and it has no `cryptography`. `showcase.json` declares no toolchain
+  directories.
+  - Fix: use the running control interpreter (`sys.executable`), validated and digest-bound by the same resolver
+    rules (absolute, canonical, outside excluded roots, secure directories). That is the interpreter the direct
+    path already runs under. Alternatively, declare the pinned interpreter's directory in `showcase.json`.
+  - Test: the runner launches exactly the validated control interpreter.
+- **B3. The plan's binding is never compared at launch.** `CommandExecutionBackend.prepare` reads
+  `expected_executable_binding` and refuses a `plan_id` without it. But `VerificationSupervisor.run` calls
+  `backend.prepare(…)` with neither `plan_id` nor the binding, so that code path is dead. The launch check
+  (`verify_executable_binding` in `launch`) only re-hashes the binding resolved moments earlier in the same
+  `prepare`. An executable replaced after `resolve_execution`, either by new bytes or by shadowing in an earlier
+  trusted directory, is launched without detection.
+  - Fix: pass the unit's plan binding from the executor through `supervisor.run` into `backend.prepare(plan_id=…,
+    expected_executable_binding=…)`.
+  - Test: replace the executable after the plan is resolved and before launch, through the real executor,
+    supervisor and bridge chain. Expect a refusal with nothing spawned. The current test hand-builds a
+    `SandboxPlan`.
+- **B4. Requirement 1 is not met.** `verification_sandbox.discover_backends()`, the qualification-time discovery of
+  `codex`, `bwrap`, `sandbox-exec` and `docker`, still uses `shutil.which` on the inherited `PATH`. The test the
+  seam requires, proving that the shared resolver is the only resolution site, is missing.
+  - Move `discover_backends` to `resolve_executable`, and add that test, covering the verification modules,
+    `verify.py` and `runner.py`'s verification path.
+  - `runner.py`'s `shutil.which('codex'/'claude')` and `cli_version` concern agent-CLI launch, not verification.
+    Exempt them by name in the test.
+- **B5. No environment passes all four required commands.** On Linux, `test_verify.py`'s
+  `test_literal_control_paths_are_never_observed_or_opened` fails for `.GIT/config` and `.Agent-State/…`. That
+  failure predates T-003: the base `b6a023c` fails it identically, because the test assumes a case-insensitive
+  filesystem. On macOS, the supervisor module cannot import, since there is no cryptography 49.0.0 wheel for this
+  host.
+  - T-003 owns `test_verify.py` and `planner.py`. The safer fix is to refuse case variants of control path names on
+    every platform; the alternative is to make the test platform-correct.
+  - Completion evidence must then show all four commands green in one recorded environment.
+
+### Non-blocking
+
+- `/usr/local/bin` was added to the fixed system set (`/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` were agreed). It is
+  root-owned here and in the Python images, but state that explicitly.
+- `_secure_directory` checks only group/other write. Consider also requiring the owner to be root or the current
+  user.
+- The process backend's gate (`[sys.executable, '-c', gate, …]`) runs outside the sandbox without `-I`. No
+  injection is possible: a worktree `sitecustomize.py`/`usercustomize.py` was tested and not loaded, and the gate's
+  environment is allowlisted. Add `-I` anyway, for consistency with requirement 5.
