@@ -552,3 +552,29 @@ Notes:
 - **Evidence.** The evaluation and repair evidence (`evaluations/T-003-attempt-5-independent-followup.json` and
   `evaluations/T-003-attempt-5-repair/`) are untracked. Commit them with the repair, as was done for attempt 5.
 - **T-900.** The `shutil.which` mock in the evaluator test stays T-900's follow-up, as the evaluator recorded.
+
+## T-003 repair completion check (2026-10-12)
+
+T-003 is `completed`, attempt 5, at `05b63a6`, which has parent `916af0b`. Its completion correction is recorded,
+and the evaluation and repair evidence is committed in `c92fe01`.
+
+- **R1 is resolved.** `test_active_interpreter_inside_worktree_sandbox_home_or_tmpdir_is_refused` asserts
+  `executable-path-excluded` for each root. Harness's mutation check: with the active-interpreter overlap guard
+  disabled (`verification_sandbox.py` line 127), 3 tests fail.
+- **Tests rerun by Harness** on an export of `05b63a6`, in `python:3.13.16-slim` with cryptography 49.0.0: 27, 59,
+  142 and 28 OK.
+- **New finding, coverage only, production behaviour correct.** Two other exclusion guards are not exercised:
+  - line 92, which refuses a toolchain or search directory inside the worktree, the sandbox home or `$TMPDIR`;
+  - line 153, which refuses a resolved executable inside those roots.
+
+  With either disabled, all 86 tests in the sandbox, command, authority, profile and runner modules still pass.
+  - Likely cause: the tests that should cover them build their roots under `/tmp`, which is world-writable, so
+    `_secure_directory`'s writable-ancestor check refuses them first.
+  - In the real layout (worktrees under `~/IdeaProjects/…-agent-worktrees`, no world-writable ancestor), only the
+    exclusion guard applies, so a regression there would go unnoticed.
+  - Line 153 is largely redundant with the trusted-directory containment check. Line 92 is the real defence against
+    a profile declaring a directory inside a worktree.
+  - Route: T-003 is completed, and `test_verification_sandbox.py` is owned only by T-002 and T-003. Pass this to
+    the T-900 evaluator as a finding. Fix it through a T-003 completion correction only if T-900 requires it. The fix
+    is small: build those roots with `tempfile.TemporaryDirectory(dir=pathlib.Path.home())`, as other tests here
+    already do, so only the exclusion guard can refuse them.
