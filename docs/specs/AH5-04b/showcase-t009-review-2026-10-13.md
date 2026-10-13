@@ -125,3 +125,31 @@ The accepted plan (`plan.md`, "Stable structured failures are …") defines the 
   `tests/test_verification_completion_boundary.py`). These are identical to `main`'s, so they merge cleanly at
   integration. The candidate's diff from `8cdc9b5` must touch only `allowed_paths`; otherwise completion's
   changed-surface and allowed-path checks should refuse it.
+
+## Round 3 (`6691b64`, 2026-10-13)
+
+Candidate `6691b64` (parent `6a4caeb`, R5); `6691b64` itself is the R6 cleanup.
+
+Verdict: **accept.** T-009 may complete through the lifecycle.
+
+- **R5 resolved.** `VERIFICATION_ATTEMPT_BINDING_MISMATCH` is raised again for a task status or attempt mismatch,
+  in `admit_verification_execution` and in `consume_verification_launch`. Mutation check: with only the attempt
+  check disabled in either function, exactly 1 test fails in the lifecycle, authority, supervisor, store and executor
+  modules.
+- **R6 resolved.** `8cdc9b5..6691b64` touches 11 paths, all within T-009's `allowed_paths`. The T-009 verification
+  evidence is on `main` (`5ab1f6d`, `29eb661`).
+  - The branch adds and later deletes `main`'s `.agent-runs/CI-38250839389-…` files, so its net diff from
+    `8cdc9b5` does not include them. A three-way merge at integration therefore keeps `main`'s copies.
+  - The cherry-picked in-scope maintenance (`harness.py` and the two test modules) is identical to `main`'s.
+- **Tests rerun by Harness** on an export of `6691b64`, in `python:3.13.16-slim` with cryptography 49.0.0:
+
+  | Packet command | Result |
+  |---|---|
+  | authority | 23 OK |
+  | completion boundary, standalone | 7 OK |
+  | executor, supervisor, store, lifecycle | 132 OK |
+  | `test_harness.py` | 316 OK (sharded, 6 workers, 111 s) |
+  | runner + orchestrate | OK |
+  | contract validation | OK |
+
+- **R4.** The results note's "prohibited" wording is corrected, as Showcase reports.
