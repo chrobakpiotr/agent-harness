@@ -71,3 +71,57 @@
   - Assert refusal codes, not a generic `StoreError`.
   - Record the mutation results in the completion evidence. Harness checked R2 and R3 itself and will spot-check the
     rest.
+
+## Round 2 (`be92d25`, 2026-10-13)
+
+`be92d25`'s parent is `60ba82e`, which follows `a8e6a5a` and then `1babc6c`. `a8e6a5a` and `60ba82e` are
+cherry-picks of `main`'s `e43a170` (fixtures) and `805d5bd` (ancestry guard).
+
+Verdict: **R1–R3 resolved; two new required changes (R5, R6).**
+
+### Verified by Harness (Linux, `python:3.13.16-slim`, cryptography 49.0.0, export of `be92d25`)
+
+| Packet command | Result |
+|---|---|
+| authority | 23 OK |
+| completion boundary, **standalone** | 7 OK (R1 resolved) |
+| executor, supervisor, store, lifecycle | 130 OK |
+| `test_harness.py` | 316 OK (sharded, 6 workers, 104 s) |
+| runner + orchestrate | OK |
+| contract validation | OK |
+
+Mutation checks:
+- **R2 resolved.** With the live-reservation `verification-owned` barrier disabled, 9 tests error.
+- **R3 resolved.** With both duplicate-consumption guards disabled (the second-consume refusal and the
+  `launch_reserved` status check), 1 test fails.
+
+Showcase's mutation table (nine guards, each caught by a named test) is consistent with these spot checks.
+
+### On R4, a correction of how it was read
+
+R4 did not prohibit any identifier. It asked tests to assert specific refusal codes rather than a generic
+`StoreError`. The round-2 results note calls the four codes "prohibited internal refusal identifiers". Correct that
+wording in the evidence.
+
+The accepted plan (`plan.md`, "Stable structured failures are …") defines the stable refusal vocabulary.
+- Mapping `VERIFICATION_LAUNCH_ALREADY_CONSUMED`, `VERIFICATION_LAUNCH_RESERVATION_STALE` and
+  `VERIFICATION_EXECUTION_IN_FLIGHT` onto listed codes (`VERIFICATION_EXECUTION_PLAN_CONFLICT`,
+  `VERIFICATION_EXECUTION_PLAN_STALE`) is a legitimate alignment, because those three are not on the list.
+- `VERIFICATION_ATTEMPT_BINDING_MISMATCH` is on the list, so it must not be renamed. That is R5.
+
+### Required
+
+- **R5. Restore the spec-defined `VERIFICATION_ATTEMPT_BINDING_MISMATCH`.** `be92d25` replaced it with
+  `VERIFICATION_EXECUTION_PLAN_STALE` where a task's status or attempt does not match the plan, in admission and in
+  consumption. It is a stable structured failure in the accepted plan, and T-009 must "not change the accepted
+  spec". Emit it again there, and assert it in a test that fails when only the attempt check is disabled.
+- **R6. Keep the candidate inside `allowed_paths`.** `8cdc9b5..be92d25` changes 15 files outside T-009's
+  `allowed_paths`:
+  - `.agent-runs/CI-38250839389-fixture-maintenance/*` (6), carried in by the `e43a170` cherry-pick;
+  - `docs/specs/SDD-OBS-001/evidence/task-completions/T-009-attempt-1/verification/*` (9).
+
+  As with T-003 and T-004, commit the verification evidence on `main`, not on the task branch. Bring in the
+  maintenance only for in-scope files (`harness.py`, `tests/test_harness.py`,
+  `tests/test_verification_completion_boundary.py`). These are identical to `main`'s, so they merge cleanly at
+  integration. The candidate's diff from `8cdc9b5` must touch only `allowed_paths`; otherwise completion's
+  changed-surface and allowed-path checks should refuse it.
