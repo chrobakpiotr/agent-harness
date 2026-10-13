@@ -390,3 +390,46 @@ b6a023c c06108e` hashes to `cb9faa11…`, the reviewed diff, and touches only `t
 
 A failure in any of these is a T-900 finding against the owning builder task (T-003, T-004 or T-005), fixed through
 that task's lifecycle. It is never fixed by T-900 editing production code.
+
+## Review of T-006 attempt 1 and its performance finding (2026-10-13)
+
+The T-006 worktree has HEAD `55388d4` (the merge of the T-003, T-004 and T-005 checkpoints). The uncommitted diff
+changes four files within T-006's `allowed_paths`:
+- `verification-profiles/showcase.json`, which adds `apps/ecommerce/frontend/**` to the aggregate Gradle gate
+  inputs;
+- the profile-showcase, parity and benchmark tests.
+
+Verdict: **accept for completion. Do not route the benchmark to T-003.**
+
+### The benchmark is not a T-003 regression
+
+`benchmarks/verification_planning.py` times `build_plan` only: 100 gates, 5,000 files, 3 runs after a warm-up.
+Harness ran it on Linux (`python:3.13.16-slim`) against an export of T-006's tree with the diff applied:
+
+| Run | Durations (s) | Median (s) | Git calls/run |
+|---|---|---|---|
+| As is (T-003's `fingerprint.py`) | 8.74, 8.77, 8.82 | 8.77 | 9 |
+| With `fingerprint.py` from `b6a023c`, before T-003 | 8.71, 8.84, 8.80 | 8.80 | 9 |
+
+- Both runs are within the limits (median at most 10 s, maximum at most 20 s, at most 12 Git calls).
+- T-003's change has no measurable effect.
+- Showcase's runs (12.4–24.1 s) varied by a factor of two within one invocation. That points to contention on the
+  host at the time, not to the code.
+- T-006's packet command passes on Linux: 13 OK, both without and with `CI=true`, which enables the timing
+  thresholds.
+
+**Where the time goes.** cProfile of the same run: about 70 % of `build_plan` is glob matching, i.e.
+`profile.matches` → `reachable` → `segment_matches`, about 1.0 M calls through `planner.required_nodes`, where every
+gate's patterns are evaluated against every file. Fingerprinting (`fingerprint.inputs`) is most of the rest. That
+code lives in `profile.py` and `planner.py`, owned by T-001 and, since the second replan, T-003. It is not in
+T-003's resolver work.
+
+**The headroom is thin.** 8.8 s against a 10 s limit. Route:
+1. **Confirm in real CI.** The Agentic SDD CI runs `discover` on Linux with `CI=true`, so the benchmark's thresholds
+   apply there. Record the CI run's benchmark output in the evidence once the branch is integrated.
+2. **If CI exceeds the limits,** that is a performance finding against the planner's matching (`profile.py` and
+   `planner.py`), not a T-006 defect and not a T-003 regression. Fix it through the owning task's lifecycle, as a
+   correction of T-001 or T-003. The fix is to index gate patterns against the file list once, instead of matching
+   per gate and per file. Do not weaken the threshold.
+3. **For now:** T-006 completes on its packet command, with the Harness Linux measurement (median 8.77 s) cited in
+   its evidence, next to the local 23.5 s run and the note that the local run was contended.
