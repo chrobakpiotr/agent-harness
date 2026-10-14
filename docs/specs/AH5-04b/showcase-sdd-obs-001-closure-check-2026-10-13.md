@@ -70,3 +70,65 @@ exclusion disabled, 93 OK. Both guards remain unprotected against regression. Th
 
 Showcase's own scoping stands: master closure authorizes implementation and verification-contract refresh, the
 canonical Design Gate remains not-pass, and no production-readiness claim is made.
+
+## Review of the T-900 closure repair and the T-007 CI repair (2026-10-14)
+
+Verdict: **accept both repairs.** F1 and F2 are resolved on the composed candidate. Complete both repairs through
+the lifecycle, re-gate T-990, then integrate and confirm GitHub CI.
+
+### T-900 repair `987fe13` (parent `e3238a3`, T-900 `running` under its completion correction)
+
+- **Scope.** It changes 4 files, all test files within T-900's `tests/**`, with no production code:
+  - `test_verification_phase_d.py`, whose fixtures now carry T-009's terminal authority;
+  - `test_verification_noncacheable.py` and `test_verification_profile_applicability.py`;
+  - the new `test_verification_t900_resolver_guards.py`.
+- **No weakening.** No assertion is removed, and there is no skip or `expectedFailure` in the three repaired
+  modules.
+- **F2 resolved.** The two guard tests build their roots under `pathlib.Path.home()` and assert
+  `^executable-search-path-excluded$` and `^executable-path-excluded$`. Harness mutated each guard on its own (not
+  the shared overlap helper):
+  - with only the search-directory exclusion disabled, exactly
+    `test_declared_search_directory_inside_excluded_root_is_refused` fails;
+  - with only the search-loop executable exclusion disabled, exactly
+    `test_executable_nested_under_excluded_worktree_is_refused` fails.
+- **Evidence.** `report.json`'s sha256 is `00921cee…`, as stated. The evidence directory
+  `docs/specs/SDD-OBS-001/evidence/T-900-repair-2026-10-13/` is **untracked** in the T-900 worktree. Commit it
+  (T-900's `allowed_paths` include `docs/specs/SDD-OBS-001/evidence/**`).
+
+### T-007 CI repair (uncommitted diff in the T-007 worktree, sha256 `245b6e70…` verified)
+
+- **Scope.** Only `.github/workflows/agentic-sdd.yml` and `tests/test_eval.py`, within T-007's `allowed_paths`.
+- **The CI change.** The `harness-tests` and `behavioral-evaluations` jobs replace `actions/setup-python` with
+  `container: python:3.13.16-slim@sha256:70729b46…`, install Git for the repository fixtures, and still install
+  `tooling/agent-harness/requirements.txt` (cryptography 49.0.0 and `agent-harness[grants]` at `16bb938`). That
+  matches the T-900 evaluator image's environment. `test_eval.py` asserts the pinned container, the absence of
+  `setup-python` and the Git install for both jobs.
+
+### The composed candidate, rebuilt by Harness
+
+`7fe7877` is not reachable in the repository, so Harness rebuilt the composition:
+`main` `73e2965` + merge of `987fe13` + the T-007 diff (sha256 `245b6e70…`). It changes 6 files against `main`, all
+tests or workflow.
+
+In the T-900 image (`bb7600c8…`), on a real clone:
+
+| Check | Result |
+|---|---|
+| `discover -s tooling/agent-harness/tests` | **922 tests OK**, 0 failures (762 s) |
+| `eval.py run --suite baseline` | exit 0 |
+| `eval.py run --suite adversarial` | exit 0 |
+| `eval.py run --suite shipping-preflight` | exit 0 |
+| `harness.py validate-all docs/specs` | exit 0 |
+| `verification_contract.py validate docs/specs/SDD-OBS-001` | OK |
+
+### Remaining steps
+
+1. Commit the T-900 repair evidence, then `complete-repair` T-900 and T-007 through the lifecycle, binding each
+   repair's evidence. Name the composition by its inputs (`73e2965`, `987fe13` and T-007's committed checkpoint),
+   because `7fe7877` is not preserved.
+2. **Re-gate T-990.** It is still `completed` on the old T-900 result and crosswalk. Correct and repair it, or
+   reopen it, under Showcase's rules, so that the human-ready gate rests on the repaired T-900.
+3. Integrate into `main`, push only when authorized, and confirm the Agentic SDD CI run on the pushed `main`. That
+   is the first time the new container jobs run on GitHub.
+4. One informational note. Showcase pins `agent-harness` at v0.5.0 (`16bb938`). The latest release is v0.8.4.
+   Upgrading is optional and would need its own qualification check.
