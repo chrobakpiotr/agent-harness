@@ -158,3 +158,48 @@ Verdict: **accept.** One recommendation below.
   - If the fallback is kept, make it loud: print a warning in the job log when it fires.
 - **Next.** Commit, complete T-007 attempt 2 through the lifecycle, and confirm the next Agentic SDD CI run on the
   pushed `main` is green in all jobs. Re-gating T-990 is still open.
+
+## Route for completing T-007 attempt 2 (2026-10-14)
+
+State (read-only):
+- T-007 is `running`, attempt 2, claimed at 16:40 UTC. Its attempt-2 commit `5a0f5fa` is the accepted diff.
+- Attempt 1's completion was corrected (`completion-correction:…ae62aeaa`), and a repair was authorized, claimed and
+  finalized by `complete-repair` at 16:27 (`completion-repair:…2840a5ba`, checkpoint `a840c1e`).
+  `completion_repair_history` records it.
+- After CI run 38599315931 failed, T-007 was `reopen`ed at 16:38 (`last_transition: reopened`). Attempt 2 started at
+  16:40.
+- The entry still carries attempt 1's `active_completion_correction_id` and `active_completion_repair_authorization`.
+
+**The cause is a lifecycle defect.**
+- `cmd_complete` dies with `COMPLETION_CORRECTION_REQUIRED` whenever `correction_records(feature_dir, task_id)` is
+  non-empty. That is, whenever the task has ever had a correction, whichever attempt it concerned and even after its
+  repair is finalized.
+- `cmd_reopen` does not retire the finalized correction and authorization pointers.
+- So a task whose completion was corrected and repaired can never complete a later, reopened attempt.
+  `complete-repair` needs an open repair claim, and `correct-completion` needs status `completed` or
+  `correction_required`.
+
+There is no route within the current lifecycle that avoids editing `.agent-state` by hand. **The route is a
+maintenance fix to `harness.py` on `main`,** reviewed by Harness, like `805d5bd`:
+
+1. **`cmd_complete`: refuse only an unresolved correction.** A correction blocks `complete` only when:
+   - it has no finalized repair (no completion-repair record referencing it in the task's
+     `completion_repair_history`); or
+   - it concerns the task's current attempt.
+
+   A correction resolved by a finalized repair for an earlier attempt, followed by `reopen` and a new attempt, does
+   not block. The new attempt's completion is an ordinary C1, bound to its own attempt, packet and checkpoint. All
+   other completion guards (ancestry, evidence binding, contract and packet binding) stay as they are.
+2. **`cmd_reopen` and the next `start`: retire the finalized pointers.** Move `active_completion_correction_id` and
+   `active_completion_repair_authorization` into an attempt-tagged history entry when the correction is resolved. Do
+   not delete history; the immutable correction and repair records stay where they are.
+3. **Tests, which must fail on the current code:**
+   - corrected → repaired → reopened → a new attempt completes with `complete`, recording a C1 for attempt 2 while
+     the attempt-1 correction and repair stay readable;
+   - an unresolved correction (no finalized repair) still refuses `complete`;
+   - a correction of the current attempt still requires `complete-repair`;
+   - a stale pointer is retired on `reopen`.
+4. **Then complete T-007 attempt 2** with the fixed lifecycle: `complete`, with evidence from `5a0f5fa`.
+
+Send the `harness.py` and `test_harness.py` diff for review before committing it. T-003 and T-900 had corrections
+too. Neither has been reopened, so neither is affected now, but the fix covers them should it happen.
