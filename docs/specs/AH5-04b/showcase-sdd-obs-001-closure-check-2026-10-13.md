@@ -132,3 +132,29 @@ In the T-900 image (`bb7600c8…`), on a real clone:
    is the first time the new container jobs run on GitHub.
 4. One informational note. Showcase pins `agent-harness` at v0.5.0 (`16bb938`). The latest release is v0.8.4.
    Upgrading is optional and would need its own qualification check.
+
+## Review of T-007 attempt 2: the CI checkout correction (2026-10-14)
+
+Agentic SDD CI run 38599315931 on `main` `84a0ea6` failed: the harness-tests, behavioral-evaluations and
+quality-gate jobs. The standard CI run 38599316526 succeeded. The cause, as Showcase diagnoses it:
+`actions/checkout` ran in the bare Python container before Git existed, so it fetched a REST archive with no `.git`.
+
+The uncommitted diff in the T-007 worktree (on `a840c1e`, sha256 `8c4b6702…` verified) adds, in both jobs and after
+the Git install, a step that runs only when there is no repository. It marks the workspace as `safe.directory`, runs
+`git init`, commits the working tree as one "CI working-tree snapshot", and is asserted in step order by
+`test_eval.py`.
+
+Verdict: **accept.** One recommendation below.
+
+- **Does the synthetic history change results?** Harness rebuilt the composition (`73e2965` + `987fe13` + `a840c1e`
+  + this diff) and ran it the way CI now will: an archive plus `git init` and a single commit, in the T-900 image.
+  Result: `discover` gave **922 tests OK** (488 s), and the baseline, adversarial and shipping-preflight evals all
+  exited 0. The same 922 as the real clone. Today's suite does not depend on real repository history.
+- **Recommendation (non-blocking): install Git before `actions/checkout`, and drop the fallback.**
+  - With Git present, checkout makes a real clone and configures `safe.directory` itself, so CI matches the
+    evaluator's real-clone environment exactly.
+  - The fallback silently papers over a checkout without `.git`. Once any test comes to depend on history, CI
+    would test something different from the evaluation, without saying so.
+  - If the fallback is kept, make it loud: print a warning in the job log when it fires.
+- **Next.** Commit, complete T-007 attempt 2 through the lifecycle, and confirm the next Agentic SDD CI run on the
+  pushed `main` is green in all jobs. Re-gating T-990 is still open.
