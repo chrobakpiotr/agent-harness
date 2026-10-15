@@ -203,3 +203,41 @@ maintenance fix to `harness.py` on `main`,** reviewed by Harness, like `805d5bd`
 
 Send the `harness.py` and `test_harness.py` diff for review before committing it. T-003 and T-900 had corrections
 too. Neither has been reopened, so neither is affected now, but the fix covers them should it happen.
+
+## Review of the completion-correction maintenance fix (uncommitted on `main`, diff `9a6e0b05…`, 2026-10-15)
+
+The diff changes `harness.py` and `tests/test_harness.py`; the sha256 is verified.
+
+Verdict: **changes required (M1).** The core rule is correct.
+
+- **`cmd_complete`** now refuses only a correction that concerns the current attempt, or one without a finalized
+  repair. All other completion guards are unchanged.
+- **`retire_finalized_completion_repair_pointers`** moves finalized correction and authorization pointers into an
+  attempt-tagged `completion_repair_pointer_history`, after verifying the correction, authorization and repair
+  records. The immutable records are untouched. It is called from `reopen` and from both `start` paths.
+- **The three new tests** cover: a reopen that retires the pointers and lets a new attempt complete; an unresolved
+  correction that still refuses; a current-attempt correction that still needs `complete-repair`.
+
+### M1. T-007's actual state is not handled
+
+T-007 was reopened and started **before** this fix, so it is `running` with `attempts: 2` while still carrying
+attempt 1's pointers. Harness ran a probe on an export of `main` with the diff applied, using the test fixture
+(`CanonicalCompletionRepairTests` helpers): correct, repair, reopen, start, then re-attach the attempt-1 pointers
+while `attempts == 2`. Result:
+- `complete` succeeds, and the stale pointers remain on the completed entry;
+- a later `reopen` dies with `COMPLETION_REPAIR_POINTER_INVALID: active repair is not finalized for the current
+  attempt`. The helper accepts pointers only when `correction.completed_attempt == entry['attempts']`.
+
+So after completing, T-007 could never be reopened again without a manual edit. That matters if T-900 or T-990
+re-gating finds anything.
+
+Fix:
+1. **Accept finalized pointers from an earlier attempt.** In `retire_finalized_completion_repair_pointers`, accept
+   pointers whose correction concerns an earlier attempt (`completed_attempt <= attempts`), provided the same
+   finalized-repair checks pass. Tag the history entry with the **correction's** attempt.
+2. **Retire on completion too.** Call the helper in `cmd_complete` before the new completion is recorded, so a state
+   produced by the older harness is cleaned when it completes.
+3. **Test exactly T-007's state:** pointers from attempt N on a `running` attempt N+1. Assert that `complete`
+   succeeds, the pointers are retired into history, and a later `reopen` succeeds.
+
+The existing three tests stay. Send the revised diff for review, then complete T-007 attempt 2.
