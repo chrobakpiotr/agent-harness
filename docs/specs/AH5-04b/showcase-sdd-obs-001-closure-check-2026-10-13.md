@@ -241,3 +241,22 @@ Fix:
    succeeds, the pointers are retired into history, and a later `reopen` succeeds.
 
 The existing three tests stay. Send the revised diff for review, then complete T-007 attempt 2.
+
+## Review of the revised completion-correction fix (diff `45b6b91e…`, 2026-10-15)
+
+Verdict: **accept.** Commit it to `main`, then complete T-007 attempt 2 with `complete`.
+
+- **M1 resolved.** `retire_finalized_completion_repair_pointers` accepts finalized pointers whose correction
+  attempt is at most the current attempt. It still checks the correction, authorization, repair and
+  completion-record bindings, and refuses a correction from a later attempt. History is tagged with the correction's
+  attempt. `cmd_complete` retires stale finalized pointers after its correction loop, which still refuses an
+  unrepaired or current-attempt correction, and before the new completion is published.
+- **Harness's probe on T-007's exact state,** on an export of `main` with the diff applied, in the T-900 image
+  (pointers from attempt 1 on a `running` attempt 2):
+  - `complete` → OK, `completed`, no stale pointer, history `[1]`;
+  - a later `reopen` → OK, `failed`, no stale pointer, history `[1]`.
+- **Full module, rerun by Harness** (Showcase had not rerun it after the M1 delta): `test_harness.py` gave
+  **319 OK** with the sharded runner (6 workers, 131 s), in `showcase-t900-eval:pinned-20261013`.
+
+Then: commit the fix to `main`, complete T-007 attempt 2, re-gate T-990, and confirm Agentic SDD CI on the pushed
+`main`.
