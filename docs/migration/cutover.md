@@ -28,18 +28,26 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    `agent-harness[grants] @ git+https://github.com/chrobakpiotr/agent-harness.git@<tag SHA>` (a tag SHA,
    never a branch).
 2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`.
-3. In the same change, remove only the five Showcase tests below. They patch Showcase names that calls inside
+3. In the same change, remove only the six Showcase tests below. They patch Showcase names that calls inside
    the library cannot see. Each runs under the same name in the library's normal suite
-   (`agent-harness/tests/test_verification_authority.py`, run by `scripts/check-wheel.sh` and CI), and
-   `test_cutover_wrapper.py` covers what Showcase passes in. Every other Showcase test stays.
+   (`agent-harness/tests/test_verification_authority.py` and `test_verification_store.py`, run by
+   `scripts/check-wheel.sh` and CI), and `test_cutover_wrapper.py` covers what Showcase passes in. Every other
+   Showcase test stays.
 
    | Showcase `tooling/agent-harness/tests/test_verification_authority.py::AcceptedPlanResolutionTest` | Library assertions |
    |---|---|
    | `test_exact_accepted_plan_reconstructs_current_units_without_running_them` | identical (1) |
-   | `test_origin_authority_is_v2_and_execution_fails_closed` | identical (3) |
+   | `test_origin_authority_is_v2_and_resolution_is_read_only` | identical (3) |
    | `test_post_seal_candidate_mutation_rejects_before_execution` | identical (1) |
    | `test_trusted_orchestrator_plan_creation_binds_running_attempt_and_candidate` | identical (6); the accept call additionally asserts `lifecycle=` and `profile_root=` |
    | `test_unknown_execution_unit_rejects_before_execution` | identical (1) |
+
+   | Showcase `tooling/agent-harness/tests/test_verification_store.py::StoreTest` | Library assertions |
+   |---|---|
+   | `test_primary_repository_authority_resolution` | identical (5); patches `agent_harness.repository._worktrees`, and the store receives the registry as `issuer_registry_path` |
+
+   The re-pin also moves the version that `test_qualification_report.py` asserts (`0.5.0` today) to the new tag;
+   the rehearsal installs the working tree's version, so those three tests fail there by design.
 4. Done in Showcase (`4fd9abe`, with a test): `tooling/agent-harness/requirements.txt` is in `harness.protocol_files`: after the cutover `trust.py` and
    `telemetry.py` are wrappers, so the library pin must be part of the protocol fingerprint (a re-pin changes
    the trust classifier).
