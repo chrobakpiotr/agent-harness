@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0 — 2026-10-17
+
+- The moved verification modules and `telemetry` are re-synced with Showcase `49ab97f` (SDD-OBS-001): verification
+  admission, reservation and consumption records; executable resolution for planned commands; profile
+  `toolchain_directories`; provider-metadata filtering in telemetry. Provenance: `docs/migration/provenance.md`.
+- New `agent_harness.executables`: `resolve_executable`, `verify_executable_binding`,
+  `trusted_executable_directories` and `default_executable_binder` (plain names only; path-like executables are
+  refused).
+- `execution_plan_record`, `validate_plan_record`, `resolve_execution`, `prepare_task_plan` and `VerificationStore`
+  take `executable_binder`. Commands run from the explicit repository, never the process working directory.
+- `VerificationStore(issuer_registry_path=…)`: a relative path anchored to the primary checkout; an absolute or
+  traversing path is refused (`issuer-registry-path-invalid`). A production store refuses a caller-supplied
+  `issuer_registry` (`issuer-registry-override-forbidden`); without a path there is no registry.
+- `agent_harness.repository.resolve_primary_worktree`.
+- Contract and digests unchanged.
+
 ## 0.8.4 — 2026-10-11
 
 - `AgentCliBackend.request_counts[request_id]`: requests the OpenCode relay forwarded to OpenRouter.
