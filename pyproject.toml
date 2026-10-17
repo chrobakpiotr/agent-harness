@@ -39,7 +39,7 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 # Verbatim Showcase qualification probes (docs/migration/provenance.md); restyle only in a separate change.
 "src/agent_harness/qualification/[bqr]*.py" = ["ALL"]
 # Showcase-only part of telemetry, verbatim in the cutover wrapper.
-"migration/showcase-wrapper/telemetry.py" = ["F401", "FURB162"]
+"migration/showcase-wrapper/telemetry.py" = ["BLE001", "F401", "FURB162", "TRY004"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
