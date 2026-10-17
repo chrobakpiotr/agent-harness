@@ -26,6 +26,13 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Remove group and world write from the interpreter and system executable paths
+        # The runner ships /usr/local/bin, /opt and the setup-python tree as mode 777; the executable resolver
+        # (agent_harness.executables) correctly refuses binaries under writable directories.
+        run: |
+          sudo chmod go-w /usr/local/bin /opt /opt/hostedtoolcache /opt/hostedtoolcache/Python
+          sudo chmod -R go-w "$(dirname "$pythonLocation")"
+
       - name: Whitespace
         run: git diff --check $(git hash-object -t tree /dev/null) HEAD
 
