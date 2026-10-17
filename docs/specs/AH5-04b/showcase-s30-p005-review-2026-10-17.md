@@ -180,3 +180,29 @@ contract change. S30-06 stays OPEN / NOT QUALIFIED.
 - **Unchanged.** The source-inspection note (registration at `rabbit_reader.erl:1173`, before `connection.start`;
   `connection_created` only after `connection.open`) is labelled correctly as not a behavioural pass. S30-06 stays
   OPEN / NOT QUALIFIED.
+
+### P-006 explicit-cookie retry (`runs/20261017T210906Z-startup-cookie-explicit`)
+
+**What checks out.**
+- `SHA256SUMS` verifies all 18 files, checked from the run directory.
+- `commands.jsonl` carries the retry argv. The three earlier attempts are labelled as reconstructed.
+- The secrets are forwarded by name only.
+- Cleanup succeeded.
+- BLOCKED with no inferred cause is the correct status.
+
+**Finding: the readiness check is shorter than the startup it measures.** The run made one
+`rabbitmq-diagnostics -q ping` with a 10 s client timeout, immediately after `docker inspect` first reported
+`running`. `running` means the container process exists, not that the node has booted. P-005 never used a CLI ping:
+its probe container connected with a 100 s stage budget. One 10 s attempt this early cannot tell a slow boot from a
+failed one.
+
+For the next authorized attempt:
+1. Poll readiness against an overall deadline of the same order as P-005's, for example
+   `rabbitmq-diagnostics -q ping --timeout 5` repeated until 90 s. Record each attempt's exit and duration.
+2. In `finally`, collect `docker logs` and `docker inspect` (State) before `docker rm`. The current order is what
+   produced the evidence gap.
+3. Change one thing at a time. This retry added `--internal`, the default user and the explicit cookie all at once.
+   - First replay P-005's recorded argv exactly. That re-establishes the baseline on this host.
+   - Then add only the cookie arguments.
+
+No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
