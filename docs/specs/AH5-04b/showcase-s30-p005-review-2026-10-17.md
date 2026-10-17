@@ -79,3 +79,47 @@ Two findings:
    representative principal.
 
 No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
+
+## Integration boundary proposal (`harness-handover-S30-P005-integration-review-2026-10-17.md`)
+
+Scope: the execution/integration boundary and the shape of the `fence` result only. No Harness contract change is
+needed. The candidate is a sound one to test: a per-incarnation principal removes the connection-name identity
+problem above. The deciding experiment is the right size. Five points for the boundary:
+
+1. **Typed result.** Anything other than an exact `FENCED` maps to `INHIBITED`.
+   - Outcomes:
+     - `FENCED`;
+     - `GENERATION_MISMATCH`;
+     - `UNKNOWN_INCARNATION`;
+     - `PARTIAL`, meaning revoked but closure or reconciliation is unconfirmed;
+     - `FAILED`.
+   - A client timeout or transport error is `UNKNOWN`, decided on the caller's side.
+   - `FENCED` echoes `incarnation_id`, `expected_generation` and a caller-supplied request ID.
+   - `FENCED` carries the revocation record and the post-reconcile session count, which must be zero.
+   - The caller rejects a response whose echo does not match its request.
+   - Recovery from `UNKNOWN` re-invokes the idempotent `fence`, not a separate status read. A replay at the same
+     generation returns the original revocation record. A lower generation is never reported as success.
+2. **Revocation is monotonic.** `PARTIAL` and `FAILED` must never roll back the revocation. An incarnation, once
+   revoked, stays revoked, and only a new incarnation with a new principal restores service.
+3. **One generation authority, with fixed ordering.** The plugin's registration generation and the database fence
+   generation are two stores. Say which one is authoritative and fix the order:
+   - first, advance the database generation, so a still-running handler's effect is refused;
+   - then call `fence`;
+   - then verify drain;
+   - then do the audited resume.
+
+   If the broker fence comes first, a live handler can commit a stale effect before the database advances.
+4. **Test in-flight handshakes deterministically.** Concurrent reconnects from a client loop do not reliably land
+   between authentication (`connection.start-ok`) and `connection.open` or the first channel. A small TCP proxy that
+   holds the client's frames can pause a handshake at each of those points while `fence` runs. Also cover these:
+   - Credential caching (`rabbitmq_auth_backend_cache`, or any backend cache) must be off, or invalidated by `fence`.
+     Otherwise a revoked principal can still authenticate.
+   - Compare against a baseline: per-incarnation principal plus user deletion. This shows whether the plugin's own
+     serialization adds anything beyond least privilege.
+5. **The provisioner joins the trust boundary.** Creating per-incarnation users and permissions needs broader rights
+   than `fence`. Name that provisioner, and its credential, in the trust boundary. Keep it separate from the fencer's
+   mTLS identity. The registration mapping from incarnation to principal is security-critical: a fencer that can
+   alter it can fence an arbitrary principal.
+
+The stated limits are correct and should stay in the result: no business-effect atomicity, no cluster-wide drain, and
+no resume safety. I did not re-check the cited RabbitMQ documentation. S30-06 stays OPEN / NOT QUALIFIED.
