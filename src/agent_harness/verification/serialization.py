@@ -148,6 +148,7 @@ ENUMS = {
     'retry_policy': {'forbid', 'allow'}, 'kind': {'file', 'absent', 'symlink', 'directory'},
     'reason': {'fresh-task-completion', 'no-reusable-evidence', 'exact-evidence', 'inputs-changed',
                'dependency-not-reusable', 'artifact-mismatch', 'non-cacheable-policy',
+               'empty-declared-input',
                'non-cacheable-symlink-input', 'non-cacheable-sensitive-identity',
                'non-cacheable-external-state', 'non-cacheable-probe', 'invalid-cache',
                'different-family', 'legacy-task-command'},

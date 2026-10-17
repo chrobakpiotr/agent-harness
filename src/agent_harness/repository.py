@@ -30,24 +30,35 @@ def _worktrees(common):
     return [pathlib.Path(os.fsdecode(field[9:])).resolve() for field in raw.split(b"\0") if field.startswith(b"worktree ")]
 
 
-def resolve_control_root(repository):
-    """Primary-worktree verification control root and repository identity; never falls back to the caller."""
+def resolve_primary_worktree(repository):
+    """The one primary checkout that owns repository-wide authority; never the caller's linked worktree."""
     try:
         caller = pathlib.Path(repository).resolve(strict=True)
     except (OSError, RuntimeError):
         raise RepositoryError("repository-unresolved") from None
-    common = _git(caller, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
-    try:
-        common = pathlib.Path(os.fsdecode(common)).resolve(strict=True)
-    except (OSError, RuntimeError):
-        raise RepositoryError("repository-unresolved") from None
+    common = _common_dir(caller)
     if _git(caller, "rev-parse", "--is-bare-repository").strip() == b"true":
         raise RepositoryError("bare-repository-unsupported")
     owners = [w for w in _worktrees(common) if (w / ".git").is_dir() and (w / ".git").resolve() == common]
     if len(owners) != 1:
         raise RepositoryError("primary-worktree-ambiguous")
+    return owners[0]
+
+
+def _common_dir(caller):
+    common = _git(caller, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    try:
+        return pathlib.Path(os.fsdecode(common)).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise RepositoryError("repository-unresolved") from None
+
+
+def resolve_control_root(repository):
+    """Primary-worktree verification control root and repository identity; never falls back to the caller."""
+    primary = resolve_primary_worktree(repository)
+    common = _common_dir(pathlib.Path(repository).resolve(strict=True))
     identity = hashlib.sha256(os.fsencode(common)).hexdigest()
-    return owners[0] / ".agent-runs" / "control" / "verification-v2", identity
+    return primary / ".agent-runs" / "control" / "verification-v2", identity
 
 
 def resolve_repo_context(repository):

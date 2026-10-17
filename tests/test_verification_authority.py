@@ -1,10 +1,11 @@
 import pathlib
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
-# Showcase profile at 50c18f9, copied as a test input: the package ships no built-in profile.
+# Showcase profile at 49ab97f, copied as a test input: the package ships no built-in profile.
 PROFILES = pathlib.Path(__file__).resolve().parent / 'fixtures' / 'verification-profiles'
 
 from agent_harness.verification import authority
@@ -43,15 +44,69 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
         self.plan = build_plan(self.root, self.profile, self.family)
         self.record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
             self.profile_id, self.profile, self.plan, task_id='T-001', task_attempt=1,
-            origin_binding='integration')
+            origin_binding='integration', repository=self.root)
 
-    def test_origin_authority_is_v2_and_execution_fails_closed(self):
+    def test_origin_authority_is_v2_and_resolution_is_read_only(self):
         self.assertEqual(2, self.record['schema_version'])
         for obligation in self.record['obligations']:
             self.assertEqual('independent', obligation['required_origin'])
         with mock.patch.object(authority, 'resolve_accepted', return_value=self.record):
-            with self.assertRaisesRegex(StoreError, 'VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE'):
-                authority.resolve_execution(self.root, self.record['plan_id'], lifecycle=None, profile_root=PROFILES)
+            record, profile, plan, units = authority.resolve_execution(self.root, self.record['plan_id'], lifecycle=None, profile_root=PROFILES)
+        self.assertEqual(self.record, record)
+        self.assertEqual(self.profile.content_hash, profile.content_hash)
+        self.assertEqual(self.plan.family.id, plan.family.id)
+        self.assertEqual(self.record['execution_units'], units)
+
+    def test_plan_refuses_absent_or_changed_executable_binding(self):
+        import copy
+        from agent_harness.verification.serialization import canonical
+        missing = copy.deepcopy(self.record)
+        missing.pop('executable_bindings')
+        with self.assertRaises(StoreError):
+            authority.validate_plan_record(missing, profile_root=PROFILES)
+        changed = copy.deepcopy(self.record)
+        changed['executable_bindings'][0]['binding']['sha256'] = '0' * 64
+        changed['plan_id'] = 'verification-plan-v2:sha256:' + __import__('hashlib').sha256(
+            canonical({key: value for key, value in changed.items() if key != 'plan_id'})).hexdigest()
+        with self.assertRaises(StoreError):
+            authority.validate_plan_record(changed, profile_root=PROFILES)
+
+    def test_control_interpreter_is_shared_resolved_and_bound_to_plan(self):
+        import copy
+        import hashlib
+        from agent_harness.verification.serialization import canonical
+        binding = self.record['control_executable_binding']
+        self.assertEqual(str(pathlib.Path(sys.executable).resolve()), binding['command'])
+        self.assertEqual(str(pathlib.Path(binding['path']).resolve()), binding['path'])
+        self.assertEqual(64, len(binding['sha256']))
+        authority.validate_plan_record(self.record, repository=self.root, profile_root=PROFILES)
+
+        missing = copy.deepcopy(self.record)
+        missing.pop('control_executable_binding')
+        with self.assertRaises(StoreError):
+            authority.validate_plan_record(missing, profile_root=PROFILES)
+
+        changed = copy.deepcopy(self.record)
+        changed['control_executable_binding']['sha256'] = '0' * 64
+        changed['plan_id'] = 'verification-plan-v2:sha256:' + hashlib.sha256(
+            canonical({key: value for key, value in changed.items() if key != 'plan_id'})).hexdigest()
+        with self.assertRaises(StoreError):
+            authority.validate_plan_record(changed, profile_root=PROFILES)
+
+    def test_control_interpreter_swap_after_plan_is_rejected(self):
+        with tempfile.TemporaryDirectory(dir=pathlib.Path.home()) as toolchain_tmp:
+            toolchain = pathlib.Path(toolchain_tmp).resolve()
+            executable = toolchain / 'python3'
+            executable.write_text('#!/bin/sh\nexit 0\n')
+            executable.chmod(0o700)
+            with mock.patch.object(sys, 'executable', str(executable)):
+                record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
+                    self.profile_id, self.profile, self.plan, task_id='T-001', task_attempt=1,
+                    origin_binding='integration', repository=self.root)
+                authority.validate_plan_record(record, repository=self.root, profile_root=PROFILES)
+                executable.write_text('#!/bin/sh\nexit 0\n# replaced after planning\n')
+                with self.assertRaises(StoreError):
+                    authority.validate_plan_record(record, repository=self.root, profile_root=PROFILES)
 
     def test_rehashed_origin_or_membership_cannot_publish(self):
         import copy
@@ -123,7 +178,7 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
         family = dataclasses.replace(self.plan.family, policy_checkpoint='a' * 40)
         record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
             self.profile_id, self.profile, dataclasses.replace(self.plan, family=family),
-            task_id='T-001', task_attempt=1, origin_binding='integration')
+            task_id='T-001', task_attempt=1, origin_binding='integration', repository=self.root)
         authority.validate_plan_record(record, profile_root=PROFILES)
 
     def test_invalid_family_identifier_and_unmapped_critical_retry_reject(self):
@@ -133,7 +188,7 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
         plan = build_plan(self.root, self.profile, self.family, task_commands=['python3 -V'])
         record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
             self.profile_id, self.profile, plan, task_id='T-001', task_attempt=1,
-            task_commands=['python3 -V'], origin_binding='integration')
+            task_commands=['python3 -V'], origin_binding='integration', repository=self.root)
         item = next(o for o in record['obligations'] if o['profile_gate_id'] is None)
         item['critical'] = True
         item['retry_policy'] = 'allow'
@@ -145,7 +200,7 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
             family=dataclasses.replace(self.plan.family, id='../untrusted'))
         record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
             self.profile_id, self.profile, bad_plan, task_id='T-001', task_attempt=1,
-            origin_binding='integration')
+            origin_binding='integration', repository=self.root)
         with self.assertRaises(StoreError):
             authority.validate_plan_record(record, profile_root=PROFILES)
 
@@ -168,7 +223,7 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
         plan = build_plan(self.root, self.profile, self.family, task_commands=['python3 -V'])
         record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
             self.profile_id, self.profile, plan, task_id='T-001', task_attempt=1,
-            task_commands=['python3 -V'], origin_binding='integration')
+            task_commands=['python3 -V'], origin_binding='integration', repository=self.root)
         authority.validate_plan_record(record, profile_root=PROFILES)
         legacy = [o for o in record['obligations'] if o['profile_gate_id'] is None]
         self.assertEqual(1, len(legacy))
@@ -177,8 +232,11 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
 
     def test_exact_accepted_plan_reconstructs_current_units_without_running_them(self):
         with mock.patch.object(authority, 'resolve_accepted', return_value=self.record):
-            with self.assertRaisesRegex(StoreError, 'VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE'):
-                authority.resolve_execution(self.root, self.record['plan_id'], lifecycle=None, profile_root=PROFILES)
+            record, profile, plan, units = authority.resolve_execution(self.root, self.record['plan_id'], lifecycle=None, profile_root=PROFILES)
+        self.assertEqual(self.record, record)
+        self.assertEqual(self.profile.content_hash, profile.content_hash)
+        self.assertEqual(self.plan.family.id, plan.family.id)
+        self.assertEqual(self.record['execution_units'], units)
 
     def test_post_seal_candidate_mutation_rejects_before_execution(self):
         (self.root / 'tooling/agent-harness/seed.py').write_text('mutated after seal\n')
@@ -244,6 +302,100 @@ class AcceptedPlanResolutionTest(unittest.TestCase):
                                             lifecycle=lifecycle, profile_root=linked, profile_id='showcase')
         seal.assert_not_called()
         accept.assert_not_called()
+
+    def test_plan_admission_is_deterministic_and_binds_exact_unit(self):
+        unit = self.record['execution_units'][0]
+        kwargs = dict(repository_id='a' * 64,
+                      plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+                      admission_transition_id='00000000-0000-4000-8000-000000000002')
+        admission = authority.build_plan_admission_record(self.record, unit['unit_id'], **kwargs)
+        self.assertEqual(admission, authority.build_plan_admission_record(
+            self.record, unit['unit_id'], **kwargs))
+        self.assertEqual('independent', admission['execution_origin'])
+        self.assertEqual(admission['admission_id'], authority.plan_admission_id(
+            {key: value for key, value in admission.items() if key != 'admission_id'}))
+        self.assertEqual(self.record['plan_id'], admission['plan_id'])
+        self.assertEqual(self.record['candidate_identity'], admission['candidate_identity'])
+        self.assertEqual(unit['obligation_ids'], admission['obligation_ids'])
+        self.assertEqual(admission, authority.validate_plan_admission_record(
+            admission, self.record, unit))
+
+        changed_memberships = (
+            ('missing', dict(unit, obligation_ids=unit['obligation_ids'][1:])),
+            ('extra', dict(unit, obligation_ids=[*unit['obligation_ids'],
+                'verification-obligation-v2:sha256:' + 'e' * 64])),
+            ('stale', dict(unit, obligation_ids=[
+                'verification-obligation-v2:sha256:' + 'f' * 64,
+                *unit['obligation_ids'][1:]])),
+        )
+        for membership, changed_unit in changed_memberships:
+            with self.subTest(membership=membership), self.assertRaisesRegex(
+                    StoreError, 'invalid-execution-admission'):
+                authority.validate_plan_admission_record(admission, self.record, changed_unit)
+        tampered = dict(admission, final_changed_surface_id='0' * 64)
+        with self.assertRaisesRegex(StoreError, 'invalid-execution-admission'):
+            authority.validate_plan_admission_record(tampered, self.record, unit)
+
+    def test_task_admission_cannot_be_upgraded_to_independent_origin(self):
+        plan = build_plan(self.root, self.profile, self.family, task_commands=['python3 -V'])
+        record = authority.execution_plan_record('SDD-OBS-001', 'f' * 64, 2,
+            self.profile_id, self.profile, plan, task_id='T-001', task_attempt=1,
+            task_commands=['python3 -V'], origin_binding='integration', repository=self.root)
+        task_unit = next(unit for unit in record['execution_units']
+                         if unit['required_origin'] == 'task')
+        admission = authority.build_plan_admission_record(record, task_unit['unit_id'],
+            repository_id='a' * 64,
+            plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+            admission_transition_id='00000000-0000-4000-8000-000000000002')
+        self.assertEqual('task', admission['execution_origin'])
+        self.assertIsNone(admission['independent_execution_class'])
+        forged_plan = dict(record)
+        forged_plan['execution_units'] = [
+            dict(unit, required_origin='independent',
+                 independent_execution_class=authority.INDEPENDENT_CLASS)
+            if unit['unit_id'] == task_unit['unit_id'] else unit
+            for unit in record['execution_units']]
+        with self.assertRaisesRegex(StoreError, 'PLAN_BINDING_MISMATCH'):
+            authority.build_plan_admission_record(forged_plan, task_unit['unit_id'],
+                repository_id='a' * 64,
+                plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+                admission_transition_id='00000000-0000-4000-8000-000000000002')
+
+    def test_reservation_and_consumption_are_bound_and_create_once_shapes(self):
+        unit = self.record['execution_units'][0]
+        admission = authority.build_plan_admission_record(self.record, unit['unit_id'],
+            repository_id='a' * 64,
+            plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+            admission_transition_id='00000000-0000-4000-8000-000000000002')
+        reservation = authority.build_plan_launch_reservation(admission,
+            transition_id='00000000-0000-4000-8000-000000000003')
+        self.assertEqual(reservation, authority.validate_plan_launch_reservation(
+            reservation, admission))
+        consumption = authority.build_launch_consumption_record(admission, reservation,
+            transition_id='00000000-0000-4000-8000-000000000004')
+        self.assertEqual(consumption, authority.validate_launch_consumption_record(
+            consumption, admission, reservation))
+
+        changed_admission = dict(admission, task_attempt=2)
+        with self.assertRaisesRegex(StoreError, 'invalid-launch-reservation'):
+            authority.validate_plan_launch_reservation(reservation, changed_admission)
+        changed_consumption = dict(consumption, reservation_id='launch-reservation-v1:wrong')
+        with self.assertRaisesRegex(StoreError, 'invalid-launch-consumption'):
+            authority.validate_launch_consumption_record(changed_consumption, admission, reservation)
+
+    def test_origin_records_reject_malformed_transition_and_membership(self):
+        unit = self.record['execution_units'][0]
+        with self.assertRaisesRegex(StoreError, 'PLAN_BINDING_MISMATCH'):
+            authority.build_plan_admission_record(self.record, unit['unit_id'],
+                repository_id='not-a-repository-id',
+                plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+                admission_transition_id='00000000-0000-4000-8000-000000000002')
+        with self.assertRaisesRegex(StoreError, 'PLAN_BINDING_MISMATCH'):
+            authority.build_plan_admission_record(self.record, 'unknown-unit',
+                repository_id='a' * 64,
+                plan_acceptance_transition_id='00000000-0000-4000-8000-000000000001',
+                admission_transition_id='00000000-0000-4000-8000-000000000002')
+
 
 if __name__ == '__main__':
     unittest.main()

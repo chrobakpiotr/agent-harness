@@ -1,5 +1,6 @@
 import itertools
 import json
+import pathlib
 import unittest
 from importlib import resources
 from unittest import mock
@@ -25,7 +26,7 @@ class ProfileTest(unittest.TestCase):
         runtime_fields = set(Gate.__dataclass_fields__) - {'command_hash'}
         gate_schema = schema['properties']['gates']['items']
         self.assertFalse(schema['additionalProperties'])
-        self.assertEqual({'schema_version', 'gates'}, set(schema['properties']))
+        self.assertEqual({'schema_version', 'gates', 'toolchain_directories'}, set(schema['properties']))
         self.assertEqual({'schema_version', 'gates'}, set(schema['required']))
         self.assertEqual(1, schema['properties']['schema_version']['const'])
         self.assertFalse(gate_schema['additionalProperties'])
@@ -42,6 +43,34 @@ class ProfileTest(unittest.TestCase):
 
         with self.assertRaises(InvalidPolicy):
             profile(gate(obsolete_policy_field=True))
+
+    def test_v1_toolchain_directories_are_optional_and_validated(self):
+        self.assertEqual((), profile(gate()).toolchain_directories)
+        with __import__('tempfile').TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            trusted = root / 'toolchain'
+            trusted.mkdir(mode=0o700)
+            loaded = load_profile({'schema_version': 1, 'gates': [gate()],
+                                   'toolchain_directories': ['/usr/bin']})
+            self.assertEqual(('/usr/bin',), loaded.toolchain_directories)
+            for invalid in ([str(root / 'missing')], ['relative/toolchain'], [''], [str(root / 'toolchain')]):
+                with self.subTest(invalid=invalid), self.assertRaises(InvalidPolicy):
+                    load_profile({'schema_version': 1, 'gates': [gate()],
+                                  'toolchain_directories': invalid}, repository=root)
+
+    def test_v1_toolchain_directories_reject_duplicate_and_writable_directory(self):
+        with __import__('tempfile').TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            trusted = root / 'toolchain'
+            trusted.mkdir(mode=0o700)
+            value = str(trusted.resolve())
+            with self.assertRaises(InvalidPolicy):
+                load_profile({'schema_version': 1, 'gates': [gate()],
+                              'toolchain_directories': [value, value]})
+            trusted.chmod(0o777)
+            with self.assertRaises(InvalidPolicy):
+                load_profile({'schema_version': 1, 'gates': [gate()],
+                              'toolchain_directories': [value]})
 
     def test_glob_table(self):
         for pattern, path, expected in [

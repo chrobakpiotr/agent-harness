@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from agent_harness.verification.store import (StoreError, VerificationStore, publish_create_once, resolve_control_root,
-                                ReconciliationOutcome)
+                                ReconciliationOutcome, repository_lock)
 
 
 class StoreTest(unittest.TestCase):
@@ -19,6 +19,18 @@ class StoreTest(unittest.TestCase):
             self.assertEqual(first, publish_create_once(path, {'x': 1}))
             with self.assertRaisesRegex(StoreError, 'immutable-record-collision'):
                 publish_create_once(path, {'x': 2})
+
+    def test_create_once_rejects_symlink_ancestor_before_creating_descendants(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp).resolve()
+            outside = root / 'outside'
+            outside.mkdir()
+            link = root / 'redirect'
+            link.symlink_to(outside, target_is_directory=True)
+            escaped_directory = outside / 'would-be-created'
+            with self.assertRaisesRegex(StoreError, 'unsafe-authority-path'):
+                publish_create_once(link / 'would-be-created' / 'record.json', {'authority': True})
+            self.assertFalse(escaped_directory.exists())
 
     def test_unresolved_execution_is_repository_admission_barrier(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -32,6 +44,24 @@ class StoreTest(unittest.TestCase):
                                            'started_at': 1.0, 'family_id': 'f', 'attempt_id': 'a', 'gate_id': 'g'}))
             with self.assertRaisesRegex(StoreError, 'verification-owned'):
                 store.admit_repository_verification()
+
+    def test_lifecycle_admission_may_advance_only_its_exact_execution(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            store = VerificationStore(root, control_root=root / 'store')
+            for execution_id in ('exec-1', 'exec-2'):
+                started = store.executions / execution_id / 'started.json'
+                started.parent.mkdir(parents=True)
+                started.write_text(json.dumps({'schema_version': 2, 'execution_id': execution_id,
+                    'repository_id': store.repository_id, 'backend': 'test', 'worktree': str(root),
+                    'launch_intent_hash': 'a' * 64, 'started_at': 1.0,
+                    'family_id': 'family', 'attempt_id': 'attempt', 'gate_id': 'gate'}))
+            with self.assertRaisesRegex(StoreError, 'verification-owned'):
+                store.admit_repository_verification(allow_execution_id='exec-1')
+            (store.executions / 'exec-2' / 'drained.json').write_text(json.dumps({
+                'schema_version': 2, 'execution_id': 'exec-2', 'repository_id': store.repository_id,
+                'backend': 'test', 'status': 'drained', 'ended_at': 2.0}))
+            store.admit_repository_verification(allow_execution_id='exec-1')
 
     def test_admission_validates_identity_and_terminal_publication_is_create_once(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -67,11 +97,49 @@ class StoreTest(unittest.TestCase):
                 store.admit_repository_verification()
 
     def test_primary_repository_authority_resolution(self):
+        from unittest import mock
+        import agent_harness.repository as repository_module
         # The live checkout, primary or linked worktree, resolves to one primary store.
         root = pathlib.Path(__file__).resolve().parents[1]
         control, repository_id = resolve_control_root(root)
         self.assertEqual('.agent-runs/control/verification-v2', str(control.relative_to(control.parents[2])))
         self.assertEqual(64, len(repository_id))
+        with mock.patch.object(repository_module, '_worktrees', wraps=repository_module._worktrees) as worktrees:
+            store = VerificationStore(root, issuer_registry_path='tooling/agent-harness/human-issuer-registry.json')
+        self.assertEqual(1, worktrees.call_count, 'store construction redundantly scans Git worktrees')
+        self.assertEqual(control.parents[2] / 'tooling/agent-harness/human-issuer-registry.json',
+                         store.issuer_registry.resolve())
+
+    def test_production_store_rejects_caller_supplied_issuer_registry(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            attacker_registry = pathlib.Path(temp) / 'issuer-registry.json'
+            attacker_registry.write_text('{"schema_version":1,"issuers":[]}')
+            with self.assertRaisesRegex(StoreError, 'issuer-registry-override-forbidden'):
+                VerificationStore(root, issuer_registry=attacker_registry)
+
+    def test_registry_path_is_anchored_to_the_primary_checkout_and_fails_closed(self):
+        """[seam] The consumer names a relative registry path; the library anchors it to the primary checkout."""
+        root = pathlib.Path(__file__).resolve().parents[1]
+        self.assertIsNone(VerificationStore(root).issuer_registry)  # no built-in registry
+        for unsafe in ('/etc/registry.json', '../outside.json', 'a/../../b.json', ''):
+            with self.assertRaisesRegex(StoreError, 'issuer-registry-path-invalid'):
+                VerificationStore(root, issuer_registry_path=unsafe)
+
+    def test_admission_resumes_after_crash_left_empty_journal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp).resolve()
+            store = VerificationStore(root, control_root=root / 'store')
+            record = {'schema_version': 2, 'execution_id': 'exec-crash',
+                'repository_id': store.repository_id, 'backend': 'phase-a-test',
+                'worktree': str(root), 'family_id': 'f', 'attempt_id': 'a', 'gate_id': 'g',
+                'launch_intent_hash': 'a' * 64, 'started_at': 1.0}
+            # A killed process can leave this directory after mkdir and before
+            # the create-once started.json publication.
+            (store.executions / 'exec-crash').mkdir(parents=True)
+            journal = store.admit_and_reserve('exec-crash', record)
+            self.assertEqual(record, json.loads((journal / 'started.json').read_text()))
+            self.assertEqual('exec-crash', store._scan_executions()[0][1]['execution_id'])
 
     def test_canonical_identity_is_shared_by_real_linked_worktrees_only(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -191,6 +259,26 @@ class StoreTest(unittest.TestCase):
             self.assertTrue(hasattr(store, 'admit_and_reserve'))
             self.assertTrue(hasattr(store, 'reconstruct_terminals'))
 
+    def test_admission_rejects_unbound_legacy_retry_proof(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp).resolve()
+            store = VerificationStore(root, control_root=root / 'control')
+            record = {
+                'schema_version': 2, 'execution_id': 'exec-legacy',
+                'repository_id': store.repository_id, 'backend': 'test',
+                'worktree': str(root), 'family_id': 'family', 'attempt_id': 'attempt',
+                'gate_id': 'critical-gate', 'launch_intent_hash': 'a' * 64,
+                'started_at': 1.0, 'critical': True, 'retry_policy': 'forbid',
+                'retry_controls': ['internal-retry-disabled:invented'],
+                'retry_policy_proof': {
+                    'schema_version': 1, 'policy': 'forbid', 'critical': True,
+                    'retry_controls': ['internal-retry-disabled:invented'], 'retry_free': True,
+                },
+            }
+            with self.assertRaisesRegex(StoreError, 'retry-policy-violation'):
+                store.admit_and_reserve('exec-legacy', record)
+            self.assertFalse((store.executions / 'exec-legacy' / 'started.json').exists())
+
     def test_red_store_rejects_hostile_execution_paths_and_symlink_artifacts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -209,6 +297,21 @@ class StoreTest(unittest.TestCase):
             processes = [subprocess.Popen([sys.executable, '-c', script, str(package), str(control)], stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
             results = [process.communicate(timeout=5) for process in processes]
             self.assertEqual([0, 0], [process.returncode for process in processes], results)
+
+    def test_red_repository_lock_is_released_after_holder_process_dies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp).resolve()
+            package = pathlib.Path(__file__).resolve().parents[1]
+            script = "import pathlib,os,sys; sys.path.insert(0,sys.argv[1]); from agent_harness.verification.store import repository_lock; p=pathlib.Path(sys.argv[2]);\nwith repository_lock(p,timeout=2):\n print('LOCKED', flush=True); os._exit(23)\n"
+            process = subprocess.Popen([sys.executable, '-c', script, str(package), str(root / 'control')],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertEqual('LOCKED', process.stdout.readline().strip())
+            _, stderr = process.communicate(timeout=5)
+            self.assertEqual(23, process.returncode, stderr)
+            # Kernel-owned locks are released on process death, allowing the
+            # replacement supervisor to reconcile the durable execution journal.
+            with repository_lock(root / 'control', timeout=0.2):
+                self.assertTrue((root / 'control' / 'lock').exists())
 
     def test_terminal_receipt_is_authority_and_projection_is_rebuilt_after_restart(self):
         from agent_harness.verification.model import Evidence
@@ -232,6 +335,7 @@ class StoreTest(unittest.TestCase):
             projection = terminal.parent / 'projection.json'
             self.assertTrue(projection.exists())
             self.assertEqual('e1', json.loads(projection.read_text())['evidence_id'])
+
 
     def test_terminal_without_projection_survives_projection_failure_and_restart(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -15,7 +15,7 @@ from agent_harness.verification.planner import required_nodes
 from agent_harness.verification.profile import load_profile, matches
 from agent_harness.verification.store import StoreError
 
-# Showcase profile at 50c18f9, copied as a test input: the package ships no built-in profile.
+# Showcase profile at 49ab97f, copied as a test input: the package ships no built-in profile.
 PROFILES = pathlib.Path(__file__).resolve().parent / 'fixtures' / 'verification-profiles'
 
 BUILD = 'showcase-gradle-build'
@@ -52,8 +52,8 @@ class ShowcaseApplicabilityTest(unittest.TestCase):
             'modules/application/orchestration/src/main/java/com/cp/ecommerce/application/shipment/ShipmentWorkflow.java': {BUILD, PG, RABBIT},
             'apps/ecommerce/backend/src/main/java/example/UseCase.java': {BUILD, PG, RABBIT},
             'apps/ecommerce/frontend/ecommerce-frontend.gradle': {BUILD, FRONTEND},
-            'apps/ecommerce/frontend/karma.conf.js': {FRONTEND},
-            'apps/ecommerce/frontend/eslint.config.js': {FRONTEND},
+            'apps/ecommerce/frontend/karma.conf.js': {BUILD, FRONTEND},
+            'apps/ecommerce/frontend/eslint.config.js': {BUILD, FRONTEND},
             'apps/ecommerce/backend/src/main/resources/application.yml': {BUILD, PG, RABBIT},
             'apps/ecommerce/backend/ecommerce.gradle': {BUILD, PG, RABBIT},
             'apps/ecommerce/backend/src/test/resources/application-test.properties': {BUILD, PG, RABBIT},

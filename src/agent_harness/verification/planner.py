@@ -22,6 +22,16 @@ def _family(profile, family, safety):
         raise InvalidPolicy('invalid-family-binding')
 
 
+def _surface_patterns(profile):
+    # A lone ** applicability means "always required" and is handled directly
+    # by required_nodes; it must not force repository-wide base enumeration.
+    applicability = tuple(dict.fromkeys(
+        pattern for gate in profile.gates for pattern in gate.applicability
+        if pattern != '**'))
+    inputs = tuple(dict.fromkeys(pattern for gate in profile.gates for pattern in gate.inputs))
+    return tuple(dict.fromkeys((*applicability, *inputs))), applicability
+
+
 def required_nodes(profile, family, surface, task_commands=(), *, safety=None):
     safety = safety or default_safety()
     by_id = {g.id: g for g in profile.gates}
@@ -123,8 +133,14 @@ class _Evaluation:
     def __init__(self, root, profile, family, evidence, probes, safety, surface=None):
         self.root, self.profile, self.family = root, profile, family
         self.evidence, self.probes, self.safety = dict(evidence or {}), probes or {}, safety
-        self.surface = surface or changed_surface(root, family.base_sha)
-        self.session = ObservationSession(root, self.surface, safety)
+        surface_patterns, applicability_patterns = _surface_patterns(profile)
+        input_patterns = tuple(dict.fromkeys(p for gate in profile.gates for p in gate.inputs))
+        self.surface = surface or changed_surface(root, family.base_sha,
+            patterns=surface_patterns,
+            applicability_patterns=applicability_patterns)
+        self.session = ObservationSession(root, self.surface, safety,
+            enumerate_paths=any(g.inputs for g in profile.gates),
+            input_patterns=input_patterns)
         self.by_id = {g.id: g for g in profile.gates}
         self.memo = {}
         # Hold the supplied receipts for this evaluation only. Object identity avoids
@@ -233,7 +249,10 @@ class _Evaluation:
 def build_plan(root, profile, family, *, task_commands=(), continuation=False, evidence=None, probes=None, safety=None):
     safety = safety or default_safety()
     _family(profile, family, safety)
-    surface = changed_surface(root, family.base_sha)
+    surface_patterns, applicability_patterns = _surface_patterns(profile)
+    surface = changed_surface(root, family.base_sha,
+                              patterns=surface_patterns,
+                              applicability_patterns=applicability_patterns)
     nodes = required_nodes(profile, family, surface, task_commands, safety=safety)
     evaluation = _Evaluation(root, profile, family, evidence, probes, safety, surface)
     return Plan(family, tuple(evaluation.evaluate(n, continuation=continuation) for n in nodes))

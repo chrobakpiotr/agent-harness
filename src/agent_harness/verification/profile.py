@@ -1,8 +1,10 @@
 """Version-one policy loader and platform-independent segment mini-glob."""
 import hashlib
 import json
+import os
 import pathlib
 import re
+import stat
 from functools import lru_cache
 
 from .model import Artifact, Gate, InvalidPolicy, Probe, Profile
@@ -96,7 +98,48 @@ def _no_duplicates(pairs):
     return out
 
 
-def load_profile(source, *, safety=None):
+def _toolchain_directories(values, *, repository=None, sandbox_home=None, tmpdir=None):
+    if (not isinstance(values, list) or any(not isinstance(value, str) or not value for value in values)
+            or len(set(values)) != len(values)):
+        raise InvalidPolicy('invalid-toolchain-directories')
+    forbidden = []
+    for value in (repository, sandbox_home, tmpdir or os.environ.get('TMPDIR')):
+        if value:
+            try:
+                forbidden.append(pathlib.Path(value).resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                if value == repository:
+                    raise InvalidPolicy('invalid-toolchain-boundary') from None
+    result = []
+    for value in values:
+        path = pathlib.Path(value)
+        try:
+            if not path.is_absolute() or path.resolve(strict=True) != path:
+                raise InvalidPolicy('invalid-toolchain-directory')
+            if path == pathlib.Path(path.anchor):
+                raise InvalidPolicy('invalid-toolchain-directory')
+            current = path
+            while True:
+                info = current.lstat()
+                if stat.S_ISLNK(info.st_mode) or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    raise InvalidPolicy('unsafe-toolchain-directory')
+                if any(path == root or path in root.parents or root in path.parents
+                       for root in forbidden):
+                    raise InvalidPolicy('unsafe-toolchain-directory')
+                if current.parent == current:
+                    break
+                current = current.parent
+            if not path.is_dir():
+                raise InvalidPolicy('invalid-toolchain-directory')
+        except InvalidPolicy:
+            raise
+        except (OSError, RuntimeError, ValueError):
+            raise InvalidPolicy('invalid-toolchain-directory') from None
+        result.append(str(path))
+    return tuple(result)
+
+
+def load_profile(source, *, safety=None, repository=None, sandbox_home=None, tmpdir=None):
     """Load only the trusted control-plane snapshot; never discover worktree policy."""
     safety = safety or default_safety()
     try:
@@ -108,8 +151,13 @@ def load_profile(source, *, safety=None):
             document = json.loads(raw, object_pairs_hook=_no_duplicates)
         if not safety.safe(raw.decode('utf-8')):
             raise InvalidPolicy('unsafe-policy')
-        if not isinstance(document, dict) or set(document) != {'schema_version', 'gates'} or type(document['schema_version']) is not int or document['schema_version'] != 1:
+        if (not isinstance(document, dict) or set(document) - {'schema_version', 'gates', 'toolchain_directories'}
+                or not {'schema_version', 'gates'} <= set(document)
+                or type(document['schema_version']) is not int or document['schema_version'] != 1):
             raise InvalidPolicy('unsupported-profile')
+        toolchain_directories = _toolchain_directories(
+            document.get('toolchain_directories', []), repository=repository,
+            sandbox_home=sandbox_home, tmpdir=tmpdir)
         if not isinstance(document['gates'], list): raise InvalidPolicy('invalid-gates')
         gates = []
         allowed = set(Gate.__dataclass_fields__) - {'command_hash'}
@@ -180,7 +228,7 @@ def load_profile(source, *, safety=None):
                 for pattern in g.inputs:
                     if affects_descendants(pattern, path) or any(matches(pattern, '/'.join(path.split('/')[:i])) for i in range(1, len(path.split('/')))):
                         raise InvalidPolicy('artifact-source-overlap')
-        return Profile(1, hashlib.sha256(raw).hexdigest(), tuple(gates))
+        return Profile(1, hashlib.sha256(raw).hexdigest(), tuple(gates), toolchain_directories)
     except InvalidPolicy:
         raise
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError):

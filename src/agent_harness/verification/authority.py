@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import hashlib
+import dataclasses
 import pathlib
 import re
+import shlex
 
 from .serialization import canonical
 
 
 def execution_plan_record(feature_id: str, feature_fingerprint: str, generation: int,
                           profile_id: str, profile, plan, *, task_id: str, task_attempt: int,
-                          task_commands=(), origin_binding: str):
+                          task_commands=(), origin_binding: str, repository=None, executable_binder=None):
     family = {
         'id': plan.family.id, 'base_sha': plan.family.base_sha,
         'origin_policy': plan.family.origin_policy, 'profile_hash': plan.family.profile_hash,
@@ -19,8 +21,25 @@ def execution_plan_record(feature_id: str, feature_fingerprint: str, generation:
         'final_changed_surface_id': plan.family.final_changed_surface_id,
     }
     obligations = []
+    executable_bindings = []
+    if repository is not None:
+        repository = pathlib.Path(repository).resolve(strict=True)
+    import sys
+    from agent_harness.executables import default_executable_binder, resolve_executable
+    binder = executable_binder or default_executable_binder
+    control_interpreter = str(pathlib.Path(sys.executable).resolve(strict=True))
+    control_executable_binding = resolve_executable(control_interpreter,
+        toolchain_directories=profile.toolchain_directories, worktree=repository,
+        active_interpreter=True)
     for decision in plan.decisions:
         node, gate = decision.node, decision.node.gate
+        if repository is None and gate.command.split(maxsplit=1)[0] == './gradlew':
+            raise ValueError('repository-required-for-worktree-executable-binding')
+        command_root = repository  # explicit root only; never the process cwd (ADR 0001 decision 3)
+        executable_bindings.append({'gate_id': node.id, 'command_hash': gate.command_hash,
+            'binding': binder(gate.command, worktree=command_root,
+                cwd=command_root / gate.cwd if command_root is not None else None,
+                toolchain_directories=profile.toolchain_directories)})
         identity = {'family_id': family['id'], 'gate_id': node.id,
                     'profile_gate_id': node.profile_gate_id,
                     'occurrence': node.occurrence, 'ordinal': node.ordinal,
@@ -46,7 +65,8 @@ def execution_plan_record(feature_id: str, feature_fingerprint: str, generation:
         'candidate_identity': family['candidate_identity'],
         'final_changed_surface_id': family['final_changed_surface_id'],
         'origin_binding': origin_binding, 'obligations': obligations,
-        'execution_units': units,
+        'execution_units': units, 'executable_bindings': executable_bindings,
+        'control_executable_binding': control_executable_binding,
         'task_commands': [dict(command=item['command'], cwd=item.get('cwd', '.'))
                           if isinstance(item, dict) else {'command': item, 'cwd': '.'}
                           for item in task_commands]}
@@ -75,7 +95,7 @@ def resolve_accepted(repository: pathlib.Path, plan_id: str, *, lifecycle) -> di
 
 
 def resolve_execution(repository: pathlib.Path, plan_id: str, *, lifecycle, profile_root: pathlib.Path,
-                      unit_id: str | None = None):
+                      unit_id: str | None = None, executable_binder=None):
     """Resolve exact accepted authority and rebuild the executable plan from it."""
     from .candidate import CandidateSealError, seal_candidate
     from .model import Family
@@ -91,7 +111,7 @@ def resolve_execution(repository: pathlib.Path, plan_id: str, *, lifecycle, prof
     profile_path = (profile_root / (record['profile_id'] + '.json')).resolve(strict=True)
     if profile_path.parent != profile_root.resolve(strict=True):
         raise StoreError('ACCEPTED_PLAN_UNAVAILABLE')
-    profile = load_profile(profile_path)
+    profile = load_profile(profile_path, repository=repository)
     if (profile.content_hash != record['profile_hash'] or
             family_record.get('profile_hash') != record['profile_hash'] or
             record.get('origin_binding') != family_record.get('origin_policy') or
@@ -118,7 +138,7 @@ def resolve_execution(repository: pathlib.Path, plan_id: str, *, lifecycle, prof
     expected = execution_plan_record(record['feature_id'], record['feature_fingerprint'],
         record['lifecycle_generation'], record['profile_id'], profile, plan,
         task_id=record['task_id'], task_attempt=record['task_attempt'],
-        task_commands=commands, origin_binding=record['origin_binding'])
+        task_commands=commands, origin_binding=record['origin_binding'], repository=repository, executable_binder=executable_binder)
     if expected != record:
         raise StoreError('PLAN_BINDING_MISMATCH')
     obligation_by_id = {item['obligation_id']: item for item in record['obligations']}
@@ -135,12 +155,13 @@ def resolve_execution(repository: pathlib.Path, plan_id: str, *, lifecycle, prof
     decisions = tuple(item for index, item in enumerate(plan.decisions) if index in selected_indexes)
     if len(decisions) != len(selected_indexes):
         raise StoreError('PLAN_BINDING_MISMATCH')
-    raise StoreError('VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE')
+    selected_plan = dataclasses.replace(plan, decisions=decisions)
+    return record, profile, selected_plan, selected_units
 
 
 def prepare_task_plan(repository: pathlib.Path, feature_dir: pathlib.Path, task_id: str,
                       task_attempt: int, base_sha: str, task_commands, *, lifecycle,
-                      profile_root: pathlib.Path, profile_id: str):
+                      profile_root: pathlib.Path, profile_id: str, executable_binder=None):
     """Trusted orchestration publishes and lifecycle-accepts post-seal authority."""
     from .candidate import CandidateSealError, seal_candidate
     from .model import Family
@@ -161,7 +182,7 @@ def prepare_task_plan(repository: pathlib.Path, feature_dir: pathlib.Path, task_
     profile_path = (profile_root / (profile_id + '.json')).resolve(strict=True)
     if profile_path.parent != profile_root.resolve(strict=True):
         raise StoreError('ACCEPTED_PLAN_UNAVAILABLE')
-    profile = load_profile(profile_path)
+    profile = load_profile(profile_path, repository=repository)
     family_id = f'{feature_dir.name.lower()}-{task_id.lower()}-attempt-{task_attempt}'
     policy_checkpoint = profile.content_hash
     origin_binding = 'task-completion'
@@ -179,7 +200,7 @@ def prepare_task_plan(repository: pathlib.Path, feature_dir: pathlib.Path, task_
     record = execution_plan_record(doc['feature'], lifecycle.feature_fingerprint(feature_dir),
         state.get('feature_generation', 1), profile_id, profile, plan,
         task_id=task_id, task_attempt=task_attempt, task_commands=commands,
-        origin_binding=origin_binding)
+        origin_binding=origin_binding, repository=repository, executable_binder=executable_binder)
     publish_and_accept(repository, feature_dir, record,
                        expected_generation=state.get('feature_generation', 1),
                        lifecycle=lifecycle, profile_root=profile_root)
@@ -189,7 +210,315 @@ def prepare_task_plan(repository: pathlib.Path, feature_dir: pathlib.Path, task_
 INDEPENDENT_CLASS = 'harness-managed-independent-execution-v1'
 
 
-def validate_plan_record(record, *, profile_root, repository=None, reconstruct=False):
+# Execution-origin record interface for the lifecycle transaction owner:
+# build an admission from the exact accepted plan/unit, build its reservation,
+# then build its consumption. These helpers are deterministic and never read or
+# mutate lifecycle state; callers must perform each create-once CAS themselves.
+_TRANSITION_ID_PATTERN = re.compile(
+    r'[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}')
+_SHA256_PATTERN = re.compile(r'[0-9a-f]{64}')
+
+
+def _record_digest(value: dict) -> str:
+    return hashlib.sha256(canonical(value)).hexdigest()
+
+
+def _transition_id(value) -> bool:
+    return isinstance(value, str) and _TRANSITION_ID_PATTERN.fullmatch(value) is not None
+
+
+def _is_sha256(value) -> bool:
+    return isinstance(value, str) and _SHA256_PATTERN.fullmatch(value) is not None
+
+
+def _plan_admission_id(body: dict) -> str:
+    return 'verification-admission-v1:sha256:' + _record_digest(body)
+
+
+def plan_admission_id(body: dict) -> str:
+    """Return the stable ID for a canonical admission body (without its ID field)."""
+    if not isinstance(body, dict) or 'admission_id' in body:
+        from .store import StoreError
+        raise StoreError('invalid-execution-admission')
+    return _plan_admission_id(body)
+
+
+def _launch_reservation_id(body: dict) -> str:
+    return 'launch-reservation-v1:sha256:' + _record_digest(body)
+
+
+def build_plan_admission_record(plan: dict, unit_id: str, *, repository_id: str,
+                                plan_acceptance_transition_id: str,
+                                admission_transition_id: str) -> dict:
+    """Build an immutable admission projection from one exact accepted plan unit."""
+    from .store import StoreError
+
+    mismatch = StoreError('PLAN_BINDING_MISMATCH')
+    if (not isinstance(plan, dict) or not _is_sha256(repository_id) or
+            not _transition_id(plan_acceptance_transition_id) or
+            not _transition_id(admission_transition_id) or not isinstance(unit_id, str)):
+        raise mismatch
+    units = plan.get('execution_units')
+    obligations = plan.get('obligations')
+    if not isinstance(units, list) or not isinstance(obligations, list):
+        raise mismatch
+    matches = [item for item in units
+               if isinstance(item, dict) and item.get('unit_id') == unit_id]
+    if len(matches) != 1:
+        raise mismatch
+    unit = matches[0]
+    if (set(unit) != {'unit_id', 'obligation_ids', 'required_origin',
+                      'independent_execution_class'} or
+            not isinstance(unit['obligation_ids'], list) or not unit['obligation_ids'] or
+            any(not isinstance(item, str) or not item for item in unit['obligation_ids']) or
+            len(unit['obligation_ids']) != len(set(unit['obligation_ids']))):
+        raise mismatch
+    by_id = {}
+    for item in obligations:
+        if not isinstance(item, dict) or not isinstance(item.get('obligation_id'), str):
+            raise mismatch
+        if item['obligation_id'] in by_id:
+            raise mismatch
+        by_id[item['obligation_id']] = item
+    members = [by_id.get(item) for item in unit['obligation_ids']]
+    if any(item is None for item in members):
+        raise mismatch
+    if any(item.get('required_origin') not in {'task', 'independent'} for item in members):
+        raise mismatch
+
+    origins = {item.get('required_origin') for item in members}
+    if origins == {'task'}:
+        origin, execution_class = 'task', None
+    elif origins <= {'task', 'independent'} and 'independent' in origins:
+        origin, execution_class = 'independent', INDEPENDENT_CLASS
+    else:
+        raise mismatch
+    for item in members:
+        member_origin = item['required_origin']
+        if member_origin == 'task':
+            if (item.get('independent_execution_class') is not None or
+                    item.get('requirement_source') != 'task-command' or
+                    not isinstance(item.get('gate_id'), str) or
+                    not item['gate_id'].startswith(('task-command:', 'legacy-task-command:'))):
+                raise mismatch
+        elif (item.get('independent_execution_class') != INDEPENDENT_CLASS or
+              item.get('requirement_source') != 'profile'):
+            raise mismatch
+    if (unit['required_origin'], unit['independent_execution_class']) != (
+            origin, execution_class):
+        raise mismatch
+
+    family = plan.get('family')
+    required_plan_values = (
+        plan.get('feature_id'), plan.get('task_id'), plan.get('plan_id'),
+        plan.get('profile_id'), plan.get('profile_hash'), plan.get('policy_checkpoint'),
+        plan.get('candidate_identity'), plan.get('final_changed_surface_id'))
+    if (not isinstance(family, dict) or not all(isinstance(value, str) and value
+                                                for value in required_plan_values) or
+            not isinstance(family.get('id'), str) or not family['id'] or
+            type(plan.get('task_attempt')) is not int or plan['task_attempt'] < 1 or
+            type(plan.get('lifecycle_generation')) is not int or
+            plan['lifecycle_generation'] < 1 or
+            plan.get('schema_version') != 2 or
+            not re.fullmatch(r'verification-plan-v2:sha256:[0-9a-f]{64}', plan['plan_id']) or
+            not _is_sha256(plan['profile_hash']) or
+            not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', plan['policy_checkpoint']) or
+            not _is_sha256(plan['candidate_identity']) or
+            not _is_sha256(plan['final_changed_surface_id']) or
+            not isinstance(family.get('base_sha'), str) or
+            not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', family['base_sha']) or
+            family.get('candidate_identity') != plan['candidate_identity'] or
+            family.get('final_changed_surface_id') != plan['final_changed_surface_id'] or
+            family.get('profile_hash') != plan['profile_hash'] or
+            family.get('policy_checkpoint') != plan['policy_checkpoint']):
+        raise mismatch
+
+    body = {
+        'schema_version': 1, 'repository_id': repository_id,
+        'feature_id': plan['feature_id'], 'task_id': plan['task_id'],
+        'task_attempt': plan['task_attempt'],
+        'lifecycle_generation': plan['lifecycle_generation'],
+        'plan_id': plan['plan_id'],
+        'plan_acceptance_transition_id': plan_acceptance_transition_id,
+        'admission_transition_id': admission_transition_id,
+        'family_id': family['id'], 'profile_id': plan['profile_id'],
+        'profile_hash': plan['profile_hash'], 'policy_checkpoint': plan['policy_checkpoint'],
+        'candidate_identity': plan['candidate_identity'],
+        'final_changed_surface_id': plan['final_changed_surface_id'],
+        'unit_id': unit_id, 'obligation_ids': list(unit['obligation_ids']),
+        'execution_origin': origin, 'independent_execution_class': execution_class,
+    }
+    return {'admission_id': _plan_admission_id(body), **body}
+
+
+def validate_plan_admission_record_shape(record: dict) -> dict:
+    """Validate the closed admission schema and its content-derived identity."""
+    from .store import StoreError
+
+    keys = {'admission_id', 'schema_version', 'repository_id', 'feature_id', 'task_id',
+            'task_attempt', 'lifecycle_generation', 'plan_id',
+            'plan_acceptance_transition_id', 'admission_transition_id', 'family_id',
+            'profile_id', 'profile_hash', 'policy_checkpoint', 'candidate_identity',
+            'final_changed_surface_id', 'unit_id', 'obligation_ids', 'execution_origin',
+            'independent_execution_class'}
+    try:
+        if not isinstance(record, dict) or set(record) != keys:
+            raise ValueError()
+        if (type(record['schema_version']) is not int or record['schema_version'] != 1 or
+                any(not isinstance(record[key], str) or not record[key] for key in
+                    ('admission_id', 'feature_id', 'task_id', 'plan_id', 'family_id',
+                     'profile_id', 'policy_checkpoint', 'unit_id')) or
+                type(record['task_attempt']) is not int or record['task_attempt'] < 1 or
+                type(record['lifecycle_generation']) is not int or
+                record['lifecycle_generation'] < 1 or
+                not _is_sha256(record['repository_id']) or
+                not _is_sha256(record['profile_hash']) or
+                not _is_sha256(record['candidate_identity']) or
+                not _is_sha256(record['final_changed_surface_id']) or
+                not _transition_id(record['plan_acceptance_transition_id']) or
+                not _transition_id(record['admission_transition_id']) or
+                not isinstance(record['obligation_ids'], list) or
+                not record['obligation_ids'] or
+                any(not isinstance(item, str) or not item for item in record['obligation_ids']) or
+                len(record['obligation_ids']) != len(set(record['obligation_ids'])) or
+                record['execution_origin'] not in {'task', 'independent'} or
+                (record['execution_origin'] == 'task' and
+                 record['independent_execution_class'] is not None) or
+                (record['execution_origin'] == 'independent' and
+                 record['independent_execution_class'] != INDEPENDENT_CLASS)):
+            raise ValueError()
+        body = {key: record[key] for key in keys if key != 'admission_id'}
+        if record['admission_id'] != _plan_admission_id(body):
+            raise ValueError()
+        return record
+    except (KeyError, TypeError, ValueError):
+        raise StoreError('invalid-execution-admission') from None
+
+
+def validate_plan_admission_record(record: dict, plan: dict,
+                                   unit: dict | None = None) -> dict:
+    """Rebuild and compare against the exact accepted plan and optional unit."""
+    from .store import StoreError
+    try:
+        validate_plan_admission_record_shape(record)
+        expected = build_plan_admission_record(plan, record['unit_id'],
+            repository_id=record['repository_id'],
+            plan_acceptance_transition_id=record['plan_acceptance_transition_id'],
+            admission_transition_id=record['admission_transition_id'])
+        if record != expected:
+            raise ValueError()
+        if unit is not None:
+            matches = [item for item in plan['execution_units']
+                       if isinstance(item, dict) and item.get('unit_id') == record['unit_id']]
+            if len(matches) != 1 or unit != matches[0]:
+                raise ValueError()
+        return record
+    except (KeyError, TypeError, ValueError, StoreError):
+        raise StoreError('invalid-execution-admission') from None
+
+
+def build_plan_launch_reservation(admission: dict, *, transition_id: str) -> dict:
+    """Build the reservation that must be published atomically with admission."""
+    from .store import StoreError
+    validate_plan_admission_record_shape(admission)
+    if not _transition_id(transition_id):
+        raise StoreError('invalid-launch-reservation')
+    body = {key: admission[key] for key in (
+        'schema_version', 'repository_id', 'feature_id', 'task_id', 'task_attempt',
+        'lifecycle_generation', 'plan_id', 'plan_acceptance_transition_id',
+        'family_id', 'admission_transition_id', 'candidate_identity',
+        'final_changed_surface_id', 'unit_id', 'obligation_ids', 'execution_origin',
+        'independent_execution_class')}
+    body.update({'admission_id': admission['admission_id'],
+                 'transition_id': transition_id, 'status': 'launch_reserved'})
+    return {'reservation_id': _launch_reservation_id(body), **body}
+
+
+def validate_plan_launch_reservation(record: dict, admission: dict | None = None) -> dict:
+    """Validate reservation content, and optionally its exact admission parent."""
+    from .store import StoreError
+    keys = {'reservation_id', 'schema_version', 'repository_id', 'feature_id', 'task_id',
+            'task_attempt', 'lifecycle_generation', 'plan_id',
+            'plan_acceptance_transition_id', 'admission_transition_id', 'family_id',
+            'candidate_identity', 'final_changed_surface_id', 'unit_id', 'obligation_ids',
+            'execution_origin', 'independent_execution_class', 'admission_id',
+            'transition_id', 'status'}
+    try:
+        if not isinstance(record, dict) or set(record) != keys:
+            raise ValueError()
+        if (type(record['schema_version']) is not int or record['schema_version'] != 1 or
+                record['status'] != 'launch_reserved' or
+                not isinstance(record['reservation_id'], str) or
+                not _transition_id(record['transition_id']) or
+                any(not isinstance(record[key], str) or not record[key] for key in
+                    ('feature_id', 'task_id', 'plan_id', 'family_id', 'unit_id',
+                     'admission_id', 'reservation_id')) or
+                type(record['task_attempt']) is not int or record['task_attempt'] < 1 or
+                type(record['lifecycle_generation']) is not int or
+                record['lifecycle_generation'] < 1 or
+                not _is_sha256(record['repository_id']) or
+                not _is_sha256(record['candidate_identity']) or
+                not _is_sha256(record['final_changed_surface_id']) or
+                not _transition_id(record['plan_acceptance_transition_id']) or
+                not _transition_id(record['admission_transition_id']) or
+                not isinstance(record['obligation_ids'], list) or
+                not record['obligation_ids'] or
+                any(not isinstance(item, str) or not item for item in record['obligation_ids']) or
+                len(record['obligation_ids']) != len(set(record['obligation_ids'])) or
+                record['execution_origin'] not in {'task', 'independent'} or
+                (record['execution_origin'] == 'task' and
+                 record['independent_execution_class'] is not None) or
+                (record['execution_origin'] == 'independent' and
+                 record['independent_execution_class'] != INDEPENDENT_CLASS)):
+            raise ValueError()
+        body = {key: record[key] for key in keys if key != 'reservation_id'}
+        if record['reservation_id'] != _launch_reservation_id(body):
+            raise ValueError()
+        if admission is not None:
+            validate_plan_admission_record_shape(admission)
+            expected = build_plan_launch_reservation(admission,
+                                                      transition_id=record['transition_id'])
+            if record != expected:
+                raise ValueError()
+        return record
+    except (KeyError, TypeError, ValueError, StoreError):
+        raise StoreError('invalid-launch-reservation') from None
+
+
+def build_launch_consumption_record(admission: dict, reservation: dict, *,
+                                    transition_id: str) -> dict:
+    """Build the single-use consumption record for an exact reservation."""
+    from .store import StoreError
+    validate_plan_admission_record_shape(admission)
+    validate_plan_launch_reservation(reservation, admission)
+    if not _transition_id(transition_id):
+        raise StoreError('invalid-launch-consumption')
+    body = {key: reservation[key] for key in (
+        'repository_id', 'feature_id', 'task_id', 'task_attempt', 'lifecycle_generation',
+        'plan_id', 'plan_acceptance_transition_id', 'family_id', 'admission_id',
+        'candidate_identity', 'final_changed_surface_id', 'unit_id', 'obligation_ids',
+        'execution_origin', 'independent_execution_class', 'reservation_id')}
+    body.update({'schema_version': 1, 'transition_id': transition_id,
+                 'status': 'launch_consumed'})
+    body['consumption_id'] = 'launch-consumption-v1:sha256:' + _record_digest(body)
+    return body
+
+
+def validate_launch_consumption_record(record: dict, admission: dict,
+                                       reservation: dict) -> dict:
+    """Validate a consumption against its admission and reservation parents."""
+    from .store import StoreError
+    try:
+        expected = build_launch_consumption_record(admission, reservation,
+                                                   transition_id=record['transition_id'])
+        if record != expected:
+            raise ValueError()
+        return record
+    except (KeyError, TypeError, ValueError, StoreError):
+        raise StoreError('invalid-launch-consumption') from None
+
+
+def validate_plan_record(record, *, profile_root, repository=None, reconstruct=False, executable_binder=None):
     """One fail-closed validator for publication and lifecycle authority."""
     from .store import StoreError, _validate_component
     from .profile import load_profile, command_identity
@@ -197,7 +526,8 @@ def validate_plan_record(record, *, profile_root, repository=None, reconstruct=F
     required = {'schema_version', 'plan_id', 'feature_id', 'task_id', 'task_attempt',
         'feature_fingerprint', 'lifecycle_generation', 'family', 'profile_id', 'profile_hash',
         'policy_checkpoint', 'candidate_identity', 'final_changed_surface_id',
-        'origin_binding', 'obligations', 'execution_units', 'task_commands'}
+        'origin_binding', 'obligations', 'execution_units', 'task_commands', 'executable_bindings',
+        'control_executable_binding'}
     try:
         if not isinstance(record, dict) or set(record) != required or type(record['schema_version']) is not int or record['schema_version'] != 2:
             raise ValueError()
@@ -213,8 +543,19 @@ def validate_plan_record(record, *, profile_root, repository=None, reconstruct=F
         profile_root = pathlib.Path(profile_root)
         profile_path = (profile_root / (record['profile_id'] + '.json')).resolve(strict=True)
         if profile_path.parent != profile_root.resolve(strict=True): raise ValueError()
-        profile = load_profile(profile_path)
+        profile = load_profile(profile_path, repository=repository)
         if profile.content_hash != record['profile_hash']: raise ValueError()
+        control_binding = record['control_executable_binding']
+        from agent_harness.executables import default_executable_binder, resolve_executable, verify_executable_binding
+        verify_executable_binding(control_binding)
+        import sys
+        control_interpreter = str(pathlib.Path(sys.executable).resolve(strict=True))
+        if control_binding.get('command') != control_interpreter: raise ValueError()
+        if repository is not None:
+            expected_control_binding = resolve_executable(control_interpreter,
+                toolchain_directories=profile.toolchain_directories, worktree=repository,
+                active_interpreter=True)
+            if control_binding != expected_control_binding: raise ValueError()
         family = record['family']
         if set(family) != {'id', 'base_sha', 'origin_policy', 'profile_hash', 'policy_checkpoint', 'candidate_identity', 'final_changed_surface_id'}: raise ValueError()
         _validate_component(family['id'], 'invalid-verification-plan')
@@ -233,6 +574,16 @@ def validate_plan_record(record, *, profile_root, repository=None, reconstruct=F
         obligation_keys = identity_keys | {'obligation_id', 'command', 'command_hash', 'cwd', 'dependencies', 'critical', 'retry_policy', 'retry_controls', 'sandbox'}
         obligations = record['obligations']; units = record['execution_units']
         if not isinstance(obligations, list) or not obligations or not isinstance(units, list) or len(units) != len(obligations): raise ValueError()
+        raw_bindings = record['executable_bindings']
+        if not isinstance(raw_bindings, list) or len(raw_bindings) != len(obligations): raise ValueError()
+        bindings_by_gate = {}
+        for executable in raw_bindings:
+            if (not isinstance(executable, dict) or set(executable) != {'gate_id', 'command_hash', 'binding'} or
+                    not isinstance(executable['gate_id'], str) or executable['gate_id'] in bindings_by_gate or
+                    not isinstance(executable['command_hash'], str)):
+                raise ValueError()
+            verify_executable_binding(executable['binding'])
+            bindings_by_gate[executable['gate_id']] = executable
         seen = set()
         by_gate = {g.id: g for g in profile.gates}
         for item, unit in zip(obligations, units):
@@ -248,6 +599,16 @@ def validate_plan_record(record, *, profile_root, repository=None, reconstruct=F
             gate = by_gate.get(item['profile_gate_id'])
             if not task and (gate is None or cls not in gate.independent_execution_classes or item['sandbox'] != 'required' or item['gate_id'] != gate.id): raise ValueError()
             if item['command_hash'] != command_identity(item['command'], item['cwd']): raise ValueError()
+            executable = bindings_by_gate.get(item['gate_id'])
+            command_argv = shlex.split(item['command'], posix=True)
+            if (executable is None or executable['command_hash'] != item['command_hash'] or
+                    not command_argv or executable['binding'].get('command') != command_argv[0]):
+                raise ValueError()
+            if repository is not None:
+                expected_binding = (executable_binder or default_executable_binder)(item['command'], worktree=repository,
+                    cwd=pathlib.Path(repository) / item['cwd'],
+                    toolchain_directories=profile.toolchain_directories)
+                if executable['binding'] != expected_binding: raise ValueError()
             if gate is not None:
                 for key in ('command', 'command_hash', 'cwd', 'critical', 'retry_policy', 'sandbox'):
                     if item[key] != getattr(gate, key): raise ValueError()
@@ -271,7 +632,7 @@ def validate_plan_record(record, *, profile_root, repository=None, reconstruct=F
                 raise ValueError() from None
             if seal.candidate_identity != record['candidate_identity'] or seal.changed_surface_id != record['final_changed_surface_id']: raise ValueError()
             plan = build_plan(repository, profile, Family(**family), task_commands=record['task_commands'])
-            expected = execution_plan_record(record['feature_id'], record['feature_fingerprint'], record['lifecycle_generation'], record['profile_id'], profile, plan, task_id=record['task_id'], task_attempt=record['task_attempt'], task_commands=record['task_commands'], origin_binding=record['origin_binding'])
+            expected = execution_plan_record(record['feature_id'], record['feature_fingerprint'], record['lifecycle_generation'], record['profile_id'], profile, plan, task_id=record['task_id'], task_attempt=record['task_attempt'], task_commands=record['task_commands'], origin_binding=record['origin_binding'], repository=repository, executable_binder=executable_binder)
             if expected != record: raise ValueError()
         return record
     except StoreError:

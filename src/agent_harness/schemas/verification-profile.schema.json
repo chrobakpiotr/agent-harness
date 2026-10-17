@@ -5,6 +5,17 @@
     "schema_version": {
       "const": 1
     },
+    "toolchain_directories": {
+      "type": "array",
+      "description": "Optional absolute canonical directories trusted for executable resolution. Omission declares no additional toolchain search paths.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^/"
+      }
+    },
     "gates": {
       "type": "array",
       "items": {
