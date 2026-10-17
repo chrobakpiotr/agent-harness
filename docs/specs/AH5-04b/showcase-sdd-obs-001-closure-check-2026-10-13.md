@@ -260,3 +260,19 @@ Verdict: **accept.** Commit it to `main`, then complete T-007 attempt 2 with `co
 
 Then: commit the fix to `main`, complete T-007 attempt 2, re-gate T-990, and confirm Agentic SDD CI on the pushed
 `main`.
+
+## Status check at Showcase `main` `49ab97f` (2026-10-17)
+
+- **Lifecycle.** All 11 tasks are `completed`. T-900 was re-completed at `2d7d772` and T-990 re-gated at `86328aa`
+  (both 2026-10-15). T-007's attempt-2 correction and repair cycle finished at `b7fee8b`; its attempt-1 pointers are
+  retired into history, and the attempt-2 pointers stay active by design until the next `reopen`/`start`.
+- **CI on `49ab97f`.** Agentic SDD CI succeeded (run 39031765285), with the container jobs green. The main CI run was
+  still running at the time of this check.
+- **Maintenance commits since the last Harness review, checked:**
+  - `5e20733` ("fix completion repair replay identity"). `complete-repair` treated any earlier repair record as a
+    replay, so a second correction cycle collided with the first. It now matches replays by the current claim ID,
+    keeping the completed-state fallback, with a regression test. Correct.
+  - `9455e8a`. The pinned `build.gradle` input hash becomes `b2d5db7b…`, equal to `build.gradle` at `49ab97f`
+    (changed by `deddce1`). All 41 pinned trusted inputs in `verification/store.py` match their files.
+- **Harness-side items.** None open and none blocking. Showcase pins `agent-harness` v0.5.0 (`16bb938`, in
+  `requirements.txt`). Upgrading to the current release is optional and needs its own qualification run.
