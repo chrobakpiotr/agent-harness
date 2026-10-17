@@ -51,3 +51,31 @@
 When S30-06 defines an exact target and asks for qualification, send its tuple: broker, node count, image digests
 and the fault-injection surface. Harness can then say whether the qualification and grading machinery applies, or
 whether a new reviewed qualification is needed. Nothing is needed now.
+
+## Reconnect follow-up (run `20261017T202943Z-9f3564a897`)
+
+Checked against `run-metadata.json`, `probe-result.json` and the first attempt's `cleanup-reconciliation.json`:
+
+- Matches the handover:
+  - RabbitMQ digest `fa4df769…`, Docker 29.8.2, guest kernel 7.0.14-linuxkit;
+  - channel number 1 reused while connection names and broker-generated consumer tags differ;
+  - the old tuple absent from all three management APIs after the client close;
+  - a 404 on the stale ID, with the new channel still usable;
+  - cleanup complete and checked, and the first attempt's container and probe image removed with 15-second deadlines.
+- The status `PASS_FOR_NARROW_OBSERVATION_ONLY` and the stated limitations are accurate.
+
+Two findings:
+
+1. **The broker connection `name` is not unique over time.** This corrects point 2 above. The recorded names are
+   `172.18.0.3:50508 -> 172.18.0.2:5672` and `…:50512 -> …`: the client and server address and port. A later
+   connection that reuses the same client port gets the same name, so an exact-name DELETE can close a replacement.
+   The 404 only shows that the port was not reused in this run.
+   - Bind identity to the name plus the broker's `connected_at` and node, re-checked atomically with the close.
+   - Or use a unique principal per incarnation (boundary item 1), which makes a principal-scoped fence independent
+     of connection names.
+2. **The workload connections ran as `p005admin`.** Both incarnations' `principal` is the administrator, so "same
+   principal" here means the administrator. Later runs should give the workload its own non-administrator principal,
+   distinct from the fencer's and the administrator's, so principal blocking and reconnect refusal are tested on a
+   representative principal.
+
+No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
