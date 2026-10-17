@@ -50,3 +50,54 @@ Parity (AH5-04a-1): on one disposable repository Showcase `50c18f9` (Python 3.13
 (Python 3.13) produce byte-identical plan records, with and without a task command, and the same
 `invalid-verification-plan` refusal for a forged `plan_id`, a dropped obligation or unit, a changed origin
 and a traversing `profile_id`.
+
+## Re-sync with Showcase `49ab97f` (AH5-06b-0, 2026-10-17)
+
+The moved modules below changed in Showcase during SDD-OBS-001 (T-001–T-009), while Showcase owned them
+(ADR 0001, decision 1). Each was brought over with a three-way merge:
+- base: Showcase `50c18f9`, the original copy point;
+- ours: the library module;
+- theirs: Showcase `49ab97f`.
+
+Every adaptation recorded above is kept. The source blobs are at `49ab97f`:
+
+| Package module | Source blob | Changes from source beyond the rows above |
+|---|---|---|
+| `agent_harness/telemetry.py` | `de87162a` | Still the provenance/usage part only. The manual-evidence part (`_MANUAL_*`, Ed25519 attestation, `record_manual`, `verify_manual_observation_for_coverage`) and `main` stay in Showcase: they need the issuer registry and the lifecycle module. The import is `agent_harness.verification.serialization`. |
+| `agent_harness/verification/model.py` | `c74e4b34` | none |
+| `agent_harness/verification/serialization.py` | `a1f0393b` | none (keeps `agent_harness.trust`) |
+| `agent_harness/verification/profile.py` | `722c147f` | none |
+| `agent_harness/verification/fingerprint.py` | `ffb4f45d` | none (keeps `agent_harness.repository`) |
+| `agent_harness/verification/planner.py` | `f2b0ee1b` | none |
+| `agent_harness/verification/store.py` | `720053db` | **[seam]** see below. `resolve_primary_worktree` wraps `agent_harness.repository`, which carries the same refactor. |
+| `agent_harness/verification/authority.py` | `e32aae69` | **[seam]** `executable_binder` (below). The profile still comes from the explicit `profile_root`/`profile_id`. `command_root` is the explicit repository, never `Path.cwd()`. |
+| `agent_harness/schemas/verification-profile.schema.json` | `9cab9361` | none |
+| `agent_harness/executables.py` (new) | `verification_sandbox.py` `5eed6339`, lines 31–174 | Verbatim resolver (`resolve_executable`, `verify_executable_binding`, `trusted_executable_directories` and helpers), plus the library-owned `default_executable_binder`. |
+
+New fail-closed seams (ADR 0001, decision 3), each with a test:
+
+- **Issuer registry anchored to the primary checkout.** Showcase's store refuses a caller-supplied registry in
+  production (`issuer-registry-override-forbidden`) and derives
+  `tooling/agent-harness/human-issuer-registry.json` from the primary checkout. The library keeps that guard. The
+  consumer names the path relative to the checkout (`issuer_registry_path`); the library anchors it to the primary
+  checkout that `resolve_control_root()` selected, and refuses an absolute or traversing path
+  (`issuer-registry-path-invalid`). Without one, there is no registry, and grants fail with
+  `FAILURE_GRANT_ISSUER_UNAVAILABLE`.
+- **Executable binder injected.** Showcase's authority imports `verification_command.executable_binding_for_command`
+  (with `./gradlew` and profile scripts) and `verification_sandbox`'s resolver. Both are Showcase-only, so the
+  library cannot import them (decision 4). `execution_plan_record`, `validate_plan_record`, `resolve_execution`,
+  `prepare_task_plan` and `VerificationStore` take `executable_binder`. The default binds plain names through
+  `agent_harness.executables` and refuses path-like executables. The Showcase shim passes Showcase's binder.
+- **No process-cwd root.** `command_root = repository or Path.cwd()` becomes the explicit repository
+  (`test_boundaries`).
+
+Ported tests:
+- `test_telemetry`: the 10 generic tests. The 11 manual-evidence tests stay with their code in Showcase.
+- `test_verification_authority`: 21 tests. The executor tests stay until the executor moves.
+- `test_verification_store`: 32 tests. The one supervisor-driven test stays until the supervisor moves. The registry
+  test is adapted to the anchored path, and a seam test is added.
+- `test_verification_profile` and `test_verification_profile_applicability`, against the refreshed fixture
+  profile `660b5897`.
+- `test_verification_benchmark`.
+- `test_executables`: 7 verbatim resolver and guard tests from `test_verification_sandbox.py` and
+  `test_verification_t900_resolver_guards.py`, plus a default-binder test.
