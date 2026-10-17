@@ -32,9 +32,14 @@ class WrapperBindingTest(unittest.TestCase):
         self.assertIs(model, library_model)
 
     def test_store_binds_showcase_defaults_and_passes_explicit_values(self):
-        with mock.patch.object(library_store, 'resolve_control_root', return_value=(HARNESS / 'x', 'id')):
+        import verification_command
+        primary = HARNESS.parents[1]
+        with mock.patch.object(library_store, 'resolve_control_root',
+                               return_value=(primary / '.agent-runs/control/verification-v2', 'id')):
             bound = store.VerificationStore(HARNESS)
+        # Anchored to the primary checkout by the library, never taken from this file's location.
         self.assertEqual(HARNESS / 'human-issuer-registry.json', bound.issuer_registry)
+        self.assertIs(verification_command.executable_binding_for_command, bound.executable_binder)
         self.assertEqual(PROFILES, bound.profile_root)
         self.assertIsInstance(bound, library_store.VerificationStore)
         explicit = store.VerificationStore(HARNESS, control_root=HARNESS / 'c', issuer_registry=HARNESS / 'r.json',
@@ -43,6 +48,8 @@ class WrapperBindingTest(unittest.TestCase):
                          (explicit.root, explicit.issuer_registry, explicit.profile_root))
 
     def test_authority_passes_arguments_through_and_binds_showcase(self):
+        import verification_command
+        binder = verification_command.executable_binding_for_command
         calls = {}
         names = ('publish_and_accept', 'resolve_accepted', 'resolve_execution', 'prepare_task_plan',
                  'validate_plan_record')
@@ -61,10 +68,13 @@ class WrapperBindingTest(unittest.TestCase):
             'publish_and_accept': (('repo', 'feature', record),
                                    {'expected_generation': 3, 'lifecycle': harness, 'profile_root': PROFILES}),
             'resolve_accepted': (('repo', 'plan'), {'lifecycle': harness}),
-            'resolve_execution': (('repo', 'plan'), {'lifecycle': harness, 'profile_root': PROFILES, 'unit_id': 'u'}),
+            'resolve_execution': (('repo', 'plan'), {'lifecycle': harness, 'profile_root': PROFILES, 'unit_id': 'u',
+                                                     'executable_binder': binder}),
             'prepare_task_plan': (('repo', 'feature', 'T-001', 2, 'base', ['cmd']),
-                                  {'lifecycle': harness, 'profile_root': PROFILES, 'profile_id': 'showcase'}),
-            'validate_plan_record': ((record,), {'profile_root': PROFILES, 'repository': 'repo', 'reconstruct': True}),
+                                  {'lifecycle': harness, 'profile_root': PROFILES, 'profile_id': 'showcase',
+                                   'executable_binder': binder}),
+            'validate_plan_record': ((record,), {'profile_root': PROFILES, 'repository': 'repo', 'reconstruct': True,
+                                                 'executable_binder': binder}),
         }
         for name in names:
             with self.subTest(name=name):
