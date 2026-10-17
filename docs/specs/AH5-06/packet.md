@@ -163,3 +163,54 @@ Library `8f2d067` (committed `HEAD`), rehearsed Showcase `91d4671` (Showcase `HE
 
 Guide step 4 is done in Showcase: `4fd9abe` adds `requirements.txt` to `harness.protocol_files`, with a test.
 ADR 0001 (accepted, amended) now carries the single-writer rule and rollback cited above (decisions 6, 7).
+
+## AH5-06b-0 — Re-sync with Showcase `49ab97f` (2026-10-17)
+
+- Status: **done**. Showcase changed the moved modules during SDD-OBS-001 (T-001–T-009), as it owned them (ADR 0001,
+  decision 1). They are brought over before the cutover, and v0.9.0 is the cutover pin.
+- Showcase was frozen for the re-sync: `tooling/agent-harness` was unchanged at `49ab97f` throughout.
+- Method: a three-way merge per module (base `50c18f9`, ours the library, theirs `49ab97f`). New seams for
+  Showcase-only dependencies: `issuer_registry_path` and `executable_binder`, with no process-cwd root. The source
+  blobs, seams and ported tests are recorded in `docs/migration/provenance.md`.
+- AC1: every changed module carries the `49ab97f` behaviour, apart from the recorded seams. The ported Showcase tests
+  pass in the library suite, and each new seam has a test.
+- AC2: the cutover rehearsal at `49ab97f` with the committed library and shims. The test sets are identical apart
+  from the differences listed with their causes, and CI exit codes are identical apart from the listed one.
+- AC3: rollback rehearsal on the same results directory.
+- AC4: the cutover guide lists every Showcase test the cutover removes.
+
+### Evidence
+
+Library `027e587`, Showcase `49ab97f` (`HEAD` unchanged during the run). Results, logs, the rollback output, the
+wheel check and isolated reruns are in `evidence-rehearsal-49ab97f.tar.gz`.
+
+- **AC1.** `scripts/check-wheel.sh`: 259 tests OK, 2 skipped.
+  - The wheel suite includes `test_executables`, the ported `test_telemetry`, `test_verification_authority` and
+    `test_verification_store`, and the seam test
+    `test_registry_path_is_anchored_to_the_primary_checkout_and_fails_closed`.
+  - Each guard mutation in `test_executables` fails exactly its own test.
+- **AC2, test counts.** Base 915 tests (906 ok, 3 FAIL, 6 ERROR). Wrapped 933 tests (919 ok, 7 FAIL, 7 ERROR).
+  - The wrapped side runs 18 more: 6 in `test_cutover_wrapper` (all ok) and the 13 tests of
+    `test_qualification_report`. Those 13 cannot import on the base side, whose venv has no library, and appear
+    there as 1 loader error.
+- **AC2, ok on base but not on wrapped:**
+  - The 5 `AcceptedPlanResolutionTest` tests and `StoreTest.test_primary_repository_authority_resolution`. They patch
+    Showcase module names that calls inside the library cannot see. They run under the same names in the library
+    suite, and the cutover removes them (`docs/migration/cutover.md`). The CI `eval.py run --suite adversarial` exit 1
+    comes from A006, which runs exactly these two modules.
+  - 3 tests in `test_qualification_report` assert the pinned 0.5.0, while the rehearsal installs the working tree's
+    version. They move with the re-pin.
+  - `test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs` errors on both sides when run alone, with
+    `SECRET_BEARING_CANDIDATE_UNSEALABLE`. The fixture writes the absolute temp path into an untracked
+    `evidence.json`, and on macOS that path exceeds the seal's entropy threshold. The trip depends on the random
+    suffix: it passed on the base side in this run. This is a latent Showcase test issue, reported to Showcase.
+  - `test_e33_containment_probe_kills_its_execution_unit` and `test_concurrent_sequential_replans_have_one_winner`
+    pass 3/3 alone on both sides. They are process timing under parallel load.
+- **AC2, failing on base but ok on wrapped.** R5, the 4 `b10` grading probes and
+  `test_m4_1_18_concurrent_identical_binding_safe`: the same parallel-load timing.
+- **AC2, fixed during the re-sync.** An earlier run at `96ff8f5` showed 12 `test_telemetry` manual-evidence errors
+  and the signed-manual lifecycle test. The cause was the stale manual-evidence part of the telemetry shim. It was
+  rebuilt verbatim from `49ab97f` (`027e587`), and those tests now match the base side.
+- **AC2, CI.** All 21 workflow steps were run. The only exit-code difference is the adversarial suite above.
+- **AC3.** `scripts/rehearse-rollback.sh`: wrapped → base, base → wrapped and base → base are all ok.
+- **AC4.** `docs/migration/cutover.md` lists the 6 removals and the version-pin move (`9701d87`).
