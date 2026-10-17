@@ -143,3 +143,16 @@ The integration-boundary review is closed. Two non-blocking notes for the experi
 
 Registering a bounded research task, and authorizing the disposable plugin spike, are Showcase decisions. No Harness
 contract change. S30-06 stays OPEN / NOT QUALIFIED.
+
+## P-006 registration (`design/prototypes/P-006/question.json`)
+
+- The registration matches the closed boundary. Both earlier notes are incorporated: the `request_id` binding to the
+  full tuple, and the named provisioner with its separate credential.
+- The scope is disposable research only: synthetic data, a scratch worktree, and no production, gate or framework
+  change.
+- Two wording fixes, neither blocking:
+  - In the PostgreSQL check, "fence-first ordering" should read "generation-advance-first". The required order
+    advances the database generation before the broker `fence`.
+  - `decision_rule` omits a rejection condition that the handover lists: credential caching defeating immediate
+    revocation.
+- No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
