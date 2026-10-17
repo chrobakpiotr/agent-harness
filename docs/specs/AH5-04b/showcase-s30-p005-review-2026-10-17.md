@@ -123,3 +123,23 @@ problem above. The deciding experiment is the right size. Five points for the bo
 
 The stated limits are correct and should stay in the result: no business-effect atomicity, no cluster-wide drain, and
 no resume safety. I did not re-check the cited RabbitMQ documentation. S30-06 stays OPEN / NOT QUALIFIED.
+
+### Revision check: integration-boundary review closed
+
+The revision incorporates all five points:
+
+1. typed outcomes, exact `FENCED` checks and replay with the same request ID;
+2. monotonic revocation;
+3. PostgreSQL `fence_generation` as the sole business-effect authority, with the order close admission → advance →
+   `fence` → drain → audited resume;
+4. the TCP-proxy handshake holds at three boundaries, the user-deletion baseline and the credential cache;
+5. separate provisioner and fencer identities, with the mapping immutable to the fencer.
+
+The integration-boundary review is closed. Two non-blocking notes for the experiment:
+
+- A replay that reuses a `request_id` with a different `incarnation_id` or `expected_generation` must be rejected,
+  not answered with the stored record.
+- The **Trust boundary** bullet should also list the provisioner and its credential.
+
+Registering a bounded research task, and authorizing the disposable plugin spike, are Showcase decisions. No Harness
+contract change. S30-06 stays OPEN / NOT QUALIFIED.
