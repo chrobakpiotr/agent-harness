@@ -156,3 +156,27 @@ contract change. S30-06 stays OPEN / NOT QUALIFIED.
   - `decision_rule` omits a rejection condition that the handover lists: credential caching defeating immediate
     revocation.
 - No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
+
+### P-006 wording fixes and the blocked run (`runs/20261017T2102Z-docker-startup-blocked`)
+
+- **Wording.** Both fixes are in `question.json`: "generation-advance-first", and the credential-cache rejection in
+  `decision_rule`.
+- **What checks out.**
+  - `SHA256SUMS` verifies, checked from the repository root.
+  - The log shows `auth:init_no_setcookie` failing with `eacces` on `/var/lib/rabbitmq/.erlang.cookie`.
+  - The image digest `fa4df769…` matches 4.1.8 / OTP 27.
+  - BLOCKED is the correct status: nothing for or against the candidate.
+- **Evidence gap: the exact `docker run` argv of the three attempts is not retained.** P-005 kept a
+  `commands.jsonl`. The same digest started cleanly in P-005, from the container writable layer with no data mount,
+  and that is P-006's third attempt. The failure therefore comes from some flag P-006 added, such as `--user`,
+  `--cap-drop`, `--read-only` or a security option. Without the argv the cause cannot be identified. Record the argv
+  for every attempt next time, P-005 style.
+- **For the next authorized attempt.** These are hypotheses, not findings:
+  - Diff the flags against P-005's recorded argv.
+  - The failing function is the no-`-setcookie` path. Supplying a synthetic cookie explicitly, as a 0400 file owned
+    by uid 999, or through `-setcookie` in `RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS` and `RABBITMQ_CTL_ERL_ARGS`, avoids
+    reading a generated file.
+  - If the hardening flags must stay, record which ones the broker needs relaxed.
+- **Unchanged.** The source-inspection note (registration at `rabbit_reader.erl:1173`, before `connection.start`;
+  `connection_created` only after `connection.open`) is labelled correctly as not a behavioural pass. S30-06 stays
+  OPEN / NOT QUALIFIED.
