@@ -59,6 +59,14 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    | `test_verification_backend_qualification.py` | `test_Q01_permitted_write_control_is_a_positive_probe`, `test_Q08_Q09_escape_evidence_rejects_otherwise_passing_candidate`, `test_R1_Q02_direct_write_bypass_is_detected_and_marker_cleaned`, `test_R1_R16_active_runner_returns_structured_evidence_for_all_checks`, `test_R2_Q03_child_write_bypass_is_detected_and_marker_cleaned`, `test_R3_Q04_grandchild_write_bypass_is_detected_and_marker_cleaned`, `test_R4_new_group_and_session_escapes_reject_process_group_backend`, `test_R5_parent_exit_with_live_descendant_is_not_drained`, `test_discovery_does_not_qualify_a_candidate`, `test_e33_containment_probe_kills_its_execution_unit`, `test_qualify_all_pass_is_all_or_nothing` |
    | `test_verification_t900_resolver_guards.py` | `test_executable_nested_under_excluded_worktree_is_refused` |
 
+   Two Showcase tests of `verification_command` (which stays until 08b) are adapted instead of removed. They
+   patch the resolver that the library's `build_plan` and `doctor` call, so the patch target becomes the library
+   module. Change only the patch target, in
+   `test_verification_command.py::test_resolved_plan_binding_is_forwarded_and_swap_fails_before_payload` (the
+   patch around the `run_command` call) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
+   `mock.patch.object(command.verification_sandbox, 'resolve_executable', …)` becomes
+   `mock.patch('agent_harness.sandbox.resolve_executable', …)`. With that change, all 11 tests pass through the shim.
+
    The re-pin also moves the version that `test_qualification_report.py` asserts (`0.5.0` today) to the new tag;
    the rehearsal installs the working tree's version, so those three tests fail there by design.
 4. Done in Showcase (`4fd9abe`, with a test): `tooling/agent-harness/requirements.txt` is in `harness.protocol_files`: after the cutover `trust.py` and

@@ -111,7 +111,10 @@ class VerificationSandboxTest(unittest.TestCase):
             self.assertEqual(str(root / 'home' / 'tool'), env['TOOL_HOME'])
             self.assertNotIn('TOOL_HOME', vs._safe_env(root, root / 'home'))
             for bad in ({'PATH': '/tmp'}, {'HOME': '/tmp'}, {'JAVA_HOME': '/usr'}, {'A=B': 'x'}, {'X': 1},
-                        ['TOOL_HOME']):
+                        ['TOOL_HOME'], {'': 'x'}, {'a\0': 'x'}, {'X': 'a\0b'}, {'LANG': 'C'},
+                        {'LD_PRELOAD': '/x.so'}, {'DYLD_INSERT_LIBRARIES': '/x'}, {'PYTHONPATH': '/x'},
+                        {'BASH_ENV': '/x'}, {'NODE_OPTIONS': '-r x'}, {'JAVA_TOOL_OPTIONS': '-x'},
+                        {'GIT_DIR': '/x'}, {'git_config_global': '/x'}):
                 with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, 'sandbox-environment-policy-invalid'):
                     vs._safe_env(root, root / 'home', environment_policy=lambda env, home, bad=bad: bad)
             (root / '.agent-runs' / 'control' / 'verification-v2').mkdir(parents=True)
@@ -122,6 +125,12 @@ class VerificationSandboxTest(unittest.TestCase):
                 plan = vs._bubblewrap(['true'], root, root / 'home', env, policy_keys=('TOOL_HOME',))
             index = plan.argv.index('TOOL_HOME')
             self.assertEqual(['--setenv', 'TOOL_HOME', env['TOOL_HOME']], plan.argv[index - 1:index + 2])
+            # build_plan derives the forwarded keys from the policy itself.
+            with mock.patch.object(vs, '_codex_helper', return_value=None), \
+                 mock.patch.object(vs, '_bubblewrap', return_value='bwrap-plan') as bwrap:
+                self.assertEqual('bwrap-plan', vs.build_plan(['true'], root, root / 'run', 'auto',
+                                                             environment_policy=policy))
+            self.assertEqual(('TOOL_HOME',), bwrap.call_args.kwargs['policy_keys'])
 
     def test_worktree_wrapper_is_only_resolved_when_the_consumer_declares_it(self):
         """[seam] `./name` resolves inside the worktree only when declared, with the consumer's error code."""
@@ -130,8 +139,12 @@ class VerificationSandboxTest(unittest.TestCase):
             wrapper = root / 'buildw'
             wrapper.write_text('#!/bin/sh\nexit 0\n')
             wrapper.chmod(0o700)
-            with self.assertRaises(vs.ExecutableResolutionError):
-                vs.build_plan(['./buildw', 'test'], root, root / 'run', 'off')
+            gradlew = root / 'gradlew'
+            gradlew.write_text('#!/bin/sh\nexit 0\n')
+            gradlew.chmod(0o700)
+            for name in ('./buildw', './gradlew'):  # no wrapper is built in
+                with self.subTest(name=name), self.assertRaises(vs.ExecutableResolutionError):
+                    vs.build_plan([name, 'test'], root, root / 'run', 'off')
             wrappers = {'./buildw': 'worktree-buildw-invalid'}
             plan = vs.build_plan(['./buildw', 'test'], root, root / 'run', 'off', worktree_wrappers=wrappers)
             self.assertEqual([str(wrapper), 'test'], plan.argv)

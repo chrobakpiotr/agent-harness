@@ -106,14 +106,14 @@ Ported tests:
 
 | Package module | Source blob | Changes from source |
 |---|---|---|
-| `agent_harness/sandbox.py` | `verification_sandbox.py` `5eed6339`, lines 175–1401 | Imports the resolver from `agent_harness.executables` (lines 31–174) and re-exports it. **[seam]** three consumer policies, below. The bubblewrap `--setenv` list keeps its generic keys in source order, and the consumer's keys follow them. |
+| `agent_harness/sandbox.py` | `verification_sandbox.py` `5eed6339`, lines 175–1401 | Imports the resolver from `agent_harness.executables` (lines 31–174) and re-exports it. The unused `shlex` import is dropped, and `re` is added for the wrapper check. **[seam]** three consumer policies, below. `_safe_env` is split into `_isolated_env`, which holds the source body without the Gradle lines, and `_apply_environment_policy`; the passthrough tuple becomes the module constant `_PASSTHROUGH`. Consumer keys therefore come after the base keys, both in the environment and in the bubblewrap `--setenv` list. Nothing serializes or hashes that order: bubblewrap gets no `--clearenv`, the launch receives `plan.env`, and `policy_fingerprint` is computed from sorted paths. |
 | `agent_harness/verification/workspace.py` | `e43efc36` | none (the provenance line is added to the docstring) |
 
 New fail-closed seams (ADR 0001, decisions 3 and 4), each with a test and a mutation check:
 
 - **`environment_policy(env, sandbox_home)`** on `_safe_env` and `build_plan`. It adds consumer variables to the
   isolated environment. A key that already exists, a toolchain selector, a malformed name or a non-string value is
-  refused with `sandbox-environment-policy-invalid`. The added keys are forwarded by bubblewrap. The Showcase shim
+  refused with `sandbox-environment-policy-invalid`. The same applies to a passthrough name, even one the host has unset, and to a loader or interpreter hook the isolated base drops: the prefixes `LD_`, `DYLD_`, `PYTHON`, `GIT_` and `NPM_CONFIG_`, and `BASH_ENV`, `ENV`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and similar. The policy is consumer code, so this is defence in depth. A tool's own option variable, such as `GRADLE_OPTS`, stays the consumer's responsibility. The added keys are forwarded by bubblewrap. The Showcase shim
   passes `gradle_environment`, which holds the source's `GRADLE_USER_HOME`, `GRADLE_OPTS` and
   `AGENTIC_SDD_GRADLE_RO_DEP_CACHE` lines verbatim.
 - **`worktree_wrappers`** on `build_plan`. A declared `./name` resolves inside the worktree with the source's

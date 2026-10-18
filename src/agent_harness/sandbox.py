@@ -465,7 +465,7 @@ def _authority_relative_roots(consumer_roots) -> tuple[str, ...]:
         raise ValueError('sandbox-authority-roots-invalid')
     for value in consumer_roots:
         parts = pathlib.PurePosixPath(value).parts if isinstance(value, str) else ()
-        if not parts or pathlib.PurePosixPath(value).is_absolute() or '..' in parts or '.' in parts:
+        if not parts or pathlib.PurePosixPath(value).is_absolute() or '..' in parts:
             raise ValueError('sandbox-authority-roots-invalid')
     return (*DEFAULT_AUTHORITY_ROOTS, *consumer_roots)
 
@@ -1050,16 +1050,29 @@ def _safe_env(worktree: pathlib.Path, sandbox_home: pathlib.Path, toolchain_dire
                                      sandbox_home, environment_policy)
 
 
+_PASSTHROUGH = (
+    'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM', 'COLORTERM', 'CI',
+    'SYSTEMROOT', 'WINDIR', 'PATHEXT', 'COMSPEC',
+)
+_REFUSED_POLICY_KEYS = frozenset({
+    'BASH_ENV', 'ENV', 'NODE_OPTIONS', 'NODE_PATH', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS',
+    'PERL5OPT', 'PERL5LIB', 'RUBYOPT', 'RUBYLIB', 'SHELLOPTS', 'PS4', 'PROMPT_COMMAND', 'IFS', 'CDPATH',
+})
+_REFUSED_POLICY_PREFIXES = ('LD_', 'DYLD_', 'PYTHON', 'GIT_', 'NPM_CONFIG_')
+
+
 def _apply_environment_policy(env: dict[str, str], sandbox_home: pathlib.Path,
                               environment_policy) -> dict[str, str]:
     if environment_policy is None:
         return env
     # [seam] Consumer tool variables (e.g. a build tool's home) may add keys but never replace the
-    # isolated base: PATH, HOME, TMPDIR, proxies and the toolchain selectors stay library-owned.
+    # isolated base (PATH, HOME, TMPDIR, proxies, passthrough, toolchain selectors) or add the loader and
+    # interpreter hooks the isolated base drops. The policy is consumer code; this is defence in depth.
     extra = environment_policy(dict(env), sandbox_home)
     if not isinstance(extra, dict) or any(
             not isinstance(key, str) or not isinstance(value, str) or not key or '=' in key or '\0' in key
-            or '\0' in value or key in env or key in TOOLCHAIN_ENVIRONMENT_SELECTORS
+            or '\0' in value or key in env or key in _PASSTHROUGH or key in TOOLCHAIN_ENVIRONMENT_SELECTORS
+            or key.upper() in _REFUSED_POLICY_KEYS or key.upper().startswith(_REFUSED_POLICY_PREFIXES)
             for key, value in extra.items()):
         raise ValueError('sandbox-environment-policy-invalid')
     return {**env, **extra}
@@ -1070,11 +1083,7 @@ def _isolated_env(worktree: pathlib.Path, sandbox_home: pathlib.Path, toolchain_
     (sandbox_home / 'tmp').mkdir(exist_ok=True)
     directories = trusted_executable_directories(toolchain_directories, worktree=worktree,
                                                   sandbox_home=sandbox_home)
-    passthrough = (
-        'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM', 'COLORTERM', 'CI',
-        'SYSTEMROOT', 'WINDIR', 'PATHEXT', 'COMSPEC',
-    )
-    env = {key: os.environ[key] for key in passthrough if key in os.environ}
+    env = {key: os.environ[key] for key in _PASSTHROUGH if key in os.environ}
     env.update({
         'PATH': os.pathsep.join(str(path) for path in directories),
         'HOME': str(sandbox_home),
