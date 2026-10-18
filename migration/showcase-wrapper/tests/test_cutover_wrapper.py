@@ -24,7 +24,8 @@ PROFILES = HARNESS / 'verification-profiles'
 
 ALIASES = ('trust', 'machine_outcomes', 'verification.model', 'verification.serialization', 'verification.profile',
            'verification.fingerprint', 'verification.planner', 'verification.candidate', 'verification.human_grants',
-           'verification.workspace', 'verification.supervisor')
+           'verification.workspace', 'verification.supervisor',
+           'state_snapshots')
 
 
 class WrapperBindingTest(unittest.TestCase):

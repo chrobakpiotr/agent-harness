@@ -164,3 +164,19 @@ Ported tests:
 - New: `test_verification_retry` (the registry, the facts, and evidence and run-directory checks through the
   consumer) and `test_verification_command` (`deny_all`, the allowlist, blocked executables, the sandbox namespace,
   and the `run_command` factories). Showcase's `test_verification_command` tests Showcase policy and stays there.
+
+## AH5-09 — state snapshots (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/state_snapshots.py` | `b66a9ed8` | none (the provenance line is added to the docstring) |
+
+- The module is generic. Its refs are `refs/agent-state*`, the state root is `.agent-state` (ADR 0003), and the
+  repository identity comes from `remote.origin.url` or the local common directory. It imports only the standard
+  library.
+- `state_recovery.py` stays in Showcase. It validates the one-off recovery of Showcase's lost SDD-OBS-001 state
+  against Showcase's own incident record, `docs/specs/AGENT-STATE-RECOVERY-001/evidence/`. That is consumer
+  history, not shared behaviour.
+- Ported tests: `test_state_snapshots`, from `cb5afb4a`, 25 of 26.
+  `test_missing_state_restore_error_points_to_audited_discard_command` runs Showcase's `harness.py` CLI and stays
+  in Showcase, where it passes through the shim.
