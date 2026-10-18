@@ -17,7 +17,7 @@ Agent execution and verification launch are not qualified, and results say so. S
 Pin a released tag or commit (no PyPI release):
 
 ```text
-agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.11.0
+agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.12.0
 ```
 
 Python ≥ 3.13, no third-party dependencies (Ed25519 grants need the `grants` extra), no side effects on import.

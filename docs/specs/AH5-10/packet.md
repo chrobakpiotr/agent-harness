@@ -1,6 +1,6 @@
 # AH5-10 — Move the eval engine
 
-- Status: **accepted**. Step 3, on the owner's order 2026-10-18. Source: Showcase `49ab97f`. The owners decided
+- Status: **done**, released as v0.12.0. Step 3, on the owner's order 2026-10-18. Source: Showcase `49ab97f`. The owners decided
   on 2026-10-07 that the eval engine moves to the library and the suites stay in Showcase.
 - Allowed paths:
   - `src/agent_harness/eval_runner.py`
@@ -23,3 +23,15 @@
 - AC2: through the shim, Showcase's `test_eval` and its eval CLI commands give the same results. The cutover
   rehearsal at `49ab97f` gives the AH5-09 results.
 - AC3: `scripts/check-wheel.sh` and CI are green, and a fresh-context evaluation passes.
+
+## Evidence (2026-10-18)
+
+- **AC1.** `test_eval_runner` covers suite validation, the explicit suites directory and anchor, and failure exit
+  codes.
+- **AC2.**
+  - This is a targeted check instead of a second full rehearsal: AH5-09's full rehearsal covers every module except
+    `eval.py`, and `eval.py` reaches Showcase only through its CLI and `test_eval`.
+  - On the AH5-09 wrapped tree with the shims at `0c01ecd`, all 21 Showcase CI commands give exit codes identical
+    to the base run, and `test_eval` and `test_cutover_wrapper` pass. The record is in the AH5-09 evidence archive
+    (`wrapped-ci-0910.txt`, `isolated-reruns.txt`).
+- AC3: see `docs/specs/release-0.12.0/packet.md` and the evaluation below.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 — 2026-10-18
+
+- New `agent_harness.state_snapshots`: Showcase's write-ahead snapshots of `.agent-state` under `refs/agent-state*`,
+  verbatim (AH5-09).
+- New `agent_harness.eval_runner`: the harness eval engine (AH5-10). The suites directory and the repository anchor
+  are explicit; consumers keep their suites.
+- ADR 0001 amendment:
+  - one ownership rule: frozen copies from the freeze notice;
+  - Showcase's cutover is independent of backend qualification, and every guard stays;
+  - a declared supported API: `contract`, `execution`, `qualification` (`qualify`, `probe_digest`,
+    `DEFAULT_IMAGE`, `DEFAULT_TARGET`), `qualification.reference.reviewed_reference` and the CLI. A test pins these
+    names.
+- `docs/migration/plan-remaining-2026-10-18.md`, and current consumer, README and cutover docs.
+- Contract and digests unchanged.
+
 ## 0.11.0 — 2026-10-18
 
 - New `agent_harness.verification.supervisor`, `.command` and `.executor`: Showcase's verification supervisor,
