@@ -13,13 +13,14 @@ the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showca
 
 | Showcase file | After the cutover |
 |---|---|
-| `trust.py`, `machine_outcomes.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants}.py` | alias of the library module (same objects, so `isinstance` and test patches keep working) |
+| `trust.py`, `machine_outcomes.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,workspace}.py` | alias of the library module (same objects, so `isinstance` and test patches keep working) |
 | `verification/store.py` | library store; binds `human-issuer-registry.json` and `verification-profiles/` |
 | `verification/authority.py` | library authority; binds lifecycle `harness`, `verification-profiles/` and profile `showcase` |
 | `telemetry.py` | library telemetry plus the Showcase-only manual evidence and CLI |
+| `verification_sandbox.py` | library sandbox and executable resolver; binds the Gradle environment, the `./gradlew` worktree wrapper and the `tooling/agent-harness` authority root (AH5-08a) |
 
-Everything else (`harness.py`, `orchestrate.py`, `runner.py`, `verify.py`, executor, supervisor, workspace,
-sandbox, profiles, issuer registry, state under `.agent-state` and `.agent-runs/control`) stays in Showcase.
+Everything else (`harness.py`, `orchestrate.py`, `runner.py`, `verify.py`, executor, supervisor,
+`verification_command.py`, profiles, issuer registry, state under `.agent-state` and `.agent-runs/control`) stays in Showcase.
 Origin admission and completion stay blocked; the qualified track stays NOT_QUALIFIED.
 
 ## Install and pin
@@ -28,7 +29,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    `agent-harness[grants] @ git+https://github.com/chrobakpiotr/agent-harness.git@<tag SHA>` (a tag SHA,
    never a branch).
 2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`.
-3. In the same change, remove only the six Showcase tests below. They patch Showcase names that calls inside
+3. In the same change, remove only the Showcase tests below. They patch Showcase names that calls inside
    the library cannot see. Each runs under the same name in the library's normal suite
    (`agent-harness/tests/test_verification_authority.py` and `test_verification_store.py`, run by
    `scripts/check-wheel.sh` and CI), and `test_cutover_wrapper.py` covers what Showcase passes in. Every other
@@ -45,6 +46,18 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    | Showcase `tooling/agent-harness/tests/test_verification_store.py::StoreTest` | Library assertions |
    |---|---|
    | `test_primary_repository_authority_resolution` | identical (5); patches `agent_harness.repository._worktrees`, and the store receives the registry as `issuer_registry_path` |
+
+   AH5-08a (sandbox): these test the moved sandbox through its internals and run under the same names in the
+   library's `test_sandbox.py`, `test_sandbox_doctor.py`, `test_backend_qualification.py` and
+   `test_executables.py`. Their other tests stay and run through the shim, including the Gradle cache and
+   `R14` (which drives `verification_command`).
+
+   | Showcase test module | Tests to remove |
+   |---|---|
+   | `test_verification_sandbox_doctor.py` | the whole module (4) |
+   | `test_verification_sandbox.py` | `test_auto_degrades_explicitly_when_platform_has_no_strong_backend`, `test_backend_discovery_uses_the_shared_resolver`, `test_bubblewrap_hides_verification_control_store_contents`, `test_bubblewrap_rebinds_trusted_issuer_registry_read_only`, `test_codex_sandbox_helper_uses_documented_command_shape`, `test_control_store_read_probe_fails_when_any_process_depth_can_read`, `test_required_fails_when_no_backend_exists`, `test_unsupported_backend_fails_closed_for_every_mode` |
+   | `test_verification_backend_qualification.py` | `test_Q01_permitted_write_control_is_a_positive_probe`, `test_Q08_Q09_escape_evidence_rejects_otherwise_passing_candidate`, `test_R1_Q02_direct_write_bypass_is_detected_and_marker_cleaned`, `test_R1_R16_active_runner_returns_structured_evidence_for_all_checks`, `test_R2_Q03_child_write_bypass_is_detected_and_marker_cleaned`, `test_R3_Q04_grandchild_write_bypass_is_detected_and_marker_cleaned`, `test_R4_new_group_and_session_escapes_reject_process_group_backend`, `test_R5_parent_exit_with_live_descendant_is_not_drained`, `test_discovery_does_not_qualify_a_candidate`, `test_e33_containment_probe_kills_its_execution_unit`, `test_qualify_all_pass_is_all_or_nothing` |
+   | `test_verification_t900_resolver_guards.py` | `test_executable_nested_under_excluded_worktree_is_refused` |
 
    The re-pin also moves the version that `test_qualification_report.py` asserts (`0.5.0` today) to the new tag;
    the rehearsal installs the working tree's version, so those three tests fail there by design.

@@ -11,8 +11,10 @@ HARNESS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HARNESS))
 
 import harness
+import verification_sandbox
 from verification import authority, model, store
 
+from agent_harness import sandbox as library_sandbox
 from agent_harness.verification import authority as library_authority
 from agent_harness.verification import model as library_model
 from agent_harness.verification import store as library_store
@@ -21,7 +23,8 @@ PROFILES = HARNESS / 'verification-profiles'
 
 
 ALIASES = ('trust', 'machine_outcomes', 'verification.model', 'verification.serialization', 'verification.profile',
-           'verification.fingerprint', 'verification.planner', 'verification.candidate', 'verification.human_grants')
+           'verification.fingerprint', 'verification.planner', 'verification.candidate', 'verification.human_grants',
+           'verification.workspace')
 
 
 class WrapperBindingTest(unittest.TestCase):
@@ -92,6 +95,35 @@ class WrapperBindingTest(unittest.TestCase):
         self.assertIsNone(calls['resolve_execution']['unit_id'])
         self.assertEqual((None, False), (calls['validate_plan_record']['repository'],
                                          calls['validate_plan_record']['reconstruct']))
+
+    def test_sandbox_binds_showcase_policy_and_passes_arguments_through(self):
+        root, run, home = HARNESS / 'w', HARNESS / 'r', HARNESS / 'h'
+        policy = {'environment_policy': verification_sandbox.gradle_environment,
+                  'worktree_wrappers': {'./gradlew': 'worktree-gradle-wrapper-invalid'},
+                  'authority_roots': ('tooling/agent-harness',)}
+        with mock.patch.object(library_sandbox, 'build_plan') as build:
+            self.assertIs(build.return_value, verification_sandbox.build_plan(['x'], root, run, 'off', ('/t',)))
+        build.assert_called_once_with(['x'], root, run, 'off', ('/t',), **policy)
+        with mock.patch.object(library_sandbox, '_safe_env') as env:
+            verification_sandbox._safe_env(root, home, ('/t',))
+        env.assert_called_once_with(root, home, ('/t',), environment_policy=verification_sandbox.gradle_environment)
+        with mock.patch.object(library_sandbox, 'derive_protected_authority_roots') as roots:
+            verification_sandbox.derive_protected_authority_roots(root)
+        roots.assert_called_once_with(root, ('tooling/agent-harness',))
+        with mock.patch.object(library_sandbox, '_bubblewrap') as bwrap:
+            verification_sandbox._bubblewrap(['x'], root, home, {'GRADLE_OPTS': 'o', 'HOME': 'h'}, ('/t',), ('b',))
+        bwrap.assert_called_once_with(['x'], root, home, {'GRADLE_OPTS': 'o', 'HOME': 'h'}, ('/t',), ('b',),
+                                      authority_roots=('tooling/agent-harness',), policy_keys=('GRADLE_OPTS',))
+        with mock.patch.object(library_sandbox, '_macos_sandbox_exec') as macos:
+            verification_sandbox._macos_sandbox_exec(['x'], root, home, {}, ('/t',), ('b',))
+        macos.assert_called_once_with(['x'], root, home, {}, ('/t',), ('b',), authority_roots=('tooling/agent-harness',))
+        with mock.patch.dict('os.environ', {'AGENTIC_SDD_GRADLE_RO_DEP_CACHE': ''}):
+            self.assertEqual({'GRADLE_USER_HOME': str(home / 'gradle'), 'GRADLE_OPTS': '-Dorg.gradle.daemon=false'},
+                             verification_sandbox.gradle_environment({}, home))
+        for name in ('PosixProcessGroupBackend', 'ExecutionIdentity', 'qualifies_v2', 'resolve_executable',
+                     '_sha256_file', 'ExecutableResolutionError', 'doctor'):
+            with self.subTest(name=name):
+                self.assertTrue(hasattr(verification_sandbox, name))
 
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],

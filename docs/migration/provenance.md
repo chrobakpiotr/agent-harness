@@ -101,3 +101,37 @@ Ported tests:
 - `test_verification_benchmark`.
 - `test_executables`: 7 verbatim resolver and guard tests from `test_verification_sandbox.py` and
   `test_verification_t900_resolver_guards.py`, plus a default-binder test.
+
+## AH5-08a — sandbox and workspace (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/sandbox.py` | `verification_sandbox.py` `5eed6339`, lines 175–1401 | Imports the resolver from `agent_harness.executables` (lines 31–174) and re-exports it. **[seam]** three consumer policies, below. The bubblewrap `--setenv` list keeps its generic keys in source order, and the consumer's keys follow them. |
+| `agent_harness/verification/workspace.py` | `e43efc36` | none (the provenance line is added to the docstring) |
+
+New fail-closed seams (ADR 0001, decisions 3 and 4), each with a test and a mutation check:
+
+- **`environment_policy(env, sandbox_home)`** on `_safe_env` and `build_plan`. It adds consumer variables to the
+  isolated environment. A key that already exists, a toolchain selector, a malformed name or a non-string value is
+  refused with `sandbox-environment-policy-invalid`. The added keys are forwarded by bubblewrap. The Showcase shim
+  passes `gradle_environment`, which holds the source's `GRADLE_USER_HOME`, `GRADLE_OPTS` and
+  `AGENTIC_SDD_GRADLE_RO_DEP_CACHE` lines verbatim.
+- **`worktree_wrappers`** on `build_plan`. A declared `./name` resolves inside the worktree with the source's
+  checks and the consumer's error code. A malformed entry is refused with `sandbox-worktree-wrappers-invalid`.
+  Without the entry, a path-like `argv[0]` stays refused by the resolver. The shim passes
+  `{'./gradlew': 'worktree-gradle-wrapper-invalid'}`.
+- **`authority_roots`** on `derive_protected_authority_roots`, `_bubblewrap`, `_macos_sandbox_exec` and
+  `build_plan`. These are consumer roots relative to the primary checkout, added to `.agent-runs`, `.agent-state`,
+  `docs/specs`, `.git` and the common directory. An absolute, traversing or empty root is refused with
+  `sandbox-authority-roots-invalid`. The shim passes `tooling/agent-harness`, which restores the source's root set
+  and policy fingerprint.
+
+Ported tests:
+- `test_sandbox`, from `test_verification_sandbox.py` `052e2be5`. The resolver tests are already in
+  `test_executables`. The Gradle-cache and issuer-registry-root tests encode Showcase policy; they stay in
+  Showcase, where they run through the shim, and here they are replaced by the three seam tests.
+- `test_sandbox_doctor`, from `76af8cd7`.
+- `test_backend_qualification`, from `67e461c6`. 28 of its 29 tests are ported; R14 drives `verification_command`
+  and moves in 08b.
+- `test_verification_workspace`, from `84d0ffd3`. The fixture root is resolved, because macOS `/var` is a symlink
+  and the store refuses symlinked ancestors. Showcase CI runs on Linux.
