@@ -104,7 +104,7 @@ rollback output and the isolated reruns are in `evidence-rehearsal-08a-49ab97f.t
 
 ## AH5-08b — supervisor, command backend and executor
 
-- Status: **in progress** (2026-10-18). Source: Showcase `49ab97f`.
+- Status: **done**, released as v0.11.0 (2026-10-18). Source: Showcase `49ab97f`.
 - **Finding:** the library store already carries Showcase's retry-control registry. That covers
   `_RETRY_CONTROL_BINDINGS`, the wrapper and input SHA-256s for `apps/ecommerce/...`, `settings.gradle`, `gradlew`
   and the critical PostgreSQL and RabbitMQ scripts, plus the `ecommerce.gradle` config path checked in
@@ -149,3 +149,39 @@ rollback output and the isolated reruns are in `evidence-rehearsal-08a-49ab97f.t
 - AC2: the cutover rehearsal at `49ab97f` gives the 08a results plus the listed 08b differences. The
   post-removal CI eval commands pass.
 - AC3: `scripts/check-wheel.sh` and CI are green, and a fresh-context evaluation passes.
+
+### Evidence 08b (2026-10-18)
+
+The rehearsal used library `0a52799` against Showcase `49ab97f` (Showcase `HEAD` was `3786776`;
+`tooling/agent-harness` is unchanged). Results, logs, rollback output and isolated runs are in
+`evidence-rehearsal-08b-49ab97f.tar.gz`. `84e1f14` then added the executor's `store_factory`, which changes only
+when the store is built, and more tests.
+
+- **AC1.**
+  - The full library suite passes: 411 tests at `0a52799`; the count at release is in `docs/specs/release-0.11.0`.
+  - Seam mutations were applied to the registry, facts, supervisor binding, consumer exceptions, run-dir check, the
+    store and `admit_and_reserve` registry, `deny_all`, blocked executables, the executor lifecycle and
+    `store_factory`. After the evaluator's amendments, each one fails the suite.
+- **AC2, counts.** Base 915 tests (906 ok, 3 FAIL, 6 ERROR). Wrapped 936 tests (899 ok, 30 FAIL, 7 ERROR).
+- **AC2, ok on base but not on wrapped.** Exactly the guide's lists:
+  - the authority and store removals (6);
+  - the backend-qualification (11), sandbox (5 this run), doctor (4) and t900 (1) removals;
+  - the three patch-target adaptations: two in `verification_command`, one in `noncacheable`.
+- **AC2, Showcase through the shims.** All 88 supervisor tests pass, including the 16 Gradle tests that stay.
+  `test_verification_command` passes 11/11 and `test_verification_noncacheable` 7/7 once adapted.
+- **AC2, CI.** The only exit-code difference is the adversarial suite: A002, A006 and A007 fail before the
+  removals. On a scratch tree with the removals and adaptations applied, the evaluator ran these, and all pass:
+  - `harness.py doctor` and `validate-all`;
+  - the `verification_contract.py validate` runs;
+  - `orchestrate.py --plan`;
+  - the trust and telemetry CLIs;
+  - `eval.py run` for the `baseline`, `adversarial` (7/7) and `shipping-preflight` suites.
+- **AC2, rollback.** wrapped → base, base → wrapped and base → base are all ok.
+- **AC3, independent evaluation.**
+  - First verdict: pass with amendments. Four findings:
+    1. the executor shim built its store before the authority checks, which made two Showcase tests vacuous;
+    2. retry-fact guards no test caught;
+    3. one supervisor test kept in Showcase without a reason;
+    4. an ambiguous adaptation line in the guide.
+  - All four are addressed in `84e1f14`.
+

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0 — 2026-10-18
+
+- New `agent_harness.verification.supervisor`, `.command` and `.executor`: Showcase's verification supervisor,
+  command backend and plan executor (AH5-08b).
+  - The command backend takes the consumer's `argv_policy`, `blocked_executables` and `sandbox` namespace.
+    The default policy (`deny_all`) allows nothing.
+  - `run_command` takes `argv_policy`, `store_factory` and `backend_factory`.
+  - `execute_plan` takes `lifecycle`, `resolve_execution`, `backend_factory` and `store_factory`. An authority
+    run without a lifecycle and a resolver is refused.
+- New `agent_harness.verification.retry`: registered retry controls (`RetryControl`, `registry`,
+  `retry_policy_facts`).
+  - The consumer collects evidence and checks its run directory; the library checks the evidence against the
+    registration.
+  - `VerificationStore(retry_controls=...)`. With the default empty registry, only the literal no-op control
+    proves a critical gate retry-free.
+- **Breaking:** Showcase's retry-control registry (the `apps/ecommerce` Gradle gates and their input hashes) is
+  no longer in the library store. It had come over unrecorded with the store; Showcase now passes it in.
+- Contract and digests unchanged.
+
 ## 0.10.0 — 2026-10-18
 
 - New `agent_harness.sandbox`: Showcase's verification sandbox (AH5-08a), covering backend discovery, `doctor()`,
