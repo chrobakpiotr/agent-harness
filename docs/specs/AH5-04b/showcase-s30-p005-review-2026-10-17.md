@@ -206,3 +206,34 @@ For the next authorized attempt:
    - Then add only the cookie arguments.
 
 No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
+
+### P-006 startup comparison (`runs/20261017T211452Z-p005-argv-startup-comparison`, `runs/20261017T211649Z-cookie-args-only`)
+
+**What checks out.**
+- Both `SHA256SUMS` files verify, checked from each run directory.
+- The baseline `docker run` argv equals P-005's recorded argv, except for the resource names. The cookie-only run
+  adds exactly `RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS` and `RABBITMQ_CTL_ERL_ARGS`, so it is a clean single-variable
+  comparison.
+- Readiness is polled and every attempt is recorded. The logs were collected before removal. The invalid
+  `docker inspect --name` call (exit 125) is documented.
+- The baseline log shows `auth:init_no_setcookie` failing with `eacces`. The cookie run's ping succeeds on poll 2.
+
+**Findings.**
+1. **The baseline result changed with time, not with the argv.** The same argv started cleanly in P-005 at 20:29Z and
+   failed at 21:14Z. The `eacces` therefore depends on host state.
+   - Explicit cookie arguments are a working bypass on this host, not an identified cause.
+   - Record what changed on the host between the two times, for example a Docker Desktop restart or update, or disk
+     state. Keep "resolved the startup blocker" bounded to that.
+2. **"No persistent data mount" is not accurate.** The image declares `VOLUME /var/lib/rabbitmq`. Docker inspect of
+   the pinned digest shows `{"/var/lib/rabbitmq":{}}`. Every `docker run` therefore creates an anonymous volume, and
+   that is where the cookie is read from.
+   - `docker rm --force` without `-v` leaves that volume behind, so cleanup is incomplete in every P-005 and P-006
+     run.
+   - This host currently has 113 dangling volumes. I did not attribute or remove them; they are host state.
+   - Use `docker rm --force -v`, or `--mount type=tmpfs,destination=/var/lib/rabbitmq`, and record
+     `docker volume ls` before and after.
+   - Reconcile the P-005 and P-006 leftovers through each volume's creation time and its former container.
+   - A hypothesis, not a finding: the anonymous volume's ownership initialisation fits the `eacces`.
+
+Neither finding is fencer evidence. No P-006 acceptance probe has run. No Harness contract change. S30-06 stays
+OPEN / NOT QUALIFIED.
