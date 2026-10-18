@@ -47,6 +47,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "migration/showcase-wrapper/telemetry.py" = ["BLE001", "F401", "FURB162", "TRY004"]
 # Showcase retry-control policy, verbatim from its store and supervisor.
 "migration/showcase-wrapper/verification/retry_controls.py" = ["PIE810"]
+# Same mode as Showcase's verify.py (100644, with a shebang; it runs as `python3 verify.py`).
+"migration/showcase-wrapper/verify.py" = ["EXE001"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
@@ -55,4 +57,5 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "tests/test_verification_supervisor.py" = ["B023", "BLE001", "C408"]
 "tests/test_verification_noncacheable.py" = ["C408", "PLC0206"]
 "tests/test_state_snapshots.py" = ["B023", "BLE001"]
+"tests/test_verify_cli.py" = ["C408", "F841"]
 "tests/test_verification_store.py" = ["B023", "F401", "F841", "I001", "RUF059", "SIM117"]

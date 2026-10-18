@@ -199,3 +199,17 @@ Ported tests:
     shim. Showcase's `eval.py list` and `run --suite baseline` also run through the shim.
   - The library adds `test_eval_runner`: suite validation and refused destructive commands, suite resolution in
     the consumer's directory, results under the anchor's repository, and failure exit codes.
+
+## AH5-11 — the verification CLI (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/verify_cli.py` | `verify.py` `a8a22113` | **[seam]** `main(argv=None, *, profile_root, store_factory, resolve_execution, execute_plan)`, all required. The `plan` command resolves a logical profile ID under `profile_root`; the source used `<this file>/verification-profiles`. `grant-import` and `run` use the consumer's store factory, resolver and executor; the source imported Showcase's modules. Imports come from the library. The `sys.path` setup, the shebang and the `__main__` block move to the shim. `StoreError` is imported once at module level. |
+
+- Ported tests: `test_verify_cli`, from `test_verify.py` `c5f354e3`, 49 + 1.
+  - 45 are planner, fingerprint and serialization tests. They had stayed in Showcase when those modules moved, and
+    now run in the library.
+  - The 4 CLI tests call `verify_cli.main` in-process with test bindings; the source ran `verify.py` as a
+    subprocess or patched Showcase modules.
+  - The added seam test shows a logical profile resolves only under the consumer's root.
+- Showcase's `test_verify` passes 49/49 through the shim, which binds late. No removals.

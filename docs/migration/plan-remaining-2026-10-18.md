@@ -25,6 +25,23 @@
    - a fresh-context evaluation;
    - release on the owner's order.
 
+5. **Per packet** (owner, 2026-10-18):
+   - the source and test map;
+   - the explicit behaviour changes;
+   - the consumer update instructions.
+
+   One small packet at a time, in the order below. A cutover of already-moved modules never waits for the end of
+   the plan.
+6. **One implementation of shared rules.** State integrity and lifecycle transition rules have exactly one
+   implementation, the library's. Consumer hooks (Showcase's `state_recovery`) are policy. They can add
+   checks and supply records, but they cannot skip or replace a library integrity or transition check. One state
+   writer per root (ADR 0001 decision 6).
+7. **One execution path.** `runner.py` moves onto the library's existing execution and provider adapters:
+   `agent_harness.execution` (`launch`, `AgentCliBackend`, the offline backends) and the verification command
+   backend and supervisor. It does not keep or add a second launch/cancel/evidence path for the same operations.
+8. **After each cutover**, Showcase replaces its frozen copies with the shims, and fixes to shared code go only to
+   Harness.
+
 ## Order
 
 | Packet | Showcase source | Lines | Depends on | Seams expected | Notes |

@@ -168,6 +168,24 @@ class WrapperBindingTest(unittest.TestCase):
         with mock.patch.object(executor, 'CommandExecutionBackend', return_value='patched-backend'):
             self.assertEqual('patched-backend', kwargs['backend_factory']())
 
+    def test_verify_cli_binds_profiles_store_resolver_and_executor(self):
+        import verify
+
+        from agent_harness import verify_cli
+        with mock.patch.object(verify_cli, 'main', return_value=0) as cli:
+            self.assertEqual(0, verify.main(['plan']))
+        kwargs = cli.call_args.kwargs
+        self.assertEqual(['plan'], cli.call_args.args[0])
+        self.assertEqual(PROFILES, kwargs['profile_root'])
+        with mock.patch.object(store, 'VerificationStore', return_value='bound') as bound:
+            self.assertEqual('bound', kwargs['store_factory']('repo'))
+        bound.assert_called_once_with('repo')
+        with mock.patch.object(authority, 'resolve_execution', return_value='resolved'):
+            self.assertEqual('resolved', kwargs['resolve_execution']('repo', 'plan', unit_id=None))
+        from verification import executor
+        with mock.patch.object(executor, 'execute_plan', return_value='executed'):
+            self.assertEqual('executed', kwargs['execute_plan']('repo', 'profile', 'plan'))
+
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],
                              capture_output=True, text=True, check=True).stdout
