@@ -185,3 +185,10 @@ when the store is built, and more tests.
     4. an ambiguous adaptation line in the guide.
   - All four are addressed in `84e1f14`.
 
+  - Re-check verdict at `84e1f14`: **pass**.
+    - All four findings are closed.
+    - The two Showcase executor-refusal tests now exercise the patched store: a mutation that builds the store first
+      fails them.
+    - On the post-removal tree, the adversarial eval passes 7/7, and `doctor` and `validate-all` exit 0.
+    - Optional, not done: a test showing `admit_and_reserve` accepts a registered proof when the registry is
+      present. No library code calls that path.
