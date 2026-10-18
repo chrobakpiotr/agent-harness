@@ -2,9 +2,15 @@
 
 Shared agent execution contract, extracted from the Showcase agent harness. MIT licensed.
 
-**Scope of 0.1.x:** the execution contract only — request/result/usage/capability documents,
-their validators and golden fixtures. There is no launch/cancel API and no execution backend yet;
-nothing in this release is a qualified backend. See `CHANGELOG.md` and `docs/adr/0002-execution-contract.md`.
+**Scope:**
+- the shared execution contract (request, result, usage and capability documents, validators, golden fixtures);
+- offline launch/cancel;
+- the agent CLI backend;
+- target qualification and qualified grading sessions;
+- the Showcase harness modules extracted so far: the verification runtime, sandbox, state snapshots and eval engine.
+
+Agent execution and verification launch are not qualified, and results say so. See `CHANGELOG.md`,
+`docs/adr/0002-execution-contract.md` and, for the extraction, `docs/migration/`.
 
 ## Install
 
@@ -14,10 +20,20 @@ Pin a released tag or commit (no PyPI release):
 agent-harness @ git+https://github.com/chrobakpiotr/agent-harness.git@v0.11.0
 ```
 
-Python ≥ 3.13, no third-party dependencies (Ed25519 grants need the `grants` extra), no side effects on import. Public API: `agent_harness.contract`,
-`agent_harness.execution` (offline launch/cancel: scripted fake and controlled local process, never
-qualified; ADR 0004), contract versions 1 and 2 (ADR 0005) and the `agent-harness` CLI (`agent-harness constitution --check PATH` checks a copy of
-the shared agent contract for drift); other modules are internal.
+Python ≥ 3.13, no third-party dependencies (Ed25519 grants need the `grants` extra), no side effects on import.
+
+Supported API (ADR 0001, amendment 2026-10-18):
+- `agent_harness.contract`;
+- `agent_harness.execution`: offline launch/cancel with the scripted fake and the controlled local process (never
+  qualified, ADR 0004); `AgentCliBackend`; `QualifiedDockerBackend` and `QUALIFIED_LIMITS` for qualified grading;
+- `agent_harness.qualification`: `qualify`, `probe_digest`, `DEFAULT_IMAGE` and `DEFAULT_TARGET`;
+- `agent_harness.qualification.reference.reviewed_reference`;
+- contract versions 1 and 2 (ADR 0005);
+- the `agent-harness` CLI (`agent-harness constitution --check PATH` checks a copy of the shared agent contract for
+  drift).
+
+Every other module is internal: the verification runtime, sandbox, state snapshots and eval engine that Showcase
+uses through its cutover shims. Internal modules may change in any release.
 
 ## Use
 

@@ -1,7 +1,8 @@
 # AH5-06 — Release and controlled cutover
 
 - Status: **accepted**; integration authorised. 06a (rehearsal) **done** (third evaluation: pass);
-  06b (cutover) waits for 04b/04c.
+  06b-0 (re-sync) **done**, v0.9.0. 06b (cutover) **ready**: since ADR 0001's amendment of 2026-10-18 it no longer
+  waits for 04b/04c. The switch keeps every guard, and unblocking execution is a separate capability.
 - Source: master plan AH5-06; depends on AH5-05, independent review, integration authorisation. Showcase input:
   `91d4671` (`tooling/agent-harness/` unchanged since `50c18f9`), read-only in 06a.
 

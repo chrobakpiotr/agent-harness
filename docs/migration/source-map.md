@@ -2,11 +2,13 @@
 
 - Source: Showcase `tooling/agent-harness/` at `50c18f947031f1b7bd8e8c6276b2a98b9b46ab98`
   (checkout HEAD matched this SHA, clean tree, 2026-10-05). Read-only survey; nothing copied yet.
-- Ownership rule (ADR 0001, accepted): until cutover (AH5-06) Showcase is the only implementation owner of
-  every module below that is moved; afterwards the "Owner after cutover" column becomes the single owner, the
-  moved copy is replaced by the compatibility shim, never kept as a second active implementation.
-- Status of this map: survey of `50c18f9`. The target owner of a row becomes binding when a packet moves the
-  module (ADR 0001 decision 1); rows not yet moved stay in Showcase.
+- Ownership rule: ADR 0001, amendment 2026-10-18 (frozen copies). A row's "Owner after cutover" becomes the
+  single owner at the freeze notice of the packet that moves it. From then on, Showcase's file is a frozen copy
+  until its cutover replaces it with the compatibility shim; it is never a second active implementation. Rows not
+  yet moved stay Showcase-owned. The current list of moved modules and frozen copies is in
+  [`cutover.md`](cutover.md).
+- Status of this map: survey of `50c18f9`. The remaining work is planned in
+  [`plan-remaining-2026-10-18.md`](plan-remaining-2026-10-18.md).
 
 ## Execution modules (15,525 lines total)
 

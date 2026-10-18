@@ -1,6 +1,6 @@
 # ADR 0001 — Extraction ownership and order
 
-- Status: **Accepted** (independent review 2026-10-06: accept with amendments, applied below)
+- Status: **Accepted** (independent review 2026-10-06: accept with amendments, applied below); **amended 2026-10-18** (frozen-copy ownership, cutover independent of qualification, supported API; see the end)
 - Date: 2026-10-05; amended 2026-10-06
 - Inputs: `agent-harness-agent-plan-2026-10-05.md` (AH5-01), `docs/migration/source-map.md`
 
@@ -75,3 +75,67 @@ Verification-v2 launch and completion are deliberately blocked.
 - `verification/workspace.py` records carry `authority: diagnostic-only`;
   `verification_sandbox.doctor()` always reports `qualified: False`, `launch_ready: False`; Docker discovery
   is not qualification.
+
+## Amendment 2026-10-18 — frozen copies, cutover independent of qualification, supported API
+
+Ordered by the owner 2026-10-18. Context: Showcase's v0.9.0 cutover had not yet landed; AH5-08 had moved the
+verification runtime and AH5-09/10 the state snapshots and the eval engine.
+This amendment replaces decision 1, the cutover dependency in decision 2, and the public surface in decision 8.
+Where the earlier text conflicts, this section applies.
+
+1. **One ownership rule: frozen copies.**
+   - A module has exactly one implementation owner at any time.
+   - **Before its packet**, the owner is Showcase.
+   - **From the freeze notice** of the packet that moves it, the owner is the library:
+     - Showcase's file becomes a **frozen copy**. Nobody edits it except to replace it with the shim or re-pin
+       at cutover.
+     - A change in or around the module goes to the library first, then Showcase re-pins.
+     - A Showcase change made before the freeze is ported with a three-way merge against the copy point, as
+       AH5-06b-0 did for `49ab97f`.
+   - **At Showcase's cutover**, the frozen copy is replaced by the compatibility shim.
+
+   This replaces "Showcase owns moved modules until the cutover" and the per-module handover of decision 1. Decision 3
+   (library-first seams) still applies; with this rule it covers every change to a moved module.
+
+   | Library module | Showcase path(s), frozen copy | Freeze notice | First release |
+   |---|---|---|---|
+   | `trust`, `machine_outcomes`, `telemetry` (provenance/usage part) | `trust.py`, `machine_outcomes.py`, `telemetry.py` | 2026-10-17 (AH5-06b-0) | 0.2.0; re-synced 0.9.0 |
+   | `verification.{model,serialization,profile,fingerprint,planner,candidate,human_grants,store,authority}`, profile schema | `verification/{same}.py`, `schemas/verification-profile.schema.json` | 2026-10-17 (AH5-06b-0) | 0.2.0; re-synced 0.9.0 |
+   | `executables` | `verification_sandbox.py` lines 31–174 | 2026-10-17 | 0.9.0 |
+   | `sandbox`, `verification.workspace` | `verification_sandbox.py`, `verification/workspace.py` | 2026-10-18 (AH5-08) | 0.10.0 |
+   | `verification.{supervisor,command,executor,retry}` | `verification/supervisor.py`, `verification_command.py` (generic part), `verification/executor.py` | 2026-10-18 (AH5-08) | 0.11.0 |
+   | `state_snapshots` | `state_snapshots.py` | AH5-09 freeze notice | 0.12.0 |
+   | `eval_runner` | `eval.py` (engine; `evals/*.json` stay Showcase-owned) | AH5-10 freeze notice | 0.12.0 |
+
+   The table is kept current in `docs/migration/cutover.md`. Showcase policy that the shims bind stays
+   Showcase-owned and is never frozen:
+   - the Gradle environment, the `./gradlew` wrapper and authority roots;
+   - the command allowlist and profile scripts;
+   - the retry-control registry (`verification/retry_controls.py`);
+   - profiles, the issuer registry and eval suites;
+   - the `telemetry` manual-evidence part;
+   - `state_recovery.py`.
+2. **The cutover does not wait for backend qualification.** The cutover (AH5-06b) switches Showcase to the library
+   with every guard kept:
+   - origin admission and completion stay blocked;
+   - the qualified track stays NOT_QUALIFIED;
+   - `doctor()` reports `qualified: False`;
+   - the offline backends never satisfy origin admission.
+
+   It needs only the rehearsal evidence in `docs/specs/AH5-06/packet.md` and the cutover guide. Unblocking execution
+   is a separate capability, in later packets, each with its own qualification and review: 04a-2 origin
+   admission, 04b qualified verification backend, 04c source/output path. This replaces the order "04b/04c before
+   06b" in decision 2 and in the ownership proposal's "runner after 04b". No guard is removed or weakened by a
+   move.
+3. **Supported API.** The public, versioned surface is:
+   - `agent_harness.contract`;
+   - `agent_harness.execution`, including `QualifiedDockerBackend`, `QUALIFIED_LIMITS` and `AgentCliBackend`;
+   - `agent_harness.qualification`: `qualify`, `probe_digest`, `DEFAULT_IMAGE`, `DEFAULT_TARGET`;
+   - `agent_harness.qualification.reference.reviewed_reference`;
+   - the `agent-harness` CLI.
+
+   These change only with a CHANGELOG entry, and incompatibly only in a minor release that says so. Every other
+   module is internal and may change in any release: `verification.*`, `sandbox`, `executables`,
+   `state_snapshots`, `eval_runner`, `telemetry`, `trust`, `repository`, and `qualification`'s probe modules.
+   The Showcase shims rely on internal modules and private names, which is safe only at the exact pinned SHA
+   (decision 8, unchanged).

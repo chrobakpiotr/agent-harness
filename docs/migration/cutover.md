@@ -3,8 +3,37 @@
 For Showcase operators. Here "shim" means the Python compatibility modules below; it is unrelated to the
 S30 DR restore wrapper (inhibit, issuer acknowledgements, audited RESUME), which this cutover does not touch.
 
-Status: the cutover is **rehearsed** (AH5-06a); the real switch (AH5-06b) waits
-for the qualified backend (AH5-04b/04c). Until then Showcase stays the implementation owner (ADR 0001).
+Status: the cutover is **rehearsed** (AH5-06a, AH5-06b-0, AH5-08 to AH5-10) and **ready**. It does not wait for
+a qualified backend (ADR 0001, amendment 2026-10-18): the switch keeps every guard. Origin admission and
+completion stay blocked, the qualified track stays NOT_QUALIFIED, and `doctor()` reports `qualified: False`.
+Unblocking execution is a separate capability (AH5-04a-2, 04b, 04c), in its own packets.
+
+## Ownership and frozen copies
+
+A module has one implementation owner (ADR 0001, amendment 2026-10-18):
+- Showcase, until the freeze notice of the packet that moves it;
+- the library, from that notice on.
+
+From the freeze notice, Showcase's file is a **frozen copy**. It is not edited until this cutover replaces it with
+the shim, and every change goes to the library first.
+
+| Showcase frozen copy | Library module | Frozen since | In release |
+|---|---|---|---|
+| `trust.py`, `machine_outcomes.py`, `telemetry.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,store,authority}.py`, `schemas/verification-profile.schema.json` | `agent_harness.{trust,machine_outcomes,telemetry}`, `agent_harness.verification.*`, the profile schema | 2026-10-17 | 0.9.0 |
+| `verification_sandbox.py`, `verification/workspace.py` | `agent_harness.{executables,sandbox}`, `agent_harness.verification.workspace` | 2026-10-18 | 0.10.0 |
+| `verification/supervisor.py`, `verification/executor.py`, `verification_command.py` (generic part) | `agent_harness.verification.{supervisor,executor,command,retry}` | 2026-10-18 | 0.11.0 |
+| `state_snapshots.py`, `eval.py` (engine) | `agent_harness.{state_snapshots,eval_runner}` | AH5-09/10 freeze notice | 0.12.0 |
+
+Showcase policy stays Showcase-owned and is never frozen. The shims bind it, or it stays beside them:
+- the Gradle environment, the `./gradlew` wrapper and the authority roots;
+- the command allowlist and profile scripts;
+- `verification/retry_controls.py`;
+- `verification-profiles/`, `human-issuer-registry.json` and `evals/*.json`;
+- the manual-evidence part of `telemetry.py`;
+- `state_recovery.py`.
+
+`harness.py`, `runner.py`, `orchestrate.py`, `verify.py`, `design.py`, `wayfinder.py`, `verification_contract.py`,
+`control_plane.py` and `spec_inventory.py` are not moved yet; see `plan-remaining-2026-10-18.md`.
 
 ## What changes
 
