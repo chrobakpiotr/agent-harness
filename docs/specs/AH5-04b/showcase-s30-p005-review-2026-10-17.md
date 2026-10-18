@@ -265,3 +265,35 @@ No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
 - The new test `test_inspect_failure_with_new_volume_remaining_fails_cleanup` covers the inspect-failure path.
 - `test_reconnect_runner`: 5 tests OK. I ran them on a copy.
 - Remaining: the P-006 runner, when it is written.
+
+## Fencer mechanism proposal (`evidence/fencer-mechanism-proposal-2026-10-18.md`)
+
+Scope: the execution/integration boundary only. The proposal is consistent with the closed boundary review and with
+P-006. Its limits are stated correctly, and nothing in it needs a Harness contract change. Before the spike runs:
+
+1. **Replay of a non-terminal outcome must make progress.** As written, "an exact request replay returns its original
+   stored result" means a `PARTIAL` or `FAILED` replayed with the same `request_id` returns `PARTIAL` forever. A new
+   `request_id` at the same generation is not specified either way. Pick one rule and test it:
+   - Store and replay only terminal outcomes (`FENCED`, `GENERATION_MISMATCH`, `UNKNOWN_INCARNATION`). A replay of
+     `PARTIAL` or `FAILED` re-runs closure and reconciliation under the same request, can only move forward to
+     `FENCED`, and never un-revokes.
+   - Or: define that a new `request_id` at the same `expected_generation` is a permitted retry, and that a reused
+     `request_id` with a different tuple is rejected.
+2. **The redelivery idempotency key belongs in the effect transaction.** Item 5 relies on a stable business key. It
+   is safe only if it is enforced by a unique constraint written in the same PostgreSQL transaction as the effect and
+   the generation compare-and-set. Test the redelivered message against an already-committed key.
+3. **The drain observer is a separate trust element.** Listing other users' connections, channels and consumers
+   needs a `monitoring`-level management identity. Name it alongside the provisioner and fencer, read-only, and run
+   the same denied-operations check on it.
+   - Add per-queue `messages_unacknowledged` for the old consumer's queues to the drain snapshot. Consumer absence
+     alone does not show that the old deliveries were requeued.
+4. **Check for cookie leaks mechanically.** `--env NAME` copies the value into the container config, so
+   `docker inspect` (`Config.Env`) shows it, and Erlang arguments can appear in process listings.
+   - Before writing evidence, the runner should search every retained file for the run's cookie and password values
+     and fail the run on a match.
+   - That check works better than redacting by hand.
+5. **Optional, low cost: revocation must survive a broker restart.** After `FENCED`, restart the single node once.
+   Then verify that the old principal is still refused and the replay returns the stored record. This shows the
+   revoked marker is durable, not process-local.
+
+S30-06 stays OPEN / NOT QUALIFIED. Authorizing the spike remains a Showcase decision.
