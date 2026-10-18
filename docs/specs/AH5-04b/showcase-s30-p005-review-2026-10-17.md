@@ -237,3 +237,25 @@ No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
 
 Neither finding is fencer evidence. No P-006 acceptance probe has run. No Harness contract change. S30-06 stays
 OPEN / NOT QUALIFIED.
+
+### Volume reconciliation and runner cleanup (`runs/20261018T084252Z-volume-reconciliation`, P-005 runner)
+
+**What checks out.**
+- `SHA256SUMS` verifies.
+- The host now has 107 dangling volumes, down from 113.
+- The six removals are each tied to a recorded broker start by `CreatedAt`. That is one volume per run, which is
+  consistent with the original P-006 run's two tmpfs attempts creating none.
+- The 24 + 1 + 82 unattributed volumes are correctly left alone.
+- The corrected interpretation keeps the cookie arguments as a bypass with the cause unknown, and states the host
+  comparison's limits.
+- `test_reconnect_runner`: 4 tests OK. I ran them on a copy.
+
+**One gap in the runner, not blocking.** `created_by_run_remaining` is recorded, but a non-empty value does not fail
+the run. The only fail-closed volume check is on `rabbit_anonymous_volume`, and that stays `None` when the
+`rabbit-volume-inspect` stage fails. On that path a leaked volume would end as `BLOCKED`, not `CLEANUP_FAILED`.
+- Fix: treat a non-empty `created_by_run_remaining` as a cleanup error. That is a false positive only if something
+  else on the host creates a volume during the run, which is fail-closed.
+- Add the inspect-failure case to the test.
+- P-006 has no runner in the repository yet. Its runner needs the same `--volumes` and inventory handling.
+
+No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
