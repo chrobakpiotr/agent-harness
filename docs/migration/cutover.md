@@ -65,7 +65,8 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    in its own module, so the patch target becomes the library module. Two are in `verification_command`'s tests.
    Change only the patch target, in
    `test_verification_command.py::test_resolved_plan_binding_is_forwarded_and_swap_fails_before_payload` (the
-   patch around `VerificationSupervisor(store).execute(...)`, line 98 at `49ab97f`; line 162 in the second test) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
+   patch around `VerificationSupervisor(store).execute(...)`, line 98 at `49ab97f`; leave the line-67 patch around
+   `executable_binding_for_command` unchanged; line 162 in the second test) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
    `mock.patch.object(command.verification_sandbox, 'resolve_executable', …)` becomes
    `mock.patch('agent_harness.sandbox.resolve_executable', …)`. With that change, all 11 tests pass through the shim.
    The third is in `test_verification_noncacheable.py::test_terminal_publication_crash_recovers_pass_without_relaunch`

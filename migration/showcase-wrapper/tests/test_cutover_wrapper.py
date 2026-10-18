@@ -153,12 +153,14 @@ class WrapperBindingTest(unittest.TestCase):
         from verification import executor
 
         from agent_harness.verification import executor as library_executor
-        with mock.patch.object(library_executor, 'execute_plan', return_value='done') as execute, \
-             mock.patch.object(store, 'VerificationStore', return_value='bound-store'):
+        with mock.patch.object(library_executor, 'execute_plan', return_value='done') as execute:
             self.assertEqual('done', executor.execute_plan('repo', 'profile', 'plan', sandbox_mode='off'))
         args, kwargs = execute.call_args
         self.assertEqual(('repo', 'profile', 'plan'), args)
-        self.assertEqual('bound-store', kwargs['store'])
+        self.assertIsNone(kwargs['store'])  # built by the library after its authority checks
+        with mock.patch.object(executor, 'VerificationStore', return_value='bound-store') as bound:
+            self.assertEqual('bound-store', kwargs['store_factory']('root'))
+        bound.assert_called_once_with('root')
         self.assertIs(harness, kwargs['lifecycle'])
         self.assertIs(authority.resolve_execution, kwargs['resolve_execution'])
         self.assertEqual('off', kwargs['sandbox_mode'])

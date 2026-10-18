@@ -79,6 +79,16 @@ class ExecutorTest(unittest.TestCase):
                              authority_context={'plan_id': 'p'}, backend_factory=python_backend, **kwargs)
         self.assertEqual([], calls)
         self.assertFalse(store.executions.exists())
+        # [seam] store_factory: built only after the authority checks, and used when no store is given.
+        built = []
+        with self.assertRaisesRegex(StoreError, 'VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE'):
+            execute_plan(self.root, self.profile, plan, sandbox_mode='off', authority_context={'plan_id': 'p'},
+                         store_factory=lambda root: built.append(root), backend_factory=python_backend)
+        self.assertEqual([], built)
+        result = execute_plan(self.root, self.profile, plan, sandbox_mode='off', backend_factory=python_backend,
+                              store_factory=lambda root: built.append(root) or store)
+        self.assertEqual([self.root], built)
+        self.assertEqual('verification-blocked', result.outcome)
 
     def test_execution_record_is_deterministic_for_same_input(self):
         first = ExecutionResult('family', 'a' * 64, 'PASS', (

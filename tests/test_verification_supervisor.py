@@ -1,7 +1,7 @@
 """Ported from Showcase `tooling/agent-harness/tests/test_verification_supervisor.py` at `49ab97f` (AH5-08b).
 
-The 17 VC-009 Gradle retry-control tests that read or copy Showcase's build files and stay in Showcase, where they run
-through the shims; the retry-control port has its own tests in `test_verification_retry.py`.
+Sixteen VC-009 Gradle retry-control tests read or copy Showcase's build files, so they stay in Showcase and run
+through the shims there. The retry-control port has its own tests in `test_verification_retry.py`.
 """
 import dataclasses
 import hashlib
@@ -648,6 +648,17 @@ class SupervisorTest(unittest.TestCase):
             reconstructed = VerificationStore(root, control_root=root/'control').reconstruct_execution_terminals()
             self.assertEqual(expected, reconstructed[0]['retry_policy_proof'])
 
+
+    def test_vc009_16_fresh_process_reconstruction_preserves_retry_proof(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp); store = VerificationStore(root, control_root=root/'control')
+            backend = LifecycleBackend(store, root/'unit')
+            VerificationSupervisor(store).execute(backend, worktree=root, family_id='f', attempt_id='a',
+                gate_id='g', command='python3 -c pass', cwd=root, run_dir=root/'run', timeout_seconds=2,
+                sandbox_mode='required', critical=True, retry_controls=('no-internal-retries',))
+            fresh = VerificationStore(root, control_root=root/'control')
+            rebuilt = fresh.reconstruct_execution_terminals()
+            self.assertEqual(['no-internal-retries'], rebuilt[0]['retry_policy_proof']['retry_controls'])
 
     def _vc009_positive(self, declaration):
         with tempfile.TemporaryDirectory() as temp:

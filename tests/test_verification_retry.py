@@ -70,6 +70,12 @@ class RetryControlTest(unittest.TestCase):
             bare = VerificationStore(root, control_root=root / 'control')
             with self.assertRaisesRegex(StoreError, 'retry-policy-violation'):
                 bare.reconstruct_execution_terminals()
+            # A new admission carrying the registered proof is refused by a store without the registry.
+            started = json.loads(next(store.executions.glob('*/started.json')).read_text())
+            replay = {**started, 'execution_id': 'f' * 32}
+            fresh = VerificationStore(root, control_root=root / 'fresh-control')  # no prior journals to rescan
+            with self.assertRaisesRegex(StoreError, 'retry-policy-violation'):
+                fresh.admit_and_reserve('f' * 32, {**replay, 'repository_id': fresh.repository_id})
 
     def test_unregistered_control_and_consumer_failures_are_violations(self):
         def raising(*_args):
@@ -108,6 +114,27 @@ class RetryControlTest(unittest.TestCase):
                                            gate_id=item.gate_id, command=item.command,
                                            control_evidence={**evidence, key: value})
                 self.assertFalse(facts['retry_free'])
+        for name, kwargs in (('other gate', {'gate_id': 'other-gate', 'command': item.command}),
+                             ('other command', {'gate_id': item.gate_id, 'command': './other.sh'}),
+                             ('other command hash', {'gate_id': item.gate_id, 'command_hash': 'e' * 64}),
+                             ('evidence control', {'gate_id': item.gate_id, 'command': item.command,
+                                                   'control_evidence': {**evidence, 'control_id': 'other'}}),
+                             ('evidence gate', {'gate_id': item.gate_id, 'command': item.command,
+                                                'control_evidence': {**evidence, 'gate_id': 'other-gate'}}),
+                             ('evidence command', {'gate_id': item.gate_id, 'command': item.command,
+                                                   'control_evidence': {**evidence, 'command': './other.sh'}}),
+                             ('extra key', {'gate_id': item.gate_id, 'command': item.command,
+                                            'control_evidence': {**evidence, 'extra': 1}}),
+                             ('missing key', {'gate_id': item.gate_id, 'command': item.command,
+                                              'control_evidence': {k: v for k, v in evidence.items()
+                                                                   if k != 'strict_max_retries'}})):
+            with self.subTest(name):
+                kwargs.setdefault('control_evidence', evidence)
+                self.assertFalse(retry_policy_facts('forbid', True, [item.control_id], registry=known,
+                                                    **kwargs)['retry_free'])
+        command_hash = hashlib.sha256(item.command.encode()).hexdigest()
+        self.assertTrue(retry_policy_facts('forbid', True, [item.control_id], registry=known, gate_id=item.gate_id,
+                                           command_hash=command_hash, control_evidence=evidence)['retry_free'])
         self.assertFalse(retry_policy_facts('forbid', True, [item.control_id], registry={}, gate_id=item.gate_id,
                                             command=item.command, control_evidence=evidence)['retry_free'])
         noop = hashlib.sha256(b'python3 -c pass').hexdigest()

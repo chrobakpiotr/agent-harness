@@ -142,7 +142,7 @@ Ported tests:
 |---|---|---|
 | `agent_harness/verification/supervisor.py` | `3e896a36` | **[seam]** The retry-control port below. `_read_regular_worktree_file`, `_gradle_user_home_has_init_scripts` and `_registered_gradle_retry_evidence` move verbatim to the Showcase shim. In their place, `_registered_retry_evidence` matches the registered control's gate and command, then calls the consumer, and the run-directory check goes through the control (`run_namespace`, `check_run_dir`). A consumer exception is a `retry-policy-violation`. `CommandResult` is imported from `.command`. |
 | `agent_harness/verification/command.py` | `verification_command.py` `9a83e9b7` | `CommandResult`, `PreparedCommand`, `CommandExecutionBackend`, `run_command` and the errors. **[seam]** The backend takes `argv_policy`, `blocked_executables` and `sandbox` (a namespace, `agent_harness.sandbox` by default), and `run_command` takes `argv_policy`, `store_factory` and `backend_factory`. The default argv policy is `deny_all`: it parses with the source's shell-syntax refusal (`parse_argv`), then refuses with `command-not-allowlisted`. `PROFILE_SCRIPTS`, `_accepted_script_argv`, `verification_argv` and `executable_binding_for_command` stay in Showcase's `verification_command.py`, verbatim. |
-| `agent_harness/verification/executor.py` | `88377c9d` | **[seam]** `execute_plan(..., lifecycle=, resolve_execution=, backend_factory=)`. The five `harness.*` calls become `lifecycle.*`. An `authority_context` run without a lifecycle and a resolver is refused with `VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE`. `machine_outcomes` comes from the library. |
+| `agent_harness/verification/executor.py` | `88377c9d` | **[seam]** `execute_plan(..., lifecycle=, resolve_execution=, backend_factory=, store_factory=)`. The store is built where the source built it, after the authority and plan-binding checks. The five `harness.*` calls become `lifecycle.*`. An `authority_context` run without a lifecycle and a resolver is refused with `VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE`. `machine_outcomes` comes from the library. |
 | `agent_harness/verification/retry.py` (new) | from store `720053db` | `RetryControl`, `registry()` and `retry_policy_facts()`, which is the source's `_retry_policy_facts` with the registry passed in. The evidence's config path and hashes are checked against the registration, not against Showcase literals. |
 | `agent_harness/verification/store.py` | `720053db` | **[seam]** `retry_controls=()`, validated with `registry()`. Persisted and new retry proofs are checked with `retry_policy_facts(..., registry=self.retry_controls)`. Showcase's `_RETRY_CONTROL_*`, `_REGISTERED_GRADLE_BUILD_INPUT_SHA256`, `_NO_RETRY_COMMAND` and `_retry_control_inputs_digest` came over with the store in AH5-04a without being recorded. They are removed from the library and kept verbatim in the shim `verification/retry_controls.py`, and the store shim still exports them. |
 
@@ -155,7 +155,7 @@ The Showcase shims bind Showcase's policy:
 - `verification/supervisor.py` is an alias.
 
 Ported tests:
-- `test_verification_supervisor`, from `9a7e09f2`: 71 of 88. The 17 VC-009 Gradle retry-control tests read or
+- `test_verification_supervisor`, from `9a7e09f2`: 72 of 88. The 16 VC-009 Gradle retry-control tests read or
   copy Showcase's build files and stay in Showcase, where all 88 pass through the shims.
 - `test_verification_executor`, from `01b89501`. The two tests that run `python3` pass a test allowlist through
   `backend_factory`, and a lifecycle seam test is added.

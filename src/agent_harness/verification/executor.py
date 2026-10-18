@@ -142,7 +142,7 @@ def execute_plan(repository: pathlib.Path, profile, plan, *, store: Verification
                  evidence: dict | None = None, attempt_id: str | None = None,
                  failure_grants: dict[str, str] | None = None,
                  authority_context: dict | None = None, lifecycle=None, resolve_execution=None,
-                 backend_factory=None):
+                 backend_factory=None, store_factory=None):
     if authority_context is not None:
         # [seam] An authority run needs the consumer's lifecycle and its bound authority resolver.
         if not isinstance(authority_context, dict) or lifecycle is None or resolve_execution is None:
@@ -176,7 +176,8 @@ def execute_plan(repository: pathlib.Path, profile, plan, *, store: Verification
                  if gate_obligations.get(item.node.id) in selected_obligations] != selected_ids):
             raise StoreError('PLAN_BINDING_MISMATCH')
     safety = safety or default_safety()
-    store = store or VerificationStore(repository)
+    # [seam] A consumer's store (its registry, profiles and retry controls), built only after the checks above.
+    store = store or (store_factory or VerificationStore)(repository)
     attempt_id = attempt_id or uuid.uuid4().hex
     started_all = time.time()
     gate_results: list[GateExecution] = []
