@@ -102,9 +102,50 @@ rollback output and the isolated reruns are in `evidence-rehearsal-08a-49ab97f.t
     - the line-98 wording;
     - case-insensitive reserved names in the environment policy, so `Path` cannot replace `PATH` on Windows.
 
-## AH5-08b — supervisor, command backend and executor (later)
+## AH5-08b — supervisor, command backend and executor
 
-- Lifecycle port: `admit`, `consume` and `terminalize` join `load_validated`/`load_state`.
-- A command-policy port carries `verification_command`'s allowlist and `PROFILE_SCRIPTS`.
-- A retry-evidence port carries the Gradle retry evidence.
-- Drafted after 08a is accepted.
+- Status: **in progress** (2026-10-18). Source: Showcase `49ab97f`.
+- **Finding:** the library store already carries Showcase's retry-control registry. That covers
+  `_RETRY_CONTROL_BINDINGS`, the wrapper and input SHA-256s for `apps/ecommerce/...`, `settings.gradle`, `gradlew`
+  and the critical PostgreSQL and RabbitMQ scripts, plus the `ecommerce.gradle` config path checked in
+  `_retry_policy_facts`. It came over with the store in AH5-04a and was not recorded. This is a decision-4 gap, and
+  08b closes it.
+- Allowed paths:
+  - `src/agent_harness/verification/{store,supervisor,executor,command,retry}.py`
+  - `tests/test_verification_{supervisor,executor,command,noncacheable,store,retry}*.py`
+  - `migration/showcase-wrapper/{verification_command.py,verification/supervisor.py,verification/executor.py,verification/store.py,verification/retry_controls.py}`
+  - `migration/showcase-wrapper/tests/test_cutover_wrapper.py`
+  - `docs/migration/{provenance,cutover}.md`
+  - `docs/specs/AH5-08/`, `docs/specs/release-*/`
+  - `pyproject.toml`, `CHANGELOG.md`, `README.md`, `src/agent_harness/__init__.py`
+- Ports. Each fails closed, each has a test, and the Showcase shim binds Showcase's policy verbatim:
+  1. **Retry controls** (`agent_harness.verification.retry`):
+     - `RetryControl(control_id, gate_id, command, wrapper_sha256, config_path, inputs, collect_evidence,
+       check_run_dir)`. `collect_evidence` and `check_run_dir` are the consumer's callables.
+     - `VerificationStore(retry_controls=...)` validates persisted and new retry proofs against the registry.
+       The supervisor collects evidence and checks the run directory through it.
+     - The default registry is empty: only the literal no-op control holds, and any other declared control on a
+       critical `forbid` gate is a `retry-policy-violation`.
+     - The Showcase registry, which holds the constants and the Gradle evidence and init-script checks verbatim,
+       moves to `migration/showcase-wrapper/verification/retry_controls.py`.
+  2. **Command policy** (`agent_harness.verification.command`):
+     - `CommandResult`, `PreparedCommand`, `CommandExecutionBackend` and `run_command` move.
+     - The backend takes `argv_policy(command, script_context, worktree, cwd)` (the consumer allowlist),
+       `blocked_executables` (Showcase's profile scripts, refused at prepare as in the source), and the sandbox
+       policy that is passed to `agent_harness.sandbox.build_plan`.
+     - `run_command` takes a `store_factory`.
+     - `verification_argv`, `PROFILE_SCRIPTS`, `_accepted_script_argv` and `executable_binding_for_command` stay in
+       Showcase's `verification_command.py`, now a shim plus policy.
+  3. **Lifecycle** (executor):
+     - `execute_plan(..., lifecycle=, resolve_execution=, backend_factory=)`. The source's
+       `import harness` calls become `lifecycle.load_validated`, `load_state`, `admit_verification_execution`,
+       `consume_verification_launch` and `terminalize_verification_execution`.
+     - Without a lifecycle, an `authority_context` run is refused with `VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE`.
+       Without a backend factory, the store is used with the library backend and the default argv policy, which
+       allows nothing (`command-not-allowlisted`).
+- AC1: everything else keeps the `49ab97f` behaviour. The ported supervisor, executor, command and noncacheable tests
+  pass in the library suite. Tests whose driver stays in Showcase are listed with the reason. Each port has a test
+  and a mutation check.
+- AC2: the cutover rehearsal at `49ab97f` gives the 08a results plus the listed 08b differences. The
+  post-removal CI eval commands pass.
+- AC3: `scripts/check-wheel.sh` and CI are green, and a fresh-context evaluation passes.
