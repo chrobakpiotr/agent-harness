@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.0 — 2026-10-18
+
+- New `agent_harness.verify_cli`: the verification CLI (AH5-11). `main(argv, *, profile_root, store_factory,
+  resolve_execution, execute_plan)`: the consumer passes its trusted profile root and its bound store, resolver and
+  executor; none is built in. 45 planner, fingerprint and serialization tests that had stayed in Showcase now run
+  in the library.
+- New `agent_harness.task_runner`: the runner's provider-neutral checks (AH5-12a). These cover packet integrity,
+  task-result schema projection and validation, git/path postconditions and the accepted-plan verification hook.
+  The tested projection profiles, the canonical schema, the verification CLI, the profile root, the environment
+  builder and the binding check are explicit; none is built in.
+- Contract and digests unchanged.
+
 ## 0.12.0 — 2026-10-18
 
 - New `agent_harness.state_snapshots`: Showcase's write-ahead snapshots of `.agent-state` under `refs/agent-state*`,
