@@ -44,3 +44,22 @@ change the launch.
 - The ported tests pass, and each seam has a test and a mutation check.
 - Showcase's `test_runner` passes through the shim, and the rehearsal at `49ab97f` gives the AH5-11 results.
 - Source and test map, behaviour changes (none intended) and consumer update, as in AH5-11.
+
+## AH5-12a — source and test map, changes, consumer update, evidence (2026-10-18)
+
+| Showcase (`49ab97f`) | Library | Notes |
+|---|---|---|
+| `runner.py` (`9b3a7177`), the checks listed in the findings | `agent_harness/task_runner.py` | Verbatim apart from the seams in `provenance.md` |
+| `runner.py`, everything else | `migration/showcase-wrapper/runner.py` | Showcase's file with the checks bound to the library; the launch is unchanged |
+| `tests/test_runner.py` (`8678338c`, 27) | `tests/test_task_runner.py` (16 + 2) | The 11 launch tests stay until 12b |
+
+- **Behaviour changes:** none for Showcase. In the library, the checks have no built-in projection profiles, schema,
+  verification CLI or profile root.
+- **Consumer update (Showcase):** at the re-pin, copy `migration/showcase-wrapper/runner.py` over
+  `tooling/agent-harness/runner.py`. No test removals. From the freeze notice, the moved checks are frozen in it;
+  the launch stays Showcase-owned until 12b.
+- **Evidence:**
+  - `test_task_runner`: 18 OK.
+  - Mutating the binding check, the consumer CLI or the profile root fails the suite.
+  - Showcase's `test_runner`: 27/27 on both sides (scratch copies of `49ab97f`).
+  - The rehearsal and evaluation are recorded with the release.

@@ -37,6 +37,7 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
                                          "SIM103", "SIM114", "TRY004", "RUF059", "RUF023"]
 "src/agent_harness/telemetry.py" = ["UP017"]
 "src/agent_harness/eval_runner.py" = ["F841", "UP017"]
+"src/agent_harness/task_runner.py" = ["C401", "TRY004"]
 "src/agent_harness/state_snapshots.py" = ["SIM102", "TRY203", "UP017", "UP022"]
 # Verbatim executor: its per-gate callbacks run synchronously inside their own loop iteration.
 "src/agent_harness/verification/executor.py" = ["B023"]
@@ -49,6 +50,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "migration/showcase-wrapper/verification/retry_controls.py" = ["PIE810"]
 # Same mode as Showcase's verify.py (100644, with a shebang; it runs as `python3 verify.py`).
 "migration/showcase-wrapper/verify.py" = ["EXE001"]
+# Showcase's runner.py: verbatim apart from the AH5-12a bindings; its imports serve the launch kept until 12b.
+"migration/showcase-wrapper/runner.py" = ["F401", "I001", "RUF100", "UP017"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]

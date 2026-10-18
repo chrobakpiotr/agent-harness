@@ -213,3 +213,18 @@ Ported tests:
     subprocess or patched Showcase modules.
   - The added seam test shows a logical profile resolves only under the consumer's root.
 - Showcase's `test_verify` passes 49/49 through the shim, which binds late. No removals.
+
+## AH5-12a — the runner's provider-neutral checks (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/task_runner.py` | `runner.py` `9b3a7177`: `die`, `load`, `canonical_json`, `SUPPORTED_SCHEMA_KEYWORDS`, the schema projection and validation functions, `packet_hash`, `validate_packet_integrity`, `validate_result`, the git/path postcondition functions and `run_verification` | **[seam]** `project_task_result_schema`/`task_result_projection(..., profiles=)` take the consumer's tested (provider, CLI version) profiles, none built in. `validate_result(..., canonical_schema=)` is required; the source loaded its own file. `run_verification(..., resolve_accepted=, profile_root=, verify_cli=, safe_env=, verify_binding=)`: the source imported Showcase's modules and used its own directory. Library imports: `trust`, `executables`, `machine_outcomes`, `verification.profile`. |
+
+- Showcase's `runner.py` shim is its own file. The moved definitions are replaced by bindings: its
+  `TASK_RESULT_PROJECTION_PROFILES`, schema path, `verify.py`, `verification-profiles/`, and
+  `verification_sandbox._safe_env`/`verify_executable_binding`, all late-bound. The provider launch (`codex_command`,
+  `claude_command`, `main`, …) is unchanged until AH5-12b. Mode 100755, as the source.
+- Ported tests: `test_task_runner`, 16 of `test_runner.py`'s 27 (`8678338c`) plus 2 seam tests. A test-side `runner`
+  namespace binds the checks the way the shim does, with fixture data: `fixtures/task-runner` holds Showcase's
+  `task-result.schema.json`; its projection profiles are test constants. The 11 launch tests move with AH5-12b.
+- Showcase's `test_runner` passes 27/27 through the shim. No removals.
