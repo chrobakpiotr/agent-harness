@@ -53,6 +53,20 @@ class EvalRunnerTest(unittest.TestCase):
             eval_runner.main(['list'], suites_dir=self.suites, anchor=self.suites)
         self.assertEqual('demo\n', listing.getvalue())
 
+    def test_anchor_outside_git_fails_closed_even_inside_another_repository(self):
+        """[seam] No fallback to the working directory's checkout."""
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        import os
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(self.repo)  # a Git repository, but not the anchor's
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            eval_runner.main(['run', '--suite', 'demo', '--run-id', 'r3'], suites_dir=self.suites,
+                             anchor=pathlib.Path(outside.name))
+        self.assertEqual(2, raised.exception.code)
+        self.assertFalse((self.repo / '.agent-runs' / 'evals' / 'demo' / 'r3').exists())
+
     def test_failing_case_fails_the_run(self):
         (self.suites / 'bad.json').write_text(json.dumps(suite('bad', [
             {'id': 'no', 'command': [sys.executable, '-c', 'raise SystemExit(3)']}])), encoding='utf-8')

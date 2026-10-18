@@ -169,11 +169,15 @@ Ported tests:
 
 | Package module | Source blob | Changes from source |
 |---|---|---|
-| `agent_harness/state_snapshots.py` | `b66a9ed8` | none (the provenance line is added to the docstring) |
+| `agent_harness/state_snapshots.py` | `b66a9ed8` | none (the provenance line is added to the docstring). Known Showcase literals, kept for parity: the snapshot and audit commits' `user.name` (`Showcase Agent State Snapshot`/`Audit`). Nothing reads them back. |
 
 - The module is generic. Its refs are `refs/agent-state*`, the state root is `.agent-state` (ADR 0003), and the
   repository identity comes from `remote.origin.url` or the local common directory. It imports only the standard
   library.
+- Known limitation: the identity comes from the remote named `origin`, so it is not the common-directory
+  `RepoContext` identity of ADR 0003. A consumer whose remote has another name gets a local, path-based identity.
+  If `origin` is later added or renamed, the identity flips, and existing snapshots then fail with
+  `snapshot-scope-mismatch`. This is a candidate seam for a later packet.
 - `state_recovery.py` stays in Showcase. It validates the one-off recovery of Showcase's lost SDD-OBS-001 state
   against Showcase's own incident record, `docs/specs/AGENT-STATE-RECOVERY-001/evidence/`. That is consumer
   history, not shared behaviour.
@@ -185,7 +189,7 @@ Ported tests:
 
 | Package module | Source blob | Changes from source |
 |---|---|---|
-| `agent_harness/eval_runner.py` | `eval.py` `ffb0a1f4` | **[seam]** `HERE`, `REPO` and `DEFAULT_SUITES` are removed. `repo_root(anchor)`, `load_suite(value, suites_dir)`, `run_suite(..., anchor=)` and `main(argv=None, *, suites_dir, anchor)` take the consumer's suites directory and a path inside its repository; `repo_root` keeps the source's fallback to the working directory's checkout. The shebang and the `__main__` block move to the shim. |
+| `agent_harness/eval_runner.py` | `eval.py` `ffb0a1f4` | **[seam]** `HERE`, `REPO` and `DEFAULT_SUITES` are removed. `repo_root(anchor)`, `load_suite(value, suites_dir)`, `run_suite(..., anchor=)` and `main(argv=None, *, suites_dir, anchor)` take the consumer's suites directory and a path inside its repository. An anchor outside Git fails closed (`eval runner requires a Git repository`). The source's fallback to the working directory's checkout lives in the Showcase shim (`_anchor()`), where `REPO` is always the checkout. Noted for the Showcase owner, verbatim and unchanged: `run_suite` builds `.agent-runs/evals/<suite name>/<run id>` without validating either part. The shebang and the `__main__` block move to the shim. |
 
 - The suites (`evals/*.json`) stay Showcase-owned, as the owners decided on 2026-10-07. The shim binds
   `DEFAULT_SUITES = evals/` and `REPO = <checkout>`, so `python3 tooling/agent-harness/eval.py …` behaves as

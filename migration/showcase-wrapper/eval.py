@@ -14,8 +14,15 @@ REPO = HERE.parents[1]
 DEFAULT_SUITES = HERE / 'evals'
 
 
+def _anchor():
+    # The source tried this file's checkout, then the working directory's; the library takes one explicit anchor.
+    import subprocess
+    found = subprocess.run(['git', '-C', str(REPO), 'rev-parse', '--show-toplevel'], capture_output=True, check=False)
+    return REPO if found.returncode == 0 else pathlib.Path.cwd()
+
+
 def repo_root():
-    return _impl.repo_root(REPO)
+    return _impl.repo_root(_anchor())
 
 
 def load_suite(value):
@@ -23,11 +30,11 @@ def load_suite(value):
 
 
 def run_suite(path, doc, args):
-    return _impl.run_suite(path, doc, args, anchor=REPO)
+    return _impl.run_suite(path, doc, args, anchor=_anchor())
 
 
 def main(argv=None):
-    _impl.main(argv, suites_dir=DEFAULT_SUITES, anchor=REPO)
+    _impl.main(argv, suites_dir=DEFAULT_SUITES, anchor=_anchor())
 
 
 if __name__ == '__main__':

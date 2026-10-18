@@ -44,3 +44,13 @@
   - Showcase's working tree changed during the run (its own v0.11.0 cutover in progress). The rehearsal uses an
     archive of `49ab97f`, so its results are unaffected.
 - AC3: see `docs/specs/release-0.12.0/packet.md` and the evaluation below.
+- AC3, independent evaluation of AH5-09 and AH5-10 together: **pass with amendments**. All four amendments are
+  applied:
+  1. the eval engine no longer falls back to the working directory. An anchor outside Git fails closed, with a
+     test and a mutation check, and the source's fallback lives in the Showcase shim;
+  2. `test_identical_full_tree_skips_snapshot_commit` is added to the removal list, because it passes vacuously
+     through the file-loaded alias, and the guide's alias claim is narrowed;
+  3. the Showcase commit-name literal is recorded;
+  4. the `origin`-based identity is recorded as a known limitation.
+
+  Routed to Showcase: the suite name and run id in the eval output path are not validated (verbatim, unchanged).

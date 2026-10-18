@@ -37,10 +37,9 @@ def die(message: str) -> None:
 
 
 def repo_root(anchor: pathlib.Path) -> pathlib.Path:
-    # [seam] The consumer names a path inside its repository; the source used this file's location.
+    # [seam] The consumer names a path inside its repository; the source used this file's location. No fallback
+    # to the process working directory: an anchor outside Git fails closed.
     proc = subprocess.run(['git', '-C', str(anchor), 'rev-parse', '--show-toplevel'], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        proc = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         die('eval runner requires a Git repository')
     return pathlib.Path(proc.stdout.strip()).resolve()

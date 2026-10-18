@@ -42,7 +42,7 @@ the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showca
 
 | Showcase file | After the cutover |
 |---|---|
-| `trust.py`, `machine_outcomes.py`, `state_snapshots.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,workspace,supervisor}.py` | alias of the library module (same objects, so `isinstance` and test patches keep working) |
+| `trust.py`, `machine_outcomes.py`, `state_snapshots.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,workspace,supervisor}.py` | alias of the library module. Imported by name it is the same object, so `isinstance` and test patches keep working. A test that loads the file by path gets a copy of the names, and patches on that copy do not reach the library: those tests are on the removal list |
 | `verification/store.py` | library store; binds `human-issuer-registry.json`, `verification-profiles/` and the registered retry controls |
 | `verification/retry_controls.py` (new) | Showcase's retry-control registry (the critical PostgreSQL and RabbitMQ Gradle gates), formerly in `verification/store.py` and `verification/supervisor.py` (AH5-08b) |
 | `verification/executor.py` | library executor; binds lifecycle `harness`, the authority resolver, Showcase's store and command backend (AH5-08b) |
@@ -90,7 +90,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    | `test_verification_sandbox.py` | `test_auto_degrades_explicitly_when_platform_has_no_strong_backend`, `test_backend_discovery_uses_the_shared_resolver`, `test_bubblewrap_hides_verification_control_store_contents`, `test_bubblewrap_rebinds_trusted_issuer_registry_read_only`, `test_codex_sandbox_helper_uses_documented_command_shape`, `test_control_store_read_probe_fails_when_any_process_depth_can_read`, `test_required_fails_when_no_backend_exists`, `test_unsupported_backend_fails_closed_for_every_mode` |
    | `test_verification_backend_qualification.py` | `test_Q01_permitted_write_control_is_a_positive_probe`, `test_Q08_Q09_escape_evidence_rejects_otherwise_passing_candidate`, `test_R1_Q02_direct_write_bypass_is_detected_and_marker_cleaned`, `test_R1_R16_active_runner_returns_structured_evidence_for_all_checks`, `test_R2_Q03_child_write_bypass_is_detected_and_marker_cleaned`, `test_R3_Q04_grandchild_write_bypass_is_detected_and_marker_cleaned`, `test_R4_new_group_and_session_escapes_reject_process_group_backend`, `test_R5_parent_exit_with_live_descendant_is_not_drained`, `test_discovery_does_not_qualify_a_candidate`, `test_e33_containment_probe_kills_its_execution_unit`, `test_qualify_all_pass_is_all_or_nothing` |
    | `test_verification_t900_resolver_guards.py` | `test_executable_nested_under_excluded_worktree_is_refused` |
-   | `test_state_snapshots.py` | `test_retention_keeps_current_and_first_snapshot_per_epoch` (it assigns `SNAPSHOT_LIMIT` on the file-loaded module; AH5-09) |
+   | `test_state_snapshots.py` | `test_retention_keeps_current_and_first_snapshot_per_epoch` and `test_identical_full_tree_skips_snapshot_commit`. They assign `SNAPSHOT_LIMIT` or patch `_commit_snapshot` on the module they load by file path, which the library never sees; the second would pass vacuously (AH5-09) |
 
    Three Showcase tests are adapted instead of removed. Each patches a name that a library function looks up
    in its own module, so the patch target becomes the library module. Two are in `verification_command`'s tests.
