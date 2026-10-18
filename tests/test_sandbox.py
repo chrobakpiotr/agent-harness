@@ -114,7 +114,7 @@ class VerificationSandboxTest(unittest.TestCase):
                         ['TOOL_HOME'], {'': 'x'}, {'a\0': 'x'}, {'X': 'a\0b'}, {'LANG': 'C'},
                         {'LD_PRELOAD': '/x.so'}, {'DYLD_INSERT_LIBRARIES': '/x'}, {'PYTHONPATH': '/x'},
                         {'BASH_ENV': '/x'}, {'NODE_OPTIONS': '-r x'}, {'JAVA_TOOL_OPTIONS': '-x'},
-                        {'GIT_DIR': '/x'}, {'git_config_global': '/x'}):
+                        {'GIT_DIR': '/x'}, {'git_config_global': '/x'}, {'Path': '/tmp'}, {'java_home': '/usr'}):
                 with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, 'sandbox-environment-policy-invalid'):
                     vs._safe_env(root, root / 'home', environment_policy=lambda env, home, bad=bad: bad)
             (root / '.agent-runs' / 'control' / 'verification-v2').mkdir(parents=True)

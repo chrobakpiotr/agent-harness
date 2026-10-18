@@ -54,7 +54,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
 
    | Showcase test module | Tests to remove |
    |---|---|
-   | `test_verification_sandbox_doctor.py` | the whole module (4) |
+   | `test_verification_sandbox_doctor.py` | its four tests; keep the module file, which the adversarial eval A007 runs by path and `test_eval.py` pins |
    | `test_verification_sandbox.py` | `test_auto_degrades_explicitly_when_platform_has_no_strong_backend`, `test_backend_discovery_uses_the_shared_resolver`, `test_bubblewrap_hides_verification_control_store_contents`, `test_bubblewrap_rebinds_trusted_issuer_registry_read_only`, `test_codex_sandbox_helper_uses_documented_command_shape`, `test_control_store_read_probe_fails_when_any_process_depth_can_read`, `test_required_fails_when_no_backend_exists`, `test_unsupported_backend_fails_closed_for_every_mode` |
    | `test_verification_backend_qualification.py` | `test_Q01_permitted_write_control_is_a_positive_probe`, `test_Q08_Q09_escape_evidence_rejects_otherwise_passing_candidate`, `test_R1_Q02_direct_write_bypass_is_detected_and_marker_cleaned`, `test_R1_R16_active_runner_returns_structured_evidence_for_all_checks`, `test_R2_Q03_child_write_bypass_is_detected_and_marker_cleaned`, `test_R3_Q04_grandchild_write_bypass_is_detected_and_marker_cleaned`, `test_R4_new_group_and_session_escapes_reject_process_group_backend`, `test_R5_parent_exit_with_live_descendant_is_not_drained`, `test_discovery_does_not_qualify_a_candidate`, `test_e33_containment_probe_kills_its_execution_unit`, `test_qualify_all_pass_is_all_or_nothing` |
    | `test_verification_t900_resolver_guards.py` | `test_executable_nested_under_excluded_worktree_is_refused` |
@@ -63,7 +63,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    patch the resolver that the library's `build_plan` and `doctor` call, so the patch target becomes the library
    module. Change only the patch target, in
    `test_verification_command.py::test_resolved_plan_binding_is_forwarded_and_swap_fails_before_payload` (the
-   patch around the `run_command` call) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
+   patch around `VerificationSupervisor(store).execute(...)`, line 98 at `49ab97f`; line 162 in the second test) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
    `mock.patch.object(command.verification_sandbox, 'resolve_executable', …)` becomes
    `mock.patch('agent_harness.sandbox.resolve_executable', …)`. With that change, all 11 tests pass through the shim.
 

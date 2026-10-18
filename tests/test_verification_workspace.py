@@ -2,9 +2,10 @@
 import subprocess
 import unittest
 
+import test_verification_candidate as fixture
+
 from agent_harness.verification.candidate import CandidateSealError, seal_candidate
 from agent_harness.verification.workspace import WorkspaceError, materialize, validate
-from tests import test_verification_candidate as fixture
 
 
 class WorkspaceTests(unittest.TestCase):

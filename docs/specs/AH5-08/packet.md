@@ -1,7 +1,7 @@
 # AH5-08 — Move the verification runtime
 
 - Status: **accepted**. This is step 3 of moving the Showcase harness into the library, and the owner ordered it
-  on 2026-10-18. 08a is in progress; 08b follows.
+  on 2026-10-18. 08a is **done**, released as v0.10.0; 08b follows.
 - Source: Showcase `49ab97f`. The moved paths are frozen, read-only here. ADR 0001: decision 1 (after a packet
   moves a module, the library owns it), decision 3 (explicit roots) and decision 4 (no consumer imports).
 - Order: 08a and 08b each ship in their own release. Showcase adopts a release with its cutover (AH5-06b) or in a
@@ -57,6 +57,50 @@ executable names.
 - AC2: the cutover rehearsal at `49ab97f` with the new shims gives the same results as the AH5-06b-0 rehearsal.
   Every new difference is listed with its cause.
 - AC3: `scripts/check-wheel.sh` and CI are green, and a fresh-context evaluation passes.
+
+### Evidence 08a (2026-10-18)
+
+The rehearsal used library `1b546f5` with the shims at that commit, against Showcase `49ab97f`. Showcase `HEAD`
+moved to `3786776` during the run through other work; `tooling/agent-harness` is unchanged. Results, logs, the
+rollback output and the isolated reruns are in `evidence-rehearsal-08a-49ab97f.tar.gz`.
+
+- **AC1.**
+  - 70 tests OK across `test_sandbox`, `test_sandbox_doctor`, `test_backend_qualification`,
+    `test_verification_workspace` and `test_executables`.
+  - Each seam guard was mutated, and each mutation fails its test. That covers the policy that replaces base or
+    passthrough keys, the loader and interpreter prefixes, NUL and empty keys, the derived `policy_keys`, an
+    undeclared or default wrapper, consumer roots that are dropped or traversing, and a removed default root.
+  - The wheel check results are in `docs/specs/release-0.10.0/packet.md`.
+- **AC2, counts.** Base 917 tests (905 ok, 3 FAIL, 9 ERROR). Wrapped 933 tests (896 ok, 29 FAIL, 8 ERROR).
+- **AC2, ok on base but not on wrapped:**
+  - The 6 removals already listed for 0.9.0.
+  - The new 08a removals in the cutover guide: 11 backend-qualification tests, the 4 doctor tests, 1 t900 test and
+    5 of the 8 listed sandbox tests. The other 3 listed sandbox tests patch `_codex_helper`, `_bubblewrap` and
+    `_macos_sandbox_exec`, so through the shim their outcome depends on which sandbox tools the host has. They passed
+    in this run and failed in an earlier one, and they stay on the list.
+  - The 2 `test_verification_command` tests, which the guide adapts. With only the patch-target change, Showcase's
+    `test_verification_command` passes 11/11 through the shims.
+  - `test_m4_1_18` and `test_m4_1_19`: concurrency timing; each passes 3/3 alone on both sides.
+- **AC2, CI.** The only exit-code difference is `eval.py run --suite adversarial`:
+  - A002 runs `test_verification_sandbox.py`.
+  - A006 runs the authority and store modules.
+  - A007 runs the sandbox, doctor and supervisor modules.
+
+  All three fail only through tests on the removal list.
+- **AC2, rollback.** wrapped → base, base → wrapped and base → base are all ok.
+- **AC3, independent evaluation.**
+  - First verdict: pass with amendments. Four findings:
+    1. two `verification_command` tests missing from the cutover lists;
+    2. seam checks that no test caught;
+    3. loader and interpreter variables accepted by the environment policy;
+    4. documentation gaps.
+  - All four are addressed in `17fc6c8`.
+  - Re-check verdict: **pass with one amendment**. Following the guide's removals of the whole doctor module would
+    fail Showcase CI, because the adversarial eval A007 runs `test_verification_sandbox_doctor.py` by path and
+    `test_eval.py` pins that path. The guide now removes the module's four tests and keeps the file. With the
+    removals and adaptations applied in a scratch tree, A002, A006 and A007 pass. Also applied:
+    - the line-98 wording;
+    - case-insensitive reserved names in the environment policy, so `Path` cannot replace `PATH` on Windows.
 
 ## AH5-08b — supervisor, command backend and executor (later)
 

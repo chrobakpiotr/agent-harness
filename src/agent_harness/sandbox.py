@@ -1069,9 +1069,11 @@ def _apply_environment_policy(env: dict[str, str], sandbox_home: pathlib.Path,
     # isolated base (PATH, HOME, TMPDIR, proxies, passthrough, toolchain selectors) or add the loader and
     # interpreter hooks the isolated base drops. The policy is consumer code; this is defence in depth.
     extra = environment_policy(dict(env), sandbox_home)
+    # Upper-cased: environment names are case-insensitive on Windows.
+    reserved = {key.upper() for key in (*env, *_PASSTHROUGH, *TOOLCHAIN_ENVIRONMENT_SELECTORS)}
     if not isinstance(extra, dict) or any(
             not isinstance(key, str) or not isinstance(value, str) or not key or '=' in key or '\0' in key
-            or '\0' in value or key in env or key in _PASSTHROUGH or key in TOOLCHAIN_ENVIRONMENT_SELECTORS
+            or '\0' in value or key.upper() in reserved
             or key.upper() in _REFUSED_POLICY_KEYS or key.upper().startswith(_REFUSED_POLICY_PREFIXES)
             for key, value in extra.items()):
         raise ValueError('sandbox-environment-policy-invalid')

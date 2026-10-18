@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 — 2026-10-18
+
+- New `agent_harness.sandbox`: Showcase's verification sandbox (AH5-08a), covering backend discovery, `doctor()`,
+  the isolated environment, the bubblewrap, macOS `sandbox-exec` and Codex plans, adversarial backend
+  qualification and the process-group backend. Consumer policy is passed in explicitly:
+  `environment_policy(env, sandbox_home)` adds tool variables but cannot replace the isolated base or add
+  loader or interpreter hooks; `worktree_wrappers` declares `./name` wrappers; `authority_roots` adds
+  control-plane roots relative to the primary checkout. Each is refused when invalid.
+- New `agent_harness.verification.workspace`: diagnostic-only full-source workspaces.
+- Contract and digests unchanged.
+
 ## 0.9.0 — 2026-10-17
 
 - The moved verification modules and `telemetry` are re-synced with Showcase `49ab97f` (SDD-OBS-001): verification
