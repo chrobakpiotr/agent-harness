@@ -75,10 +75,11 @@ class RetryControlTest(unittest.TestCase):
         def raising(*_args):
             raise OSError('consumer failure')
 
+        mismatched = []
         cases = {
             'empty registry': ((), {}),
-            'other gate': ((control(),), {'gate_id': 'other-gate'}),
-            'other command': ((control(),), {'command': './other.sh'}),
+            'other gate': ((control(calls=mismatched),), {'gate_id': 'other-gate'}),
+            'other command': ((control(calls=mismatched),), {'command': './other.sh'}),
             'evidence raises': ((control(collect_evidence=raising),), {}),
             'run dir check raises': ((control(check_run_dir=raising),), {}),
             'evidence mismatch': ((control(collect_evidence=lambda worktree, item: {'schema_version': 1}),), {}),
@@ -90,6 +91,7 @@ class RetryControlTest(unittest.TestCase):
                 with self.assertRaisesRegex(SupervisorError, 'retry-policy-violation'):
                     self.execute(store, root, **overrides)
                 self.assertFalse(list(store.executions.glob('*/started.json')))
+        self.assertEqual([], mismatched)  # the consumer's evidence code never runs for another gate or command
 
     def test_facts_check_the_evidence_against_the_registration(self):
         item = control()
