@@ -1,9 +1,10 @@
 # AH5-12 — Move the agent runner (`runner.py`) onto the library's execution adapters
 
-- Status:
-  - **12a accepted**: it is in the plan's order, and it moves generic code verbatim.
-  - **12b proposed**: it changes how Showcase launches its agents, so the behaviour changes below need the owner's
-    and Showcase's acceptance before implementation.
+- Status: **accepted** (owner, 2026-10-18).
+  - 12a moves generic code verbatim.
+  - 12b moves the provider launch onto `AgentCliBackend` with the proposals in its table, behaviour changes
+    included. It follows the master plan's rule: one execution path, every change explicit.
+  - The packets go one at a time: 12a first, then 12b.
 - Source: Showcase `tooling/agent-harness/runner.py` at `49ab97f` (970 lines).
 - Rule from the plan: runner moves onto `agent_harness.execution` (`launch`, `AgentCliBackend`) and the verification
   command path. It keeps no second launch/cancel/evidence path for the same operations.
@@ -32,8 +33,9 @@
 | 7 | `stdout.log`, `stderr.log`, `exit-code.txt` and `provenance.json` in Showcase's run dir. | Stdout up to 8 MiB in the evidence root; a usage summary; a contract result. | The library result and evidence are the source of truth. Showcase writes its provenance from the result, so there is one evidence path. |
 | 8 | `provider_metadata` parsing in the runner. | Usage parsing in the backend (`usage_completeness`). | The library's. |
 
-The decision is needed on rows 1–8, especially 4 and 5, which can refuse runs that work today. Until 12b is
-accepted, `runner.py`'s launch stays as it is in Showcase. 12a does not change it.
+Rows 1–8 are accepted as proposed. Rows 4 and 5 can refuse runs that work today: an API key no longer reaches
+the CLI, and an unsandboxed start is refused. Showcase's consumer update for 12b must state both. 12a does not
+change the launch.
 
 ## AH5-12a — acceptance criteria
 
