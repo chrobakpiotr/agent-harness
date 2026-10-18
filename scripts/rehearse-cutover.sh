@@ -65,12 +65,19 @@ rehearse_side() {
   py="$work/$side-venv/bin/python"
   # Tests start `python3` subprocesses; in Showcase CI that is the interpreter the requirements went into.
   export PATH="$work/$side-venv/bin:$PATH"
-  # One process per test module, and per class for the large test_harness, several at a time: the suite
-  # mostly waits on locks and subprocesses. Single-process `discover` puts the harness directory on sys.path
-  # through earlier modules; here it is explicit, so modules that `import harness` run on their own.
+  # One process per test module, per class for the large test_harness, and per test for its largest class
+  # (HARNESS_SPLIT_CLASS, ~150 tests that otherwise run serially for most of the rehearsal), several at a
+  # time: the suite mostly waits on locks and subprocesses. Single-process `discover` puts the harness
+  # directory on sys.path through earlier modules; here it is explicit, so modules that `import harness` run
+  # on their own.
   mkdir -p "$work/$side-logs"
   (cd "$work/$side/tooling/agent-harness/tests" && for module in test_*.py; do
-     if [ "$module" = test_harness.py ]; then grep -oE '^class [A-Za-z0-9_]+' "$module" | sed 's/^class /test_harness./'
+     if [ "$module" = test_harness.py ]; then
+       awk -v target="${HARNESS_SPLIT_CLASS:-HarnessTest}" '
+         /^class [A-Za-z0-9_]+/ { match($0, /^class [A-Za-z0-9_]+/); cls = substr($0, 7, RLENGTH - 6)
+                                  if (cls != target) print "test_harness." cls; next }
+         cls == target && /^    def test_[A-Za-z0-9_]+\(/ { match($0, /test_[A-Za-z0-9_]+/)
+                                                         print "test_harness." cls "." substr($0, RSTART, RLENGTH) }' "$module"
      else echo "${module%.py}"; fi
    done) | (cd "$work/$side" && xargs -P "${JOBS:-8}" -I{} sh -c \
      'PYTHONPATH=tooling/agent-harness/tests:tooling/agent-harness "$1" -m unittest -v "$2" > "$3/$2.log" 2>&1 || true' \
