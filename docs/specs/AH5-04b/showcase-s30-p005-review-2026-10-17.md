@@ -259,3 +259,9 @@ the run. The only fail-closed volume check is on `rabbit_anonymous_volume`, and 
 - P-006 has no runner in the repository yet. Its runner needs the same `--volumes` and inventory handling.
 
 No Harness contract change. S30-06 stays OPEN / NOT QUALIFIED.
+
+**Follow-up (2026-10-18): runner gap closed.**
+- A non-empty `created_by_run_remaining` now adds a cleanup error, independently of `rabbit_anonymous_volume`.
+- The new test `test_inspect_failure_with_new_volume_remaining_fails_cleanup` covers the inspect-failure path.
+- `test_reconnect_runner`: 5 tests OK. I ran them on a copy.
+- Remaining: the P-006 runner, when it is written.
