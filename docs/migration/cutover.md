@@ -17,6 +17,7 @@ the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showca
 | `verification/store.py` | library store; binds `human-issuer-registry.json`, `verification-profiles/` and the registered retry controls |
 | `verification/retry_controls.py` (new) | Showcase's retry-control registry (the critical PostgreSQL and RabbitMQ Gradle gates), formerly in `verification/store.py` and `verification/supervisor.py` (AH5-08b) |
 | `verification/executor.py` | library executor; binds lifecycle `harness`, the authority resolver, Showcase's store and command backend (AH5-08b) |
+| `eval.py` | library eval engine; binds Showcase's suites (`evals/`, which stay Showcase-owned) and its repository (AH5-10) |
 | `verification_command.py` | Showcase's allowlist, profile scripts and executable binding, over the library command backend and `run_command` (AH5-08b) |
 | `verification/authority.py` | library authority; binds lifecycle `harness`, `verification-profiles/` and profile `showcase` |
 | `telemetry.py` | library telemetry plus the Showcase-only manual evidence and CLI |

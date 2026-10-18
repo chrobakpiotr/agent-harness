@@ -36,6 +36,7 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "src/agent_harness/verification/*.py" = ["BLE001", "C408", "F401", "F841", "I001", "PIE810", "PLW0127", "RUF007", "SIM102",
                                          "SIM103", "SIM114", "TRY004", "RUF059", "RUF023"]
 "src/agent_harness/telemetry.py" = ["UP017"]
+"src/agent_harness/eval_runner.py" = ["F841", "UP017"]
 "src/agent_harness/state_snapshots.py" = ["SIM102", "TRY203", "UP017", "UP022"]
 # Verbatim executor: its per-gate callbacks run synchronously inside their own loop iteration.
 "src/agent_harness/verification/executor.py" = ["B023"]

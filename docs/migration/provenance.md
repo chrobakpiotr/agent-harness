@@ -180,3 +180,18 @@ Ported tests:
 - Ported tests: `test_state_snapshots`, from `cb5afb4a`, 25 of 26.
   `test_missing_state_restore_error_points_to_audited_discard_command` runs Showcase's `harness.py` CLI and stays
   in Showcase, where it passes through the shim.
+
+## AH5-10 — the eval engine (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/eval_runner.py` | `eval.py` `ffb0a1f4` | **[seam]** `HERE`, `REPO` and `DEFAULT_SUITES` are removed. `repo_root(anchor)`, `load_suite(value, suites_dir)`, `run_suite(..., anchor=)` and `main(argv=None, *, suites_dir, anchor)` take the consumer's suites directory and a path inside its repository; `repo_root` keeps the source's fallback to the working directory's checkout. The shebang and the `__main__` block move to the shim. |
+
+- The suites (`evals/*.json`) stay Showcase-owned, as the owners decided on 2026-10-07. The shim binds
+  `DEFAULT_SUITES = evals/` and `REPO = <checkout>`, so `python3 tooling/agent-harness/eval.py …` behaves as
+  before.
+- Tests:
+  - Showcase's `test_eval` checks Showcase's own suite files, so it stays in Showcase, where it passes through the
+    shim. Showcase's `eval.py list` and `run --suite baseline` also run through the shim.
+  - The library adds `test_eval_runner`: suite validation and refused destructive commands, suite resolution in
+    the consumer's directory, results under the anchor's repository, and failure exit codes.
