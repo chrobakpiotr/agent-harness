@@ -23,4 +23,3 @@
   - The supervisor, command, executor and retry modules import.
   - `reviewed_reference()` passes, and the shipped reference carries the installed probe digest
     (`sha256:ee87222a…`).
-
