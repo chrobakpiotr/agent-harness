@@ -24,7 +24,7 @@ PROFILES = HARNESS / 'verification-profiles'
 
 ALIASES = ('trust', 'machine_outcomes', 'verification.model', 'verification.serialization', 'verification.profile',
            'verification.fingerprint', 'verification.planner', 'verification.candidate', 'verification.human_grants',
-           'verification.workspace')
+           'verification.workspace', 'verification.supervisor')
 
 
 class WrapperBindingTest(unittest.TestCase):
@@ -43,6 +43,9 @@ class WrapperBindingTest(unittest.TestCase):
         # Anchored to the primary checkout by the library, never taken from this file's location.
         self.assertEqual(HARNESS / 'human-issuer-registry.json', bound.issuer_registry)
         self.assertIs(verification_command.executable_binding_for_command, bound.executable_binder)
+        from verification.retry_controls import RETRY_CONTROLS
+        self.assertEqual({item.control_id: item for item in RETRY_CONTROLS}, bound.retry_controls)
+        self.assertEqual(2, len(bound.retry_controls))
         self.assertEqual(PROFILES, bound.profile_root)
         self.assertIsInstance(bound, library_store.VerificationStore)
         explicit = store.VerificationStore(HARNESS, control_root=HARNESS / 'c', issuer_registry=HARNESS / 'r.json',
@@ -124,6 +127,43 @@ class WrapperBindingTest(unittest.TestCase):
                      '_sha256_file', 'ExecutableResolutionError', 'doctor'):
             with self.subTest(name=name):
                 self.assertTrue(hasattr(verification_sandbox, name))
+
+    def test_command_backend_binds_showcase_policy(self):
+        import verification_command
+
+        from agent_harness.verification import command as library_command
+        backend = verification_command.CommandExecutionBackend()
+        self.assertIsInstance(backend, library_command.CommandExecutionBackend)
+        self.assertIs(verification_sandbox, backend.sandbox)
+        self.assertEqual(frozenset(verification_command.PROFILE_SCRIPTS.values()), backend.blocked_executables)
+        with mock.patch.object(verification_command, 'verification_argv', return_value=['x']) as argv:
+            self.assertEqual(['x'], backend.argv_policy('python3 -V', script_context=None, worktree=None, cwd=None))
+        argv.assert_called_once_with('python3 -V', script_context=None, worktree=None, cwd=None)
+        with mock.patch.object(library_command, 'run_command', return_value='r') as run:
+            self.assertEqual('r', verification_command.run_command('c', cwd='d', run_dir='e', timeout_seconds=1))
+        kwargs = run.call_args.kwargs
+        self.assertIsInstance(kwargs['backend_factory'](), verification_command.CommandExecutionBackend)
+        with mock.patch.object(verification_command, 'verification_argv', return_value=['y']):
+            self.assertEqual(['y'], kwargs['argv_policy']('c'))
+        with mock.patch.object(store, 'VerificationStore') as bound_store:
+            kwargs['store_factory']('root')
+        bound_store.assert_called_once_with('root')
+
+    def test_executor_binds_lifecycle_resolver_store_and_backend(self):
+        from verification import executor
+
+        from agent_harness.verification import executor as library_executor
+        with mock.patch.object(library_executor, 'execute_plan', return_value='done') as execute, \
+             mock.patch.object(store, 'VerificationStore', return_value='bound-store'):
+            self.assertEqual('done', executor.execute_plan('repo', 'profile', 'plan', sandbox_mode='off'))
+        args, kwargs = execute.call_args
+        self.assertEqual(('repo', 'profile', 'plan'), args)
+        self.assertEqual('bound-store', kwargs['store'])
+        self.assertIs(harness, kwargs['lifecycle'])
+        self.assertIs(authority.resolve_execution, kwargs['resolve_execution'])
+        self.assertEqual('off', kwargs['sandbox_mode'])
+        with mock.patch.object(executor, 'CommandExecutionBackend', return_value='patched-backend'):
+            self.assertEqual('patched-backend', kwargs['backend_factory']())
 
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],

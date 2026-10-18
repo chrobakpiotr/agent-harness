@@ -135,3 +135,32 @@ Ported tests:
   and moves in 08b.
 - `test_verification_workspace`, from `84d0ffd3`. The fixture root is resolved, because macOS `/var` is a symlink
   and the store refuses symlinked ancestors. Showcase CI runs on Linux.
+
+## AH5-08b — supervisor, command backend and executor (Showcase `49ab97f`, 2026-10-18)
+
+| Package module | Source blob | Changes from source |
+|---|---|---|
+| `agent_harness/verification/supervisor.py` | `3e896a36` | **[seam]** The retry-control port below. `_read_regular_worktree_file`, `_gradle_user_home_has_init_scripts` and `_registered_gradle_retry_evidence` move verbatim to the Showcase shim. In their place, `_registered_retry_evidence` matches the registered control's gate and command, then calls the consumer, and the run-directory check goes through the control (`run_namespace`, `check_run_dir`). A consumer exception is a `retry-policy-violation`. `CommandResult` is imported from `.command`. |
+| `agent_harness/verification/command.py` | `verification_command.py` `9a83e9b7` | `CommandResult`, `PreparedCommand`, `CommandExecutionBackend`, `run_command` and the errors. **[seam]** The backend takes `argv_policy`, `blocked_executables` and `sandbox` (a namespace, `agent_harness.sandbox` by default), and `run_command` takes `argv_policy`, `store_factory` and `backend_factory`. The default argv policy is `deny_all`: it parses with the source's shell-syntax refusal (`parse_argv`), then refuses with `command-not-allowlisted`. `PROFILE_SCRIPTS`, `_accepted_script_argv`, `verification_argv` and `executable_binding_for_command` stay in Showcase's `verification_command.py`, verbatim. |
+| `agent_harness/verification/executor.py` | `88377c9d` | **[seam]** `execute_plan(..., lifecycle=, resolve_execution=, backend_factory=)`. The five `harness.*` calls become `lifecycle.*`. An `authority_context` run without a lifecycle and a resolver is refused with `VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE`. `machine_outcomes` comes from the library. |
+| `agent_harness/verification/retry.py` (new) | from store `720053db` | `RetryControl`, `registry()` and `retry_policy_facts()`, which is the source's `_retry_policy_facts` with the registry passed in. The evidence's config path and hashes are checked against the registration, not against Showcase literals. |
+| `agent_harness/verification/store.py` | `720053db` | **[seam]** `retry_controls=()`, validated with `registry()`. Persisted and new retry proofs are checked with `retry_policy_facts(..., registry=self.retry_controls)`. Showcase's `_RETRY_CONTROL_*`, `_REGISTERED_GRADLE_BUILD_INPUT_SHA256`, `_NO_RETRY_COMMAND` and `_retry_control_inputs_digest` came over with the store in AH5-04a without being recorded. They are removed from the library and kept verbatim in the shim `verification/retry_controls.py`, and the store shim still exports them. |
+
+The Showcase shims bind Showcase's policy:
+- `verification/store.py` binds `retry_controls=RETRY_CONTROLS`.
+- `verification_command.py` binds its allowlist, profile scripts and `verification_sandbox` module. They are looked
+  up late, so patches of those names apply.
+- `verification/executor.py` binds `harness`, `authority.resolve_execution`, Showcase's store and its
+  `CommandExecutionBackend`, looked up late.
+- `verification/supervisor.py` is an alias.
+
+Ported tests:
+- `test_verification_supervisor`, from `9a7e09f2`: 71 of 88. The 17 VC-009 Gradle retry-control tests read or
+  copy Showcase's build files and stay in Showcase, where all 88 pass through the shims.
+- `test_verification_executor`, from `01b89501`. The two tests that run `python3` pass a test allowlist through
+  `backend_factory`, and a lifecycle seam test is added.
+- `test_verification_noncacheable`, from `50fea32f`, with the patch targets moved to the library.
+- `human_grant_fixture`, from `7d88ce1a`.
+- New: `test_verification_retry` (the registry, the facts, and evidence and run-directory checks through the
+  consumer) and `test_verification_command` (`deny_all`, the allowlist, blocked executables, the sandbox namespace,
+  and the `run_command` factories). Showcase's `test_verification_command` tests Showcase policy and stays there.

@@ -13,14 +13,16 @@ the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showca
 
 | Showcase file | After the cutover |
 |---|---|
-| `trust.py`, `machine_outcomes.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,workspace}.py` | alias of the library module (same objects, so `isinstance` and test patches keep working) |
-| `verification/store.py` | library store; binds `human-issuer-registry.json` and `verification-profiles/` |
+| `trust.py`, `machine_outcomes.py`, `verification/{model,serialization,profile,fingerprint,planner,candidate,human_grants,workspace,supervisor}.py` | alias of the library module (same objects, so `isinstance` and test patches keep working) |
+| `verification/store.py` | library store; binds `human-issuer-registry.json`, `verification-profiles/` and the registered retry controls |
+| `verification/retry_controls.py` (new) | Showcase's retry-control registry (the critical PostgreSQL and RabbitMQ Gradle gates), formerly in `verification/store.py` and `verification/supervisor.py` (AH5-08b) |
+| `verification/executor.py` | library executor; binds lifecycle `harness`, the authority resolver, Showcase's store and command backend (AH5-08b) |
+| `verification_command.py` | Showcase's allowlist, profile scripts and executable binding, over the library command backend and `run_command` (AH5-08b) |
 | `verification/authority.py` | library authority; binds lifecycle `harness`, `verification-profiles/` and profile `showcase` |
 | `telemetry.py` | library telemetry plus the Showcase-only manual evidence and CLI |
 | `verification_sandbox.py` | library sandbox and executable resolver; binds the Gradle environment, the `./gradlew` worktree wrapper and the `tooling/agent-harness` authority root (AH5-08a) |
 
-Everything else (`harness.py`, `orchestrate.py`, `runner.py`, `verify.py`, executor, supervisor,
-`verification_command.py`, profiles, issuer registry, state under `.agent-state` and `.agent-runs/control`) stays in Showcase.
+Everything else (`harness.py`, `orchestrate.py`, `runner.py`, `verify.py`, profiles, issuer registry, state under `.agent-state` and `.agent-runs/control`) stays in Showcase.
 Origin admission and completion stay blocked; the qualified track stays NOT_QUALIFIED.
 
 ## Install and pin
@@ -59,13 +61,17 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
    | `test_verification_backend_qualification.py` | `test_Q01_permitted_write_control_is_a_positive_probe`, `test_Q08_Q09_escape_evidence_rejects_otherwise_passing_candidate`, `test_R1_Q02_direct_write_bypass_is_detected_and_marker_cleaned`, `test_R1_R16_active_runner_returns_structured_evidence_for_all_checks`, `test_R2_Q03_child_write_bypass_is_detected_and_marker_cleaned`, `test_R3_Q04_grandchild_write_bypass_is_detected_and_marker_cleaned`, `test_R4_new_group_and_session_escapes_reject_process_group_backend`, `test_R5_parent_exit_with_live_descendant_is_not_drained`, `test_discovery_does_not_qualify_a_candidate`, `test_e33_containment_probe_kills_its_execution_unit`, `test_qualify_all_pass_is_all_or_nothing` |
    | `test_verification_t900_resolver_guards.py` | `test_executable_nested_under_excluded_worktree_is_refused` |
 
-   Two Showcase tests of `verification_command` (which stays until 08b) are adapted instead of removed. They
-   patch the resolver that the library's `build_plan` and `doctor` call, so the patch target becomes the library
-   module. Change only the patch target, in
+   Three Showcase tests are adapted instead of removed. Each patches a name that a library function looks up
+   in its own module, so the patch target becomes the library module. Two are in `verification_command`'s tests.
+   Change only the patch target, in
    `test_verification_command.py::test_resolved_plan_binding_is_forwarded_and_swap_fails_before_payload` (the
    patch around `VerificationSupervisor(store).execute(...)`, line 98 at `49ab97f`; line 162 in the second test) and in `::test_docker_discovery_alone_cannot_launch_in_auto_or_required_mode`:
    `mock.patch.object(command.verification_sandbox, 'resolve_executable', …)` becomes
    `mock.patch('agent_harness.sandbox.resolve_executable', …)`. With that change, all 11 tests pass through the shim.
+   The third is in `test_verification_noncacheable.py::test_terminal_publication_crash_recovers_pass_without_relaunch`
+   (AH5-08b): `mock.patch('verification.executor.VerificationSupervisor', …)` becomes
+   `mock.patch('agent_harness.verification.executor.VerificationSupervisor', …)`. With that change, all 7 tests
+   pass through the shims.
 
    The re-pin also moves the version that `test_qualification_report.py` asserts (`0.5.0` today) to the new tag;
    the rehearsal installs the working tree's version, so those three tests fail there by design.
