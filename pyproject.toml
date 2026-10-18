@@ -34,13 +34,15 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 [tool.ruff.lint.per-file-ignores]
 # Verbatim extraction from Showcase (docs/migration/provenance.md); restyle only in a separate change.
 "src/agent_harness/verification/*.py" = ["BLE001", "C408", "F401", "F841", "I001", "PIE810", "PLW0127", "RUF007", "SIM102",
-                                         "SIM103", "SIM114", "TRY004", "RUF059"]
+                                         "SIM103", "SIM114", "TRY004", "RUF059", "RUF023"]
 "src/agent_harness/telemetry.py" = ["UP017"]
 "src/agent_harness/sandbox.py" = ["BLE001", "SIM102", "TRY004", "UP037"]
 # Verbatim Showcase qualification probes (docs/migration/provenance.md); restyle only in a separate change.
 "src/agent_harness/qualification/[bqr]*.py" = ["ALL"]
 # Showcase-only part of telemetry, verbatim in the cutover wrapper.
 "migration/showcase-wrapper/telemetry.py" = ["BLE001", "F401", "FURB162", "TRY004"]
+# Showcase retry-control policy, verbatim from its store and supervisor.
+"migration/showcase-wrapper/verification/retry_controls.py" = ["PIE810"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
