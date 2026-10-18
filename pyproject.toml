@@ -45,4 +45,5 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
 "tests/test_backend_qualification.py" = ["SIM117"]
+"tests/test_verification_workspace.py" = ["PLW1510", "SIM117"]
 "tests/test_verification_store.py" = ["B023", "F401", "F841", "I001", "RUF059", "SIM117"]
