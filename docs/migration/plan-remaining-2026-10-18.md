@@ -47,6 +47,22 @@ Each `harness.py` part (14a–e) is cut along existing function boundaries, with
 part that cannot be cut without a behaviour change is split differently; a guard is never dropped to make a cut
 possible.
 
+## Adapter scope (what Showcase passes in)
+
+The library takes project policy only through these seams. Showcase's shims in `migration/showcase-wrapper/` bind
+them at the pinned release, v0.12.0 = `1c569f20aa30a680c025b7a305cf50ccb1735cd0`.
+
+| Seam (library) | Showcase binding | Packet |
+|---|---|---|
+| `VerificationStore(issuer_registry_path=, profile_root=, executable_binder=, retry_controls=)` | `tooling/agent-harness/human-issuer-registry.json`, `verification-profiles/`, `verification_command.executable_binding_for_command`, `verification/retry_controls.RETRY_CONTROLS` | 06b-0, 08b |
+| authority `lifecycle=`, `profile_root=`, `profile_id=`, `executable_binder=` | `harness`, `verification-profiles/`, `showcase`, its binder | 04a-1, 06b-0 |
+| sandbox `environment_policy=`, `worktree_wrappers=`, `authority_roots=` | Gradle environment, `./gradlew`, `tooling/agent-harness` | 08a |
+| command backend `argv_policy=`, `blocked_executables=`, `sandbox=`; `run_command(argv_policy=, store_factory=, backend_factory=)` | `verification_argv` (allowlist), `PROFILE_SCRIPTS`, its `verification_sandbox` module, its store | 08b |
+| executor `lifecycle=`, `resolve_execution=`, `backend_factory=`, `store_factory=` | `harness`, `authority.resolve_execution`, its backend and store | 08b |
+| `RetryControl(collect_evidence=, check_run_dir=)` | the Gradle retry evidence and init-script checks | 08b |
+| eval `suites_dir=`, `anchor=` | `evals/`, its checkout | 10 |
+| still to define | the feature layout (`docs/specs/<id>`), the protocol-file list, the recovery hook (`state_recovery`), the CLI command set, `doctor` checks, runner provider config | 11–16 |
+
 ## Showcase cutover, separate from capability
 
 - **AH5-06b (cutover)** can land at any release from 0.9.0 on. It switches the moved modules to the shims and keeps
