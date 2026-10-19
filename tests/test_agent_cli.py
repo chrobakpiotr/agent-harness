@@ -29,6 +29,12 @@ CODEX_OK = [{"type": "thread.started"}, {"type": "turn.started"},
 
 class CliCase(unittest.TestCase):
     def setUp(self):
+        # The fake CLIs are not sandboxes: stand in for the isolation probe (tested on its own in
+        # test_agent_launch_options) with one that ran and blocked nothing it was asked to write.
+        isolation = unittest.mock.patch.object(execution, "_default_isolation_probe",
+                                      return_value=["sh", "-c", f"echo {execution._ISOLATION_MARKER}"])
+        isolation.start()
+        self.addCleanup(isolation.stop)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name).resolve()

@@ -462,6 +462,57 @@ _CLAUDE_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True, "all
 _SECRET_PATTERNS = (re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"), re.compile(rb"\bsk-[A-Za-z0-9_-]{32,}"),
                     re.compile(rb'"(?:refresh_token|access_token|id_token)"\s*:'))
 _CODEX_SANDBOX = "workspace-write"
+# Consumer launch options (AH5-12b): additive and validated; without them a run is exactly what it was before.
+# None of them can loosen the library minimum: no web tools, sandbox required, login only, evidence not writable.
+_CLI_OPTIONS = {
+    "codex": {"sandbox_mode", "output_schema", "reasoning", "login_method", "strict"},
+    "claude": {"sandbox_mode", "output_schema", "tools", "denied_commands", "deny_read", "max_turns",
+               "max_budget_usd", "restricted", "permission_mode"},
+    "opencode": set(),
+}
+_CLAUDE_TOOLS = {"Read", "Edit", "Write", "Glob", "Grep", "Bash", "NotebookEdit", "TodoWrite"}
+_CLAUDE_WRITE_TOOLS = {"Edit", "Write", "NotebookEdit"}
+
+
+def _cli_options(provider, options):
+    """Validate a consumer's launch options; a malformed or loosening option refuses the backend."""
+    options = dict(options or {})
+    unknown = set(options) - _CLI_OPTIONS[provider]
+    if unknown:
+        raise ValueError(f"cli_options not supported for {provider}: {sorted(unknown)}")
+    def check(ok, what):
+        if not ok:
+            raise ValueError(f"invalid cli_options.{what}")
+    if "sandbox_mode" in options:
+        check(options["sandbox_mode"] in ("read-only", "workspace-write"), "sandbox_mode")
+    if "output_schema" in options:
+        check(isinstance(options["output_schema"], dict) and options["output_schema"], "output_schema")
+    if "reasoning" in options:
+        check(options["reasoning"] in ("minimal", "low", "medium", "high", "xhigh"), "reasoning")
+    if "login_method" in options:  # the library default, passed explicitly by a consumer; nothing else
+        check(options["login_method"] == "chatgpt", "login_method")
+    for flag in ("strict", "restricted"):
+        if flag in options:
+            check(isinstance(options[flag], bool), flag)
+    if "tools" in options:
+        tools = options["tools"]
+        check(isinstance(tools, (list, tuple)) and tools and set(tools) <= _CLAUDE_TOOLS
+              and len(set(tools)) == len(tools), "tools")
+        check(options.get("sandbox_mode") != "read-only" or not set(tools) & _CLAUDE_WRITE_TOOLS, "tools")
+    for name in ("denied_commands", "deny_read"):
+        if name in options:
+            value = options[name]
+            check(isinstance(value, (list, tuple)) and all(isinstance(v, str) and v and "\0" not in v
+                                                           for v in value), name)
+    if "denied_commands" in options:
+        check(all(v.startswith("Bash(") and v.endswith(")") for v in options["denied_commands"]), "denied_commands")
+    if "max_turns" in options:
+        check(type(options["max_turns"]) is int and options["max_turns"] >= 1, "max_turns")
+    if "max_budget_usd" in options:
+        check(type(options["max_budget_usd"]) in (int, float) and options["max_budget_usd"] > 0, "max_budget_usd")
+    if "permission_mode" in options:  # only the stricter mode may replace the library's acceptEdits
+        check(options["permission_mode"] == "dontAsk", "permission_mode")
+    return options
 # OpenCode has no sandbox of its own: it runs under a macOS Seatbelt profile whose only network is a harness-owned
 # relay on 127.0.0.1 (`_OpenRouterRelay`), which holds the OpenRouter key and forwards only the run's `:free` model.
 # Shell commands inherit the profile: no network, no DNS, no Docker socket, no Keychain, no LaunchServices
@@ -490,7 +541,8 @@ class AgentCliBackend(ProcessBackend):
     capabilities = ("cancel", "usage")
 
     def __init__(self, provider, prompt, *, candidate=None, diff_base=None, env=None, grace=2.0,
-                 output_limit=8 << 20, sandbox_probe=None, api_key_file=None, upstream=_OPENROUTER):
+                 output_limit=8 << 20, sandbox_probe=None, api_key_file=None, upstream=_OPENROUTER,
+                 cli_options=None, isolation_probe=None):
         if provider not in ("claude", "codex", "opencode"):
             raise ValueError("provider must be 'claude', 'codex' or 'opencode'")
         if not isinstance(prompt, str) or not prompt:
@@ -513,6 +565,13 @@ class AgentCliBackend(ProcessBackend):
         self.provider, self.prompt, self.output_limit = provider, prompt, output_limit
         self._stdin = prompt.encode("utf-8")
         self.sandbox_probe = list(sandbox_probe) if sandbox_probe is not None else _default_probe(provider)
+        self.cli_options = _cli_options(provider, cli_options)
+        # Tool availability (sandbox_probe) is not isolation: the isolation probe must show the sandbox blocking a
+        # write. A caller that supplies its own sandbox_probe (a test double) gets no default isolation probe.
+        if isolation_probe is not None:
+            self.isolation_probe = list(isolation_probe)
+        else:
+            self.isolation_probe = _default_isolation_probe(provider) if sandbox_probe is None else None
         self.rejection_reasons = {}  # request_id -> why it was refused
         self.request_counts = {}  # request_id -> requests the OpenCode relay forwarded to OpenRouter
 
@@ -553,23 +612,84 @@ class AgentCliBackend(ProcessBackend):
         if probe.returncode != 0:
             detail = (probe.stderr or probe.stdout).decode("utf-8", "replace").strip()[:500]
             return "CAPABILITY_UNSUPPORTED", f"sandbox unavailable (exit {probe.returncode}): {detail}"
+        if self.isolation_probe is not None:
+            reason = _isolation_refusal(self.isolation_probe, self.env)
+            if reason is not None:
+                return "CAPABILITY_UNSUPPORTED", reason
         return None, None
+
+    def _claude_settings(self, roots):
+        """The library minimum merged with the consumer's options; the merge only ever adds restrictions."""
+        options = self.cli_options
+        settings = json.loads(json.dumps(_CLAUDE_SETTINGS))
+        settings["sandbox"]["filesystem"]["denyWrite"] = [str(Path(roots["evidence_root"]).resolve())]
+        settings["sandbox"]["filesystem"]["denyRead"] += list(options.get("deny_read", ()))
+        if options.get("sandbox_mode") == "read-only":  # no write through tools, nor through sandboxed Bash
+            settings["sandbox"]["filesystem"]["denyWrite"].append(str(Path(roots["workspace"]).resolve()))
+            settings["permissions"]["deny"] += sorted(_CLAUDE_WRITE_TOOLS)
+        return settings
 
     def _argv(self, request, roots):
         model = request["model"]
+        options = self.cli_options
         # The prompt goes in on stdin, never as an argument, so a prompt such as "--bare" is never a flag.
         if self.provider == "claude":
-            settings = json.loads(json.dumps(_CLAUDE_SETTINGS))
-            settings["sandbox"]["filesystem"]["denyWrite"] = [str(Path(roots["evidence_root"]).resolve())]
-            return ["claude", "-p", "--model", model, "--output-format", "json",
-                    "--permission-mode", "acceptEdits", "--settings", json.dumps(settings),
-                    "--disallowedTools", "WebFetch,WebSearch"]
+            argv = ["claude", "-p"]
+            if options.get("restricted"):
+                argv += ["--restricted", "--strict-mcp-config", "--no-session-persistence"]
+            argv += ["--model", model, "--output-format", "json",
+                     "--permission-mode", options.get("permission_mode", "acceptEdits"),
+                     "--settings", json.dumps(self._claude_settings(roots)),
+                     "--disallowedTools", ",".join(["WebFetch", "WebSearch", *options.get("denied_commands", ())])]
+            if "tools" in options:
+                argv += ["--tools", ",".join(options["tools"]),
+                         "--allowedTools", *[t for t in options["tools"] if t != "Bash"]]
+            if "output_schema" in options:
+                argv += ["--json-schema", json.dumps(options["output_schema"], separators=(",", ":"), sort_keys=True)]
+            if "max_turns" in options:
+                argv += ["--max-turns", str(options["max_turns"])]
+            if "max_budget_usd" in options:
+                argv += ["--max-budget-usd", str(options["max_budget_usd"])]
+            return argv
         if self.provider == "opencode":  # `--title` skips a title request, one of the 50 free requests a day
             return ["/usr/bin/sandbox-exec", "-p", self._profile(roots), shutil.which("opencode", path=self.env.get("PATH")),
                     "run", "--format", "json", "--pure", "--title", request["request_id"][:64], "-m",
                     f"openrouter/{model}"]
-        return ["codex", "exec", "-m", model, "--sandbox", _CODEX_SANDBOX, "-c", 'forced_login_method="chatgpt"',
-                "--skip-git-repo-check", "--json", "--ephemeral", "-"]
+        argv = ["codex", "exec", "-m", model, "--sandbox", options.get("sandbox_mode", _CODEX_SANDBOX),
+                "-c", 'forced_login_method="chatgpt"', "--skip-git-repo-check", "--json", "--ephemeral"]
+        if options.get("strict"):  # no approvals to wait for, no web search, no network from the sandbox
+            argv += ["-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
+                     "-c", "sandbox_workspace_write.network_access=false"]
+        if "reasoning" in options:
+            argv += ["-c", f'model_reasoning_effort="{options["reasoning"]}"']
+        if "output_schema" in options:
+            execution_dir = Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}"
+            argv += ["--output-schema", str(execution_dir / "output-schema.json"),
+                     "--output-last-message", str(execution_dir / "last-message")]
+        return [*argv, "-"]
+
+    def _launch_record(self, request, roots):
+        """What was asked of the CLI, without the prompt or any secret. Authentication is the *requested* mode only:
+        the library cannot see how the provider bills a run, so it never claims a billing source."""
+        record = {"schema_version": 1, "provider": self.provider, "argv": self._argv(request, roots),
+                  "prompt": {"channel": "stdin", "encoding": "utf-8", "sha256": hashlib.sha256(self._stdin).hexdigest(),
+                             "bytes": len(self._stdin)},
+                  "credential_environment": "removed", "removed_variables": sorted(_BILLING_ENV),
+                  "requested_login": {"claude": "forceLoginMethod=claudeai", "codex": 'forced_login_method="chatgpt"',
+                                      "opencode": "harness relay (OpenRouter key held by the relay)"}[self.provider],
+                  "billing_source_confirmed": False, "cli_options": sorted(self.cli_options)}
+        if self.provider == "claude":
+            settings = self._claude_settings(roots)
+            tools = set(self.cli_options.get("tools", _CLAUDE_TOOLS))
+            denied = set(settings["permissions"]["deny"])
+            record["effective_permissions"] = {
+                "tools": sorted(tools - denied), "write_tools": sorted((tools & _CLAUDE_WRITE_TOOLS) - denied),
+                "sandbox_deny_write": settings["sandbox"]["filesystem"]["denyWrite"],
+                "sandbox_deny_read": settings["sandbox"]["filesystem"]["denyRead"],
+                "network_allowed_domains": settings["sandbox"]["network"]["allowedDomains"],
+                "unsandboxed_commands": settings["sandbox"]["allowUnsandboxedCommands"],
+                "web_tools_disallowed": True, "mcp": "strict" if self.cli_options.get("restricted") else "default"}
+        return record
 
     def _api_key(self):
         if self.api_key_file is None:
@@ -642,7 +762,13 @@ class AgentCliBackend(ProcessBackend):
         return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/base.git"
 
     def _prepare(self, request, roots):
-        """Copy the diff base into a Git directory of our own before the agent can touch the workspace's ``.git``."""
+        """Record the launch, then copy the diff base into our own Git directory before the agent can touch ``.git``."""
+        execution_dir = Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}"
+        execution_dir.mkdir(parents=True, exist_ok=True)
+        if self.provider == "codex" and "output_schema" in self.cli_options:
+            (execution_dir / "output-schema.json").write_text(json.dumps(self.cli_options["output_schema"]))
+        (execution_dir / "launch.json").write_text(json.dumps(self._launch_record(request, roots), indent=2,
+                                                              sort_keys=True) + "\n")
         if self.diff_base is None:
             return True
         workspace = Path(roots["workspace"]).resolve()
@@ -683,6 +809,15 @@ class AgentCliBackend(ProcessBackend):
             return self._withhold(body, request, roots, "agent-output")
         body["artifacts"] = [{"name": "agent-output", "path": str(path.relative_to(roots["evidence_root"])),
                               "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": size}]
+        last = path.parent / "last-message"
+        if self.provider == "codex" and "output_schema" in self.cli_options and last.is_file():
+            message = last.read_bytes()
+            if len(message) > self.output_limit or _leaks(message, secrets):  # never a partial structured result
+                last.unlink()
+            else:
+                body["artifacts"].append({"name": "last-message", "path": str(last.relative_to(roots["evidence_root"])),
+                                          "sha256": "sha256:" + hashlib.sha256(message).hexdigest(),
+                                          "size": len(message)})
         units, failed, model = {"claude": _claude_report, "codex": _codex_report,
                                 "opencode": _opencode_report}[self.provider](data)
         if units is not None:
@@ -705,7 +840,7 @@ class AgentCliBackend(ProcessBackend):
 
     def _withhold(self, body, request, roots, what):
         """A credential-shaped string in the output: keep neither candidate nor output, report an error."""
-        for name in ("candidate", "agent-output"):
+        for name in ("candidate", "agent-output", "last-message"):
             (Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/{name}").unlink(missing_ok=True)
         self.withheld = what
         body.update(outcome="error", exit_code=None, completion=None, error_code="PROVIDER_ERROR", candidate=None,
@@ -720,6 +855,46 @@ def _agent_writable_roots(workspace):
     if os.environ.get("TMPDIR"):
         roots.add(Path(os.environ["TMPDIR"]).resolve())
     return sorted(roots)
+
+
+_ISOLATION_MARKER = "agent-harness-isolation-probe-ran"
+
+
+def _isolation_refusal(template, env):
+    """None when the sandbox demonstrably ran a command and blocked its write; otherwise why not.
+
+    The template's ``{dir}`` and ``{target}`` are a fresh private directory and a file in it. The command must print
+    the marker (it ran inside the sandbox) and must not create the target (the sandbox blocked the write). A sandbox
+    that fails before running anything does not pass by accident.
+    """
+    probe_dir = Path(tempfile.mkdtemp(prefix="agent-harness-isolation-")).resolve()
+    target = probe_dir / "write-must-be-blocked"
+    argv = [part.replace("{dir}", str(probe_dir)).replace("{target}", str(target)) for part in template]
+    try:
+        run = subprocess.run(argv, check=False, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return f"sandbox isolation check could not run: {error}"
+    finally:
+        created = target.exists()
+        shutil.rmtree(probe_dir, ignore_errors=True)
+    if _ISOLATION_MARKER not in run.stdout.decode("utf-8", "replace"):
+        detail = (run.stderr or run.stdout).decode("utf-8", "replace").strip()[:300]
+        return f"sandbox isolation check did not run inside the sandbox (exit {run.returncode}): {detail}"
+    if created:
+        return "sandbox isolation check: a write the sandbox must block succeeded"
+    return None
+
+
+def _default_isolation_probe(provider):
+    """A command that runs inside the provider's sandbox mechanism, prints the marker and tries a blocked write."""
+    attempt = ["sh", "-c", f"echo {_ISOLATION_MARKER}; echo x > {{target}}"]
+    if provider == "codex":  # read-only mode: every write must fail
+        return ["codex", "sandbox", "-c", 'sandbox_mode="read-only"', "--", *attempt]
+    if sys.platform == "darwin":  # Seatbelt, which Claude Code's sandbox (and OpenCode's profile) use on macOS
+        return ["/usr/bin/sandbox-exec", "-p", '(version 1)(allow default)(deny file-write* (subpath "{dir}"))',
+                *attempt]
+    # Linux: bubblewrap, which Claude Code's sandbox uses; a read-only root makes the write fail
+    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-net", *attempt]
 
 
 def _default_probe(provider):
