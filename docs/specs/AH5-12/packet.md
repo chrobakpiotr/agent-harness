@@ -203,3 +203,25 @@ which gives identical fields. The six points below change meaning and need a dec
 **D1, default models (2026-10-19).** Neither Harness nor Showcase picks models. Showcase's per-provider default
 configuration starts **empty**: without `--model`, the run is refused before launch (fail closed) until the owner
 records model IDs in Showcase's versioned configuration. This applies D1's own rule; it is not a new divergence.
+
+### D5 implementation (evidence protection checked, not assumed)
+
+- **Real paths.** The resolved evidence root must lie outside every root the agent may write (workspace, `/tmp`,
+  `$TMPDIR`). A symlink on the path the harness writes through is refused when it sits in such a root, even if it
+  currently points elsewhere, because the agent could repoint it. A symlink outside those roots is accepted.
+- **Real sandbox write.** The isolation check now runs the sandbox the run uses, from the workspace, with the
+  agent's writable roots (Codex: `codex sandbox` in the run's `sandbox_mode`; macOS: Seatbelt allowing only those
+  roots; Linux: bubblewrap binding only those roots). It must print the marker and fail to create a fresh file in
+  the evidence root (its nearest existing ancestor before the first run). The probe file is removed either way.
+- **Primary checkout.** Evidence inside a workspace that is a primary checkout (`.git` is a directory) is refused
+  with the instruction to run the agent in a linked worktree (`git worktree add`) and keep evidence outside it.
+- **Preflight only.** Every refusal comes from `refuse()` before the lock and the start marker: the result is
+  `rejected`, no process starts, nothing is written, no attempt is used.
+- **Tests and mutations** (`tests/test_agent_launch_options.py`): symlink, primary checkout, and the real Seatbelt
+  write into the evidence root. Each of these mutations fails a test: symlink check removed; worktree instruction
+  removed; probe aimed at a temporary directory instead of the evidence root; the old deny-`{dir}` profile.
+- **Live check, this host (2026-10-19):** with evidence outside the workspace, the Codex sandbox and Seatbelt both
+  blocked the write; with evidence inside it, both the path check and the real sandbox write refused.
+- **Limit.** For Claude the probe reproduces the write set Claude Code's sandbox is configured with (Seatbelt or
+  bubblewrap); it does not run Claude itself, which would need a model call. Claude's file tools are additionally
+  limited to the workspace by `acceptEdits`, and the evidence root is in `denyWrite`.

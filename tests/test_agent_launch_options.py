@@ -12,6 +12,8 @@ from test_agent_cli import CLAUDE_OK, CliCase
 
 from agent_harness import execution
 
+REAL_ISOLATION_PROBE = execution._default_isolation_probe  # CliCase replaces it with a stand-in
+
 CODEX_STREAM = "\n".join(json.dumps(e) for e in (
     {"type": "turn.completed", "usage": {"input_tokens": 1, "cached_input_tokens": 0, "output_tokens": 1}},))
 
@@ -118,6 +120,46 @@ class LaunchOptionsTest(CliCase):
                 self.assertIn("isolation", backend.rejection_reason)
         self.assertFalse([c for c in self.calls() if c["argv"][:1] == ["exec"]])  # no agent process started
 
+
+    def roots(self, evidence):
+        return {"workspace": str(self.root / "workspace"), "evidence_root": str(evidence)}
+
+    def test_evidence_behind_a_replaceable_symlink_is_refused(self):
+        """D5: a symlink in an agent-writable root on the evidence path is refused even when it points elsewhere."""
+        (self.root / "safe").mkdir()
+        (self.root / "workspace" / "runs").symlink_to(self.root / "safe")
+        reason = execution._evidence_exposure(self.roots(self.root / "workspace" / "runs" / "ev"))
+        self.assertIn("symlink the agent can replace", reason)
+        (self.root / "outside").symlink_to(self.root / "safe")  # a symlink outside the writable roots is fine
+        self.assertIsNone(execution._evidence_exposure(self.roots(self.root / "outside" / "ev")))
+        (self.root / "into").symlink_to(self.root / "workspace")  # resolving into the workspace is not
+        self.assertIn("writable by the agent's sandbox", execution._evidence_exposure(self.roots(self.root / "into")))
+
+    def test_a_primary_checkout_is_refused_with_the_worktree_instruction(self):
+        """D5: evidence inside a primary checkout is refused and the refusal says to use a linked worktree."""
+        evidence = self.root / "workspace" / ".agent-runs"
+        (self.root / "workspace" / ".git").mkdir()
+        self.assertIn("git worktree add", execution._evidence_exposure(self.roots(evidence)))
+        (self.root / "workspace" / ".git").rmdir()
+        (self.root / "workspace" / ".git").write_text("gitdir: /elsewhere\n")  # a linked worktree
+        reason = execution._evidence_exposure(self.roots(evidence))
+        self.assertIn("writable by the agent's sandbox", reason)
+        self.assertNotIn("primary checkout", reason)
+        self.fake("codex", CODEX_STREAM)
+        backend = execution.AgentCliBackend("codex", "x", env=self.env, isolation_probe=["true"])
+        request = self.request("codex", "m")
+        self.assertEqual("CAPABILITY_UNSUPPORTED", backend.refuse(request, self.roots(evidence)))
+        self.assertFalse(evidence.exists())  # refused before anything is written: no attempt used
+
+    @unittest.skipUnless(execution.sys.platform == "darwin", "Seatbelt")
+    def test_the_isolation_check_tries_the_real_sandbox_write_into_the_evidence_root(self):
+        """D5: the check runs the sandbox with the agent's writable roots and fails when evidence is writable."""
+        probe = REAL_ISOLATION_PROBE("claude")
+        self.assertIsNone(execution._isolation_refusal(probe, self.env, self.roots(self.root / "evidence")))
+        inside = self.root / "workspace" / "ev"
+        inside.mkdir()
+        self.assertIn("let a write into the evidence root", execution._isolation_refusal(probe, self.env, self.roots(inside)))
+        self.assertEqual([], list(inside.iterdir()))  # the probe file is removed
 
     def test_stderr_is_a_bounded_diagnostic_artifact_checked_for_secrets(self):
         """D3: stderr is kept as `agent-stderr`; a credential-shaped stderr is dropped, never published."""

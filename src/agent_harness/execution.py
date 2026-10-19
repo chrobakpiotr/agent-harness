@@ -577,7 +577,8 @@ class AgentCliBackend(ProcessBackend):
         if isolation_probe is not None:
             self.isolation_probe = list(isolation_probe)
         else:
-            self.isolation_probe = _default_isolation_probe(provider) if sandbox_probe is None else None
+            self.isolation_probe = (_default_isolation_probe(provider, self.cli_options.get("sandbox_mode"))
+                                    if sandbox_probe is None else None)
         self.rejection_reasons = {}  # request_id -> why it was refused
         self.request_counts = {}  # request_id -> requests the OpenCode relay forwarded to OpenRouter
 
@@ -596,10 +597,9 @@ class AgentCliBackend(ProcessBackend):
     def _refusal(self, request, roots):
         if request["provider"] != self.provider or not _MODEL.fullmatch(request["model"]):
             return "CAPABILITY_UNSUPPORTED", "request provider/model does not match this backend"
-        evidence = Path(roots["evidence_root"]).resolve()
-        writable = [r for r in _agent_writable_roots(roots["workspace"]) if r == evidence or r in evidence.parents]
-        if writable:  # the agent could forge the result or plant Git config in it
-            return "CAPABILITY_UNSUPPORTED", f"evidence root is writable by the agent's sandbox ({writable[0]})"
+        reason = _evidence_exposure(roots)
+        if reason is not None:  # the agent could forge the result or plant Git config in it
+            return "CAPABILITY_UNSUPPORTED", reason
         if shutil.which(self.provider, path=self.env.get("PATH")) is None:
             return "BACKEND_UNAVAILABLE", f"{self.provider} executable not found on PATH"
         if self.provider == "opencode":
@@ -619,7 +619,7 @@ class AgentCliBackend(ProcessBackend):
             detail = (probe.stderr or probe.stdout).decode("utf-8", "replace").strip()[:500]
             return "CAPABILITY_UNSUPPORTED", f"sandbox unavailable (exit {probe.returncode}): {detail}"
         if self.isolation_probe is not None:
-            reason = _isolation_refusal(self.isolation_probe, self.env)
+            reason = _isolation_refusal(self.isolation_probe, self.env, roots)
             if reason is not None:
                 return "CAPABILITY_UNSUPPORTED", reason
         return None, None
@@ -907,41 +907,81 @@ def _agent_writable_roots(workspace):
 _ISOLATION_MARKER = "agent-harness-isolation-probe-ran"
 
 
-def _isolation_refusal(template, env):
-    """None when the sandbox demonstrably ran a command and blocked its write; otherwise why not.
+def _evidence_exposure(roots):
+    """Why the evidence root is reachable by agent writes, judged by real paths; None when it is not (D5).
 
-    The template's ``{dir}`` and ``{target}`` are a fresh private directory and a file in it. The command must print
-    the marker (it ran inside the sandbox) and must not create the target (the sandbox blocked the write). A sandbox
-    that fails before running anything does not pass by accident.
+    The resolved evidence root must lie outside every root the sandboxes let the agent write, and no symlink on the
+    path the harness writes through may sit in such a root (the agent could repoint it after this check).
     """
-    probe_dir = Path(tempfile.mkdtemp(prefix="agent-harness-isolation-")).resolve()
-    target = probe_dir / "write-must-be-blocked"
-    argv = [part.replace("{dir}", str(probe_dir)).replace("{target}", str(target)) for part in template]
+    workspace = Path(roots["workspace"]).resolve()
+    writable = _agent_writable_roots(roots["workspace"])
+
+    def inside(path):
+        return next((r for r in writable if r == path or r in path.parents), None)
+    lexical = Path(roots["evidence_root"])
+    for part in [*reversed(lexical.parents), lexical]:
+        if part.is_symlink() and inside(part.parent.resolve()) is not None:
+            return f"evidence path goes through a symlink the agent can replace ({part})"
+    root = inside(lexical.resolve())
+    if root is None:
+        return None
+    reason = f"evidence root is writable by the agent's sandbox ({root})"
+    if root == workspace and (workspace / ".git").is_dir():
+        reason += ("; the workspace is a primary checkout: run the agent in an isolated linked worktree "
+                   "(`git worktree add`) and keep the evidence root outside it")
+    return reason
+
+
+def _isolation_refusal(template, env, roots):
+    """None when the sandbox demonstrably ran a command and blocked its write into the evidence root; else why not.
+
+    The template runs in the workspace. Its ``{target}`` is a fresh file in the evidence root (in its nearest existing
+    ancestor before the first run), ``{dir}`` that directory, ``{workspace}`` the workspace and ``{writable}`` the
+    Seatbelt rules for the roots the agent may write; an argument ``{binds}`` becomes bubblewrap binds for them. The
+    command must print the marker (it ran inside the sandbox) and must not create the target (the sandbox protected
+    the evidence). A sandbox that fails before running anything does not pass by accident.
+    """
+    probe_dir = Path(roots["evidence_root"])
+    while not probe_dir.is_dir():
+        probe_dir = probe_dir.parent
+    target = probe_dir / f".agent-harness-write-probe-{uuid.uuid4().hex}"
+    writable = _agent_writable_roots(roots["workspace"])
+    values = {"{dir}": str(probe_dir), "{target}": str(target), "{workspace}": str(Path(roots["workspace"]).resolve()),
+              "{writable}": " ".join(f'(subpath "{r}")' for r in writable)}
+    argv = []
+    for part in template:
+        if part == "{binds}":
+            argv += [arg for r in writable for arg in ("--bind", str(r), str(r))]
+            continue
+        for key, value in values.items():
+            part = part.replace(key, value)
+        argv.append(part)
     try:
-        run = subprocess.run(argv, check=False, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+        run = subprocess.run(argv, check=False, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=60,
+                             cwd=roots["workspace"])
     except (OSError, subprocess.TimeoutExpired) as error:
         return f"sandbox isolation check could not run: {error}"
     finally:
-        created = target.exists()
-        shutil.rmtree(probe_dir, ignore_errors=True)
+        created = target.exists() or target.is_symlink()
+        target.unlink(missing_ok=True)
     if _ISOLATION_MARKER not in run.stdout.decode("utf-8", "replace"):
         detail = (run.stderr or run.stdout).decode("utf-8", "replace").strip()[:300]
         return f"sandbox isolation check did not run inside the sandbox (exit {run.returncode}): {detail}"
     if created:
-        return "sandbox isolation check: a write the sandbox must block succeeded"
+        return "sandbox isolation check: the agent's sandbox let a write into the evidence root through"
     return None
 
 
-def _default_isolation_probe(provider):
-    """A command that runs inside the provider's sandbox mechanism, prints the marker and tries a blocked write."""
+def _default_isolation_probe(provider, sandbox_mode=None):
+    """A command in the sandbox the run uses (its writable roots) that prints the marker and writes into evidence."""
     attempt = ["sh", "-c", f"echo {_ISOLATION_MARKER}; echo x > {{target}}"]
-    if provider == "codex":  # read-only mode: every write must fail
-        return ["codex", "sandbox", "-c", 'sandbox_mode="read-only"', "--", *attempt]
+    if provider == "codex":  # the run's own mode, run from the workspace as `codex exec` is
+        return ["codex", "sandbox", "-c", f'sandbox_mode="{sandbox_mode or _CODEX_SANDBOX}"', "--", *attempt]
     if sys.platform == "darwin":  # Seatbelt, which Claude Code's sandbox (and OpenCode's profile) use on macOS
-        return ["/usr/bin/sandbox-exec", "-p", '(version 1)(allow default)(deny file-write* (subpath "{dir}"))',
-                *attempt]
-    # Linux: bubblewrap, which Claude Code's sandbox uses; a read-only root makes the write fail
-    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-net", *attempt]
+        return ["/usr/bin/sandbox-exec", "-p",
+                '(version 1)(allow default)(deny file-write*)(allow file-write* {writable} (subpath "/dev"))', *attempt]
+    # Linux: bubblewrap, which Claude Code's sandbox uses: a read-only root with the agent's writable roots bound
+    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "{binds}", "--unshare-net", *attempt]
 
 
 def _default_probe(provider):
