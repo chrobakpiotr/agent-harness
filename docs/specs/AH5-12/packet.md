@@ -358,3 +358,8 @@ target re-pin to 0.14.0 they must pass; the re-pin is not complete until they do
   contents, recorded with the version and commit; a change or an unknown identity blocks resume). It does not extend
   AH5-12b and does not block the library release, but it must be closed before agent-benchmark completes its 0.14.0
   adoption.
+  - **Closed on agent-benchmark's side** (its report, `a93521e`; not independently reviewed here): resume records a
+    content fingerprint of the RECORD-listed harness files (`record-listed-files-content-sha256/v1`) beside the
+    version and commit, and refuses on any difference or when the identity cannot be established; old runs are
+    unchanged. Verified there on a non-VCS v0.12.0 install: a file edited with RECORD unchanged blocks resume, and
+    restoring it allows resume.
