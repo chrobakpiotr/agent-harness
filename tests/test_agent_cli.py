@@ -461,10 +461,10 @@ class AgentCliTest(CliCase):
                                   self.request("claude", "sonnet", request_id="req-2"))
         self.assertEqual(("completed", "unknown", ["withheld"]),
                          (result["outcome"], result["usage_completeness"], [a["name"] for a in result["artifacts"]]))
-        entry = self.withheld_record("req-2")["artifacts"][0]
-        self.assertEqual(("agent-output", "OUTPUT_LIMIT_EXCEEDED", 10, False),
-                         (entry["kind"], entry["reason_code"], entry["limit_bytes"], entry["observed_bytes_is_lower_bound"]))
-        self.assertGreater(entry["observed_bytes"], 10)
+        record = self.withheld_record("req-2")
+        self.assertEqual(("OUTPUT_LIMIT_EXCEEDED", ["agent-output"], 10, False),
+                         (record["reason_code"], record["artifacts"], record["limit"], record["size_is_lower_bound"]))
+        self.assertGreater(record["size"], 10)
 
     def test_mismatched_request_or_missing_cli_is_refused_before_launch(self):
         self.fake("claude", json.dumps(CLAUDE_OK))

@@ -198,8 +198,10 @@ class LaunchOptionsTest(CliCase):
         script.chmod(script.stat().st_mode | stat.S_IXUSR)
         result = self.run_backend(self.claude("x", env=self.env), self.request("claude", "sonnet", request_id="se"))
         self.assertEqual({"agent-output", "withheld"}, {a["name"] for a in result["artifacts"]})
-        self.assertEqual([("agent-stderr", "CREDENTIAL_SHAPED_OUTPUT")],
-                         [(a["kind"], a["reason_code"]) for a in self.withheld("se")["artifacts"]])
+        record = self.withheld("se")
+        self.assertEqual(("CREDENTIAL_SHAPED_OUTPUT", ["agent-stderr"], None, None, False),
+                         (record["reason_code"], record["artifacts"], record["size"], record["limit"],
+                          record["size_is_lower_bound"]))
         self.assertNotIn("sk-ant-", json.dumps(self.withheld("se")))
 
 

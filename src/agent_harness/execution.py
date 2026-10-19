@@ -882,12 +882,12 @@ class AgentCliBackend(ProcessBackend):
     def _withheld_record(self, request, roots, withheld):
         """D4/D6: `withheld.json` names what was not published and why; never content, matches or secret values."""
         path = self._output_path(request, roots).parent / "withheld.json"
-        record = {"schema_version": 1, "reason_code": withheld[0][1],
-                  "artifacts": [{"kind": kind, "reason_code": reason,
-                                 **({"observed_bytes": observed, "observed_bytes_is_lower_bound": False}
-                                    if observed is not None else {}),
-                                 **({"limit_bytes": limit} if limit is not None else {})}
-                                for kind, reason, observed, limit in withheld],
+        primary = next(entry for entry in withheld if entry[1] != "WITHHELD_WITH_OUTPUT")
+        # Format agreed with agent-benchmark: flat fields for the primary reason, per-artifact detail apart.
+        record = {"schema_version": 1, "reason_code": primary[1], "artifacts": [kind for kind, *_ in withheld],
+                  "size": primary[2], "limit": primary[3], "size_is_lower_bound": False,
+                  "details": [{"artifact": kind, "reason_code": reason, "size": observed, "limit": limit,
+                               "size_is_lower_bound": False} for kind, reason, observed, limit in withheld],
                   "secret_detected": False,  # a credential-shaped string is a pattern match, not a confirmed secret
                   "note": "process outcome, artifact publication and task-result acceptance are separate facts"}
         data = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
