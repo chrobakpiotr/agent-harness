@@ -75,3 +75,8 @@
       Showcase's test patches. Fixed in `task_runner.run_verification`.
   - With the fix installed, `test_verification_parity`, `test_runner` and the adversarial eval (7/7) pass on the
     current consumer.
+- AC3, independent evaluation of 0.13.0 (AH5-11 + AH5-12a only):
+  - **Attempt 1, no verdict.** The evaluator stopped on an API session limit (2026-10-18) before reporting; it is
+    kept as an attempt, not a result.
+  - **Attempt 2** reviews branch `ah5-12a-runner-checks` at `daecf4e`. Its verdict will name exactly the sources
+    it evaluated.
