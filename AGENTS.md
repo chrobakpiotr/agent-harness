@@ -47,6 +47,9 @@ A small fix does not need Wayfinder ceremony.
 ## Git mutation policy
 
 - Do not push, force-push, merge, open a pull request, or mutate remotes unless a human explicitly requests it.
+  Standing owner decision (2026-10-19): ordinary direct pushes are authorised, without a pull request. It does not
+  cover force pushes, changes to repository protection, or publishing a release (a tag or release needs the owner's
+  separate order). If branch protection blocks a push, report the exact blocker.
 - Do not create or switch branches unless the active task protocol requires it.
 - Commit locally only when a human explicitly asks or the accepted task protocol requires it.
 - Never amend, squash, rewrite or delete history without authorization.

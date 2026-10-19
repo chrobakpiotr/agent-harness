@@ -304,11 +304,13 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
      12b runner as a finished integration.
 2. **Model:** every orchestrate invocation passes `--model` or uses Showcase's explicit configuration. Nothing
    chooses a default model. Open on the Showcase side.
-3. **Claude restrictions: not confirmed.** The argv and settings tests do not prove that the Claude CLI honours
+3. **Claude restrictions: confirmed for the tested tuple only** (see below). Originally: **not confirmed.** The argv and settings tests do not prove that the Claude CLI honours
    the denied commands and the file-tool deny rules on the evidence root. They are checked in agent-benchmark's
    already-planned, authorised live trial at its re-pin, on the final code. Until then they are unconfirmed; where
    they are a condition of Showcase's isolation, they block Showcase's adoption even though the sandbox probe passed.
-4. **`--print-command`:** marked as the legacy preview (row 10 above).
+4. **`--print-command`: closed.** The new path never presents the old command as the one it runs: the output is
+   marked as the legacy preview on stderr and commented out on stdout, and the prompt stays hidden (row 10 above,
+   `test_print_command_is_marked_as_the_legacy_preview`). The design/wayfinder launches are not migrated here.
 5. **Exact candidate:** the final report gives the relation between `0674698`, `bf8d085` and the SHA after the
    rebase, and checks every non-docs difference from the evaluated and rehearsed snapshots.
 6. **Publication:** through a pull request with signed commits and the required checks. No admin bypass without a
@@ -321,3 +323,38 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
   (passes alone);
 - `test_verification_completion_boundary.OriginCompletionBoundaryTest.test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs`
   (`SECRET_BEARING_CANDIDATE_UNSEALABLE`, also alone; the host-specific fixture error in `docs/specs/AH5-06/packet.md`).
+
+### Claude restrictions: agent-benchmark's authorised live trial (2026-10-19)
+
+- **Source:** agent-benchmark `ab5-07-report.md` at its commit `091ccb1` (local to agent-benchmark when reported),
+  on candidate `161a25f9b5424c11f0c0883f89d7a3a00cc89b95`. One authorised live trial, Claude Code 2.1.289, the
+  macOS host (macOS 15.8.1, Darwin 24.6.0 x86_64). Evidence in agent-benchmark
+  `docs/specs/ab5-offline-mvp/ab5-07-report.md` and `docs/specs/ab5-offline-mvp/evidence/`; agent-benchmark `main`
+  was at `ed321d4` (CI green) at its handover.
+- **Evidence untouched:** the sentinel file in the evidence root is unchanged and no probe files exist.
+- **Observed:** `Write` and `Edit` on the evidence root were refused (in Claude's `permission_denials`, files
+  unchanged); a Bash write into the evidence root was blocked by the sandbox (`Operation not permitted`);
+  `WebFetch` and `WebSearch` were not offered (`--disallowedTools`); a workspace write was allowed.
+- **Accepted by master** as the planned check of closing condition 3, for that candidate, CLI version and host only.
+  It is acceptance of the report, not an independent review of its artifacts. Not extended to other hosts or CLI
+  versions. Web tools being unavailable does not prove every network path is blocked.
+- **Not covered:** the trial ran without launch options, so Showcase's `denied_commands` list and reviewer tool
+  set were not exercised live. They remain for Showcase's real-CLI pairing check at adoption.
+
+### Expected candidate difference: the version-pin tests
+
+The three `test_qualification_report` version-pin tests (`HARNESS_VERSION`, `agent_harness.__version__`, the
+qualification version check) and agent-benchmark's version-pin assertion fail against the candidate because they
+expect the consumer's current pin. This is the expected difference of a new version, not a regression. After the
+target re-pin to 0.14.0 they must pass; the re-pin is not complete until they do.
+
+### agent-benchmark follow-ups (master, 2026-10-19)
+
+- agent-benchmark's handover `docs/specs/ab5-offline-mvp/ab5-07-handover-2026-10-19.md` (agent-benchmark `fb538f2`)
+  maps the 7 withheld/exit/timeout scenarios to its scripts and tests, keeping the harness's `outcome`, `exit_code`
+  and `error_code` apart from its own grade. A withheld output without a candidate is INVALID with any exit code.
+- **Resume identity gap**, owned by agent-benchmark: resume did not detect a changed harness with the same version
+  and no VCS metadata. Master approved a narrow fix there (a fingerprint of the installed distribution's file
+  contents, recorded with the version and commit; a change or an unknown identity blocks resume). It does not extend
+  AH5-12b and does not block the library release, but it must be closed before agent-benchmark completes its 0.14.0
+  adoption.

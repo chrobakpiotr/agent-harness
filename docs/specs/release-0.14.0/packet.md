@@ -52,3 +52,34 @@
   - The live Showcase checkout's `tooling/agent-harness` changed during the run: uncommitted, Showcase applying the
     0.13.0 handoff (the v0.13.0 shims and the `cfd92fc` pin). The rehearsal used the committed `cbbdbca` snapshot.
     Once Showcase commits its 0.13.0 cutover, the 12b shim diff is the same files over a newer base.
+
+## Exact-candidate rehearsal (2026-10-19)
+
+- **Rehearsed:** `rehearsal-0140b` on `d10cca68e6ed6537f999d8f40b04d5a4dbb215ad`. Its code and tests are identical
+  to `161a25f9b5424c11f0c0883f89d7a3a00cc89b95`: `git diff 161a25f d10cca6 -- . ':!docs'` is empty. Showcase
+  snapshot `cbbdbca`, `BASE_PINNED=1`, `JOBS=4`. Host window 2026-10-19T20:50:28Z to 21:40:58Z, load about 4–12
+  (Showcase ran its own tests at the same time; agent-benchmark had no runs).
+- **CI:** 21 commands; exit codes identical; output identical after masking durations and eval ids.
+- **Tests:** base 901 ok, 2 FAIL, 1 ERROR; wrapped 912 ok, 4 FAIL, 3 ERROR.
+  - Expected candidate difference: the three `test_qualification_report` version-pin tests.
+  - The shim's own tests, all passing (12 in `test_runner_launch`, and the runner and verify-CLI binding tests).
+  - `test_concurrent_sequential_replans_have_one_winner` failed on the wrapped side, and
+    `test_conflicting_failed_task_replans_serialize_with_one_winner` on the base side. Rerun alone, both pass on
+    both sides (44 s). They are load- and timing-sensitive; in earlier runs each has failed on either side.
+  - On both sides: the baseline failures `test_register_manual_observation_…` and
+    `test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs`.
+- **Rollback:** wrapped → base, base → wrapped and base → base all ok.
+
+## Showcase's current base (master points 4–5)
+
+- During the run Showcase committed its 0.13.0 cutover: `cbbdbca` → `ea8a54fa38959e255985fd4415dbba599d52c405` →
+  `8cfaf08805a82d34dcfb0fc4fbf65c7623125afa`. The rehearsal used the committed `cbbdbca` snapshot.
+- **`cbbdbca` → `ea8a54fa`, the agreed migration only:** the pin (`1c569f2` → `cfd92fc`); `runner.py`, `verify.py`
+  and `tests/test_cutover_wrapper.py`, byte-identical to the v0.13.0 shims; `PINNED_HARNESS_VERSION` and the three
+  version-pin tests (0.12.0 → 0.13.0); `AGENTS.md` (the direct-push decision) and a handover document. The 12b
+  rehearsal's wrapped side overwrites the same three shims with the 12b ones, so no behaviour it tested changed;
+  the full run is not repeated.
+- **`ea8a54fa` → `8cfaf08`:** `AGENTS.md` and the handover document only.
+- **Showcase CI:** run 39324499981 passed for `ea8a54fa`; run 39327994011 passed for `8cfaf08`.
+  `Dependency review` was **skipped** (it runs on pull requests only) and is not counted as a check performed; it is
+  recorded as a CI coverage gap for a later improvement packet, outside this cutover.

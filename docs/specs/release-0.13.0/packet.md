@@ -51,3 +51,11 @@
   - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.13.0`.
   - `verify_cli` and `task_runner` import.
   - The shipped reference carries the installed probe digest (`sha256:ee87222a…`).
+
+## Branch protection on the release pushes
+
+`main` requires a pull request, signed commits and 2 status checks. The pushes of `cfd92fc` and `77068b6` were
+accepted by GitHub as an admin bypass ("Bypassed rule violations"): no pull request, unsigned commits, and the
+required checks not run before the push. CI ran after the push and passed for both. The bypass does not mean those
+protections were satisfied. The owner has since authorised ordinary direct pushes (2026-10-19), recorded in
+`AGENTS.md`.
