@@ -39,6 +39,7 @@ from machine_outcomes import exit_code, is_control_outcome  # noqa: E402
 import verification_sandbox  # noqa: E402
 import trust  # noqa: E402
 from agent_harness import task_runner as _checks  # noqa: E402
+from agent_harness import contract as _contract, execution as _execution  # noqa: E402
 
 # AH5-12a: the provider-neutral checks are the library's; Showcase binds its tested projection profiles, its
 # canonical schema, its verification CLI and profiles, and its sandbox environment. The launch below stays here
@@ -132,6 +133,90 @@ EXECUTION RULES
 """
 
 
+# AH5-12b D1: Showcase's versioned per-provider models. Empty: a run without --model is refused before it starts.
+DEFAULT_MODELS: dict[str, str] = {}
+AGENT_TIMEOUT_SECONDS = 1800  # D2: an operational limit; orchestrate's heartbeat renews the lease until runner exits
+DENIED_BASH = [
+    'Bash(git push *)', 'Bash(git commit *)', 'Bash(git merge *)', 'Bash(git rebase *)',
+    'Bash(git reset *)', 'Bash(git remote *)', 'Bash(gh *)', 'Bash(kubectl *)',
+    'Bash(argocd *)', 'Bash(terraform apply *)', 'Bash(terraform destroy *)', 'Bash(docker login *)',
+]
+CLAUDE_DENY_READ = [
+    '~/.ssh', '~/.aws', '~/.kube', '~/.config/gcloud',
+    '~/.docker/config.json', '~/.npmrc', '~/.gradle/gradle.properties',
+]
+
+
+def strip_meta_schema(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: strip_meta_schema(item) for key, item in value.items() if key != '$schema'}
+    if isinstance(value, list):
+        return [strip_meta_schema(item) for item in value]
+    return value
+
+
+def resolve_model(args: argparse.Namespace) -> tuple[str, str]:
+    """D1: --model, else Showcase's configured model; never the CLI's own default."""
+    if args.model:
+        return args.model, 'argument'
+    if DEFAULT_MODELS.get(args.provider):
+        return DEFAULT_MODELS[args.provider], 'configuration'
+    die(f'no model for {args.provider}: pass --model or configure DEFAULT_MODELS; refusing before the attempt starts')
+
+
+def agent_cli_options(args: argparse.Namespace, read_only_run: bool, output_schema: dict[str, Any]) -> dict[str, Any]:
+    """The flags codex_command/claude_command pass, as the library's validated launch options."""
+    if args.provider == 'codex':
+        options = {'sandbox_mode': args.sandbox, 'output_schema': output_schema, 'strict': True,
+                   'login_method': 'chatgpt'}
+        if args.reasoning:
+            options['reasoning'] = args.reasoning
+        return options
+    tools = ['Read', 'Glob', 'Grep', 'Bash'] if read_only_run else ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash']
+    options = {'sandbox_mode': 'read-only' if read_only_run else 'workspace-write',
+               'output_schema': strip_meta_schema(output_schema), 'restricted': True, 'permission_mode': 'dontAsk',
+               'tools': tools, 'denied_commands': list(DENIED_BASH), 'deny_read': list(CLAUDE_DENY_READ),
+               'max_turns': args.max_turns}
+    if args.max_budget_usd is not None:
+        options['max_budget_usd'] = args.max_budget_usd
+    return options
+
+
+def agent_request(args: argparse.Namespace, packet: dict[str, Any], model: str, options: dict[str, Any],
+                  invocation_id: str) -> dict[str, Any]:
+    config = hashlib.sha256(canonical_json({'model': model, 'options': options})).hexdigest()
+    try:
+        return _contract.validate_request({
+            'contract_version': 1, 'request_id': invocation_id, 'trial_id': None,
+            'task_digest': 'sha256:' + packet_hash(packet), 'config_digest': 'sha256:' + config,
+            'provider': args.provider, 'model': model, 'settings': {}, 'capabilities': ['usage', 'cancel'],
+            'timeout_seconds': args.agent_timeout, 'max_attempts': 1, 'input_bindings': []})
+    except _contract.ContractError as exc:
+        die(f'agent request refused before launch: {exc}')
+
+
+def execution_record(result: dict[str, Any], out: pathlib.Path, evidence: pathlib.Path) -> dict[str, Any]:
+    """The library result as provenance records it: process outcome and published artifacts, kept apart."""
+    artifacts = {a['name']: str((evidence / a['path']).relative_to(out)) for a in result['artifacts']}
+    withheld = None
+    if 'withheld' in artifacts:
+        withheld = json.loads((out / artifacts['withheld']).read_text(encoding='utf-8'))
+    return {'outcome': result['outcome'], 'exit_code': result['exit_code'], 'error_code': result['error_code'],
+            'drain': result['drain'], 'usage_completeness': result['usage_completeness'],
+            'resolved_model': result['resolved_model'], 'artifacts': artifacts,
+            'withheld_reason': withheld['reason_code'] if withheld else None}
+
+
+def run_output(out: pathlib.Path, stream: str) -> str | None:
+    """A run's stdout or stderr: an old run's log as it is, else the library artifact (D3: no second write)."""
+    legacy = out / f'{stream}.log'
+    if legacy.exists():
+        return legacy.read_text(encoding='utf-8')
+    record = load(out / 'provenance.json').get('agent_execution') or {}
+    relative = record.get('artifacts', {}).get({'stdout': 'agent-output', 'stderr': 'agent-stderr'}[stream])
+    return (out / relative).read_text(encoding='utf-8') if relative else None
+
+
 def run_dir(packet: dict[str, Any], orchestration_id: str | None = None) -> pathlib.Path:
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     scope = orchestration_id or 'manual'
@@ -173,10 +258,7 @@ def claude_sandbox_settings() -> str:
             'autoAllowBashIfSandboxed': True,
             'allowUnsandboxedCommands': False,
             'filesystem': {
-                'denyRead': [
-                    '~/.ssh', '~/.aws', '~/.kube', '~/.config/gcloud',
-                    '~/.docker/config.json', '~/.npmrc', '~/.gradle/gradle.properties',
-                ]
+                'denyRead': list(CLAUDE_DENY_READ)
             },
             'network': {'allowedDomains': []},
         }
@@ -194,17 +276,6 @@ def claude_schema_text(schema_path: pathlib.Path) -> str:
     if not isinstance(schema, dict):
         die(f'Claude output schema must contain a JSON object: {schema_path}')
 
-    def strip_meta_schema(value: Any) -> Any:
-        if isinstance(value, dict):
-            return {
-                key: strip_meta_schema(item)
-                for key, item in value.items()
-                if key != '$schema'
-            }
-        if isinstance(value, list):
-            return [strip_meta_schema(item) for item in value]
-        return value
-
     return json.dumps(strip_meta_schema(schema), separators=(',', ':'), sort_keys=True)
 
 
@@ -218,11 +289,7 @@ def claude_command(
     read_only_profile = args.review_existing or bool(args.profile and args.profile.endswith('-reviewer'))
     tools = 'Read,Glob,Grep,Bash' if read_only_profile else 'Read,Edit,Write,Glob,Grep,Bash'
     allowed = ['Read', 'Glob', 'Grep'] if read_only_profile else ['Read', 'Edit', 'Write', 'Glob', 'Grep']
-    denied_bash = [
-        'Bash(git push *)', 'Bash(git commit *)', 'Bash(git merge *)', 'Bash(git rebase *)',
-        'Bash(git reset *)', 'Bash(git remote *)', 'Bash(gh *)', 'Bash(kubectl *)',
-        'Bash(argocd *)', 'Bash(terraform apply *)', 'Bash(terraform destroy *)', 'Bash(docker login *)',
-    ]
+    denied_bash = DENIED_BASH
     cmd = [
         'claude', '--restricted', '--strict-mcp-config', '-p', prompt,
         '--output-format', 'json',
@@ -364,10 +431,16 @@ def main() -> None:
     p.add_argument('--verification-plan-id', help='consume this lifecycle-accepted verification plan')
     p.add_argument('--orchestration-id', help='Correlate multiple task/reviewer runs in one orchestration')
     p.add_argument('--print-command', action='store_true', help='Render provider command without executing it')
+    p.add_argument('--agent-timeout', type=int, default=AGENT_TIMEOUT_SECONDS,
+                   help='Seconds before the agent is cancelled (default %(default)s)')
+    p.add_argument('--preflight', action='store_true',
+                   help='Only check that the run would launch (model, sandbox, evidence protection); start nothing')
     args = p.parse_args()
 
     if args.verification_timeout < 1:
         die('--verification-timeout must be positive')
+    if not 1 <= args.agent_timeout <= 86400:
+        die('--agent-timeout must be 1..86400 seconds')
     packet = load(args.packet.resolve())
     validate_packet_integrity(packet)
     worktree = args.worktree.resolve()
@@ -414,16 +487,24 @@ def main() -> None:
     except ValueError as exc:
         die(f'provider task-result schema is blocked: {exc}')
 
+    model, model_source = resolve_model(args)
+    options = agent_cli_options(args, read_only_run, json.loads(output_schema_bytes))
+    backend = _execution.AgentCliBackend(args.provider, prompt, env=dict(os.environ), cli_options=options)
+    invocation_id = uuid.uuid4().hex
+    request = agent_request(args, packet, model, options, invocation_id)
+    if args.preflight:  # before the lifecycle starts an attempt: nothing is launched or written
+        roots = {'workspace': str(worktree), 'evidence_root': str(RUNS / str(packet['feature']) / str(packet['task']))}
+        if backend.refuse(request, roots) is not None:
+            die(f'preflight refused: {backend.rejection_reason}')
+        print('preflight: ok')
+        return
+
     out = run_dir(packet, args.orchestration_id)
     (out / 'prompt.txt').write_text(prompt, encoding='utf-8')
     (out / 'packet.json').write_text(json.dumps(packet, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     result_path = out / 'result.json'
     output_schema_path = out / 'task-result-output-schema.json'
     output_schema_path.write_bytes(output_schema_bytes)
-    cmd = (codex_command(args, prompt, worktree, result_path, schema_path=output_schema_path)
-           if args.provider == 'codex'
-           else claude_command(args, prompt, worktree, schema_path=output_schema_path))
-    invocation_id = uuid.uuid4().hex
     started_at = telemetry.iso_now()
     started = time.monotonic()
     provenance = {
@@ -432,7 +513,8 @@ def main() -> None:
         'orchestration_id': args.orchestration_id,
         'feature': packet.get('feature'), 'task': packet.get('task'), 'role': packet.get('role'),
         'profile': args.profile or packet.get('agent_profile'),
-        'provider': args.provider, 'model_requested': args.model,
+        'provider': args.provider, 'model_requested': model, 'model_source': model_source,
+        'agent_timeout_seconds': args.agent_timeout,
         'provider_cli_version': provider_cli_version,
         'output_schema_projection': projection_metadata,
         'packet_sha256': packet.get('packet_sha256'),
@@ -447,27 +529,40 @@ def main() -> None:
     telemetry.atomic_write_json(out / 'provenance.json', provenance)
 
     try:
-        proc = subprocess.run(cmd, cwd=worktree, text=True, capture_output=True, check=False)
-        (out / 'stdout.log').write_text(proc.stdout, encoding='utf-8')
-        (out / 'stderr.log').write_text(proc.stderr, encoding='utf-8')
-        (out / 'exit-code.txt').write_text(str(proc.returncode) + '\n', encoding='utf-8')
-        metadata = provider_metadata(args.provider, proc.stdout)
+        evidence = out / 'evidence'
+        launched = _execution.launch(request, backend, workspace=str(worktree), evidence_root=str(evidence)).result()
+        record = execution_record(launched, out, evidence)
+        stdout_path = record['artifacts'].get('agent-output')
+        stdout = (out / stdout_path).read_text(encoding='utf-8') if stdout_path else None
         provenance.update({
-            'provider_exit_code': proc.returncode,
-            'provider_metadata': metadata,
+            'provider_exit_code': launched['exit_code'],
+            'model_resolved': launched['resolved_model'],
+            'agent_execution': record,
+            # unknown stays unknown: nothing is parsed from output that was not published
+            'provider_metadata': provider_metadata(args.provider, stdout) if stdout is not None
+            else {'usage': None, 'cost_usd': None},
             'duration_ms': round((time.monotonic() - started) * 1000),
             'completed_at': telemetry.iso_now(),
         })
-        if proc.returncode != 0:
-            provenance['status'] = 'provider-error'
+        failure = None
+        if launched['outcome'] == 'rejected':
+            failure = 'preflight-refused', f'{args.provider} refused before launch: {backend.rejection_reason}'
+        elif record['withheld_reason']:
+            failure = 'output-withheld', f'{args.provider} output withheld ({record["withheld_reason"]}); no task result'
+        elif launched['outcome'] != 'completed' or launched['exit_code'] != 0:
+            failure = 'provider-error', f'{args.provider} ended {launched["outcome"]} (exit {launched["exit_code"]})'
+        if failure:
+            provenance['status'] = failure[0]
             telemetry.atomic_write_json(out / 'provenance.json', provenance)
-            die(f'{args.provider} exited with {proc.returncode}; logs: {out}')
+            die(f'{failure[1]}; logs: {out}')
 
         if args.provider == 'claude':
-            result = extract_claude_result(proc.stdout)
-            (out / 'provider-envelope.json').write_text(proc.stdout, encoding='utf-8')
+            result = extract_claude_result(stdout or '')
         else:
-            result = load(result_path)
+            last = record['artifacts'].get('last-message')
+            if last is None:
+                die(f'codex wrote no last message; logs: {out}')
+            result = load(out / last)
         validate_result(result, packet, canonical_schema=canonical_schema)
         enforce_postconditions(packet, worktree, before, result, review_existing=read_only_run)
 
