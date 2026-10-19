@@ -583,6 +583,22 @@ class PlannerTest(unittest.TestCase):
                 bad = dataclasses.replace(good, **changes)
                 self.assertEqual('RUN', self.plan(evidence={'unit': bad}).decisions[0].action)
 
+    def test_each_receipt_guard_rejects_with_a_recomputed_receipt_hash(self):
+        """Added in AH5-11: each field guard rejects on its own; the receipt hash is recomputed so it cannot mask it."""
+        good = self.receipt(self.plan().decisions[0])
+        self.assertTrue(valid_evidence(good))
+        for changes in [dict(status='fail'), dict(process_invocations=0),
+                        dict(retry_policy='forbid', process_invocations=2), dict(started_at=3, ended_at=2),
+                        dict(exit_code=1), dict(ownership_token=''), dict(post_fingerprint='f' * 64)]:
+            with self.subTest(changes=changes):
+                changed = dataclasses.replace(good, **changes)
+                try:  # where serialization validation already rejects the value, valid_evidence is a second layer
+                    raw = evidence_record(changed, include_receipt=False)
+                except ValueError:
+                    self.assertFalse(valid_evidence(changed))
+                    continue
+                self.assertFalse(valid_evidence(dataclasses.replace(changed, receipt_hash=digest(raw))))
+
     def test_repository_identity_prevents_cross_repository_reuse(self):
         first = self.plan().decisions[0]
         good = self.receipt(first)

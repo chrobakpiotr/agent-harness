@@ -15,7 +15,7 @@
 | Showcase (`49ab97f`) | Library | Notes |
 |---|---|---|
 | `tooling/agent-harness/verify.py` (`a8a22113`) | `agent_harness/verify_cli.py` | Verbatim apart from the seams below. |
-| `tooling/agent-harness/tests/test_verify.py` (`c5f354e3`, 49 tests) | `tests/test_verify_cli.py` (50) | The 45 planner, fingerprint and serialization tests move with their modules; they had stayed in Showcase. The 4 CLI tests run in-process. One seam test is added. |
+| `tooling/agent-harness/tests/test_verify.py` (`c5f354e3`, 49 tests) | `tests/test_verify_cli.py` (53) | The 45 planner, fingerprint and serialization tests move with their modules; they had stayed in Showcase. The 4 CLI tests run in-process. Added: one seam test and three gap tests. |
 | — | `migration/showcase-wrapper/verify.py` | Shim: `sys.path` setup, the shebang and `__main__`, late-bound Showcase bindings. Mode 100644, as the source. |
 
 ## Explicit behaviour changes
@@ -41,7 +41,7 @@
 ## Evidence (2026-10-18)
 
 - AC1:
-  - `test_verify_cli`: 50 OK.
+  - `test_verify_cli`: 53 OK.
   - Mutating the profile root (`profile_root.parent`) fails the seam test.
 - AC2:
   - Scratch copies of Showcase `49ab97f`: `test_verify` 49 OK on both sides.
@@ -80,3 +80,13 @@
     kept as an attempt, not a result.
   - **Attempt 2** reviews branch `ah5-12a-runner-checks` at `daecf4e`. Its verdict will name exactly the sources
     it evaluated.
+  - **Attempt 2 verdict: pass with amendments.** It evaluated branch `ah5-12a-runner-checks` at `daecf4e`, against
+    Showcase `49ab97f` (verbatim checks) and `cbbdbca` (parity). Applied after it, before tagging:
+    1. A library guard against the `load_profile` regression (`test_profile_is_loaded_per_call_so_consumer_patches_reach_it`), and a runner binding test in `test_cutover_wrapper.py`.
+    2. The ownership and freeze tables now list `verify.py` → `verify_cli` and the partial `runner.py` → `task_runner`; the stale "not moved" lines are fixed.
+    3. The AH5-12b table is complete: row 2's `exec --ephemeral --json`, row 7's run-directory files, and rows 9–11 for result extraction, the CLI-version and preview path, and provider-error handling. The 3 prompt and context-trust tests are relabelled as Showcase policy.
+    4. `test_each_receipt_guard_rejects_with_a_recomputed_receipt_hash`: the forbid-implies-one-invocation and `started_at <= ended_at` guards are now caught. "invocations >= 1" and "status == pass" stay uncaught by design: serialization validation rejects those values before `valid_evidence` sees them, so these are a redundant second layer.
+    5. `test_profile_hash_mismatch_refuses_before_any_launch`.
+    6. `verify_cli`'s description no longer breaks under `python -OO`.
+    7. Counts corrected (`test_verify_cli` 53, `test_task_runner` 20); the consumers matrix shows Showcase on v0.12.0.
+    8. A full rehearsal against the current consumer after these fixes; recorded with the release.

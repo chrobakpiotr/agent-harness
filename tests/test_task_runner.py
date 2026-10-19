@@ -385,5 +385,36 @@ class TaskRunnerSeamTest(unittest.TestCase):
             self.assertEqual('ACCEPTED_PLAN_UNAVAILABLE', rows[0]['reason_code'])
 
 
+    def test_profile_hash_mismatch_refuses_before_any_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            record = {'profile_id': 'showcase', 'profile_hash': 'sha256:' + '0' * 64,
+                      'control_executable_binding': {'command': 'python3', 'path': sys.executable, 'sha256': 'a' * 64}}
+            with mock.patch.object(task_runner.subprocess, 'run') as run:
+                ok, rows = task_runner.run_verification(
+                    {}, root, root / 'out', 5, accepted_plan_id='plan-1', resolve_accepted=lambda repo, plan_id: record,
+                    profile_root=FIXTURES / 'verification-profiles', verify_cli=root / 'v.py',
+                    safe_env=lambda *a: {}, verify_binding=lambda binding: None)
+            self.assertEqual((False, 'PLAN_BINDING_MISMATCH'), (ok, rows[0]['reason_code']))
+            run.assert_not_called()
+
+    def test_profile_is_loaded_per_call_so_consumer_patches_reach_it(self):
+        """The source looks load_profile up per call; Showcase's tests patch it there (evaluation finding)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            profile = load_profile(FIXTURES / 'verification-profiles/showcase.json', repository=root)
+            record = {'profile_id': 'showcase', 'profile_hash': profile.content_hash,
+                      'control_executable_binding': {'command': 'python3', 'path': sys.executable, 'sha256': 'a' * 64}}
+            completed = subprocess.CompletedProcess([], 0, '{"outcome": "PASS"}', '')
+            with mock.patch('agent_harness.verification.profile.load_profile', return_value=profile) as patched, \
+                 mock.patch.object(task_runner.subprocess, 'run', return_value=completed):
+                ok, _rows = task_runner.run_verification(
+                    {}, root, root / 'out', 5, accepted_plan_id='plan-1', resolve_accepted=lambda repo, plan_id: record,
+                    profile_root=root / 'not-read-because-patched', verify_cli=root / 'v.py',
+                    safe_env=lambda *a: {}, verify_binding=lambda binding: None)
+            self.assertTrue(ok)
+            patched.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

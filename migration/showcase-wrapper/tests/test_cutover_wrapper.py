@@ -201,6 +201,24 @@ class WrapperBindingTest(unittest.TestCase):
             showcase_eval.main(['list'])
         main.assert_called_once_with(['list'], suites_dir=HARNESS / 'evals', anchor=repo)
 
+    def test_runner_checks_bind_showcase_policy_and_patches_reach_them(self):
+        import runner
+
+        from agent_harness import task_runner
+        with mock.patch.object(task_runner, 'run_verification', return_value=(True, [])) as run, \
+             mock.patch.object(authority, 'resolve_accepted', return_value='accepted') as resolve:
+            self.assertEqual((True, []), runner.run_verification({}, HARNESS, HARNESS / 'out', 5, 'auto', 'plan-1'))
+        kwargs = run.call_args.kwargs
+        self.assertEqual(PROFILES, kwargs['profile_root'])
+        self.assertEqual(HARNESS / 'verify.py', kwargs['verify_cli'])
+        self.assertIs(resolve, kwargs['resolve_accepted'])  # looked up per call, as in the source
+        with mock.patch.object(verification_sandbox, 'verify_executable_binding') as bound:
+            kwargs['verify_binding']({'path': 'x'})
+        bound.assert_called_once_with({'path': 'x'})
+        with mock.patch.object(task_runner, 'project_task_result_schema', return_value='p') as project:
+            runner.project_task_result_schema({}, 'codex', 'v')
+        self.assertIs(runner.TASK_RESULT_PROJECTION_PROFILES, project.call_args.kwargs['profiles'])
+
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],
                              capture_output=True, text=True, check=True).stdout

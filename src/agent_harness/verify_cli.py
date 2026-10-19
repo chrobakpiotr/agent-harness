@@ -24,7 +24,7 @@ class SafeArgumentParser(argparse.ArgumentParser):
 
 def main(argv=None, *, profile_root, store_factory, resolve_execution, execute_plan):
     # [seam] The consumer's trusted profile root and its bound store, authority resolver and executor.
-    parser = SafeArgumentParser(description=__doc__.splitlines()[0])
+    parser = SafeArgumentParser(description=(__doc__ or '').split('\n')[0])  # the source's one-line docstring; None under -OO
     sub = parser.add_subparsers(dest='operation', required=True)
     plan = sub.add_parser('plan', help='emit an advisory plan; grants no execution authority')
     plan.add_argument('--repo', required=True)

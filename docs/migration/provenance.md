@@ -206,7 +206,7 @@ Ported tests:
 |---|---|---|
 | `agent_harness/verify_cli.py` | `verify.py` `a8a22113` | **[seam]** `main(argv=None, *, profile_root, store_factory, resolve_execution, execute_plan)`, all required. The `plan` command resolves a logical profile ID under `profile_root`; the source used `<this file>/verification-profiles`. `grant-import` and `run` use the consumer's store factory, resolver and executor; the source imported Showcase's modules. Imports come from the library. The `sys.path` setup, the shebang and the `__main__` block move to the shim. `StoreError` is imported once at module level. |
 
-- Ported tests: `test_verify_cli`, from `test_verify.py` `c5f354e3`, 49 + 1.
+- Ported tests: `test_verify_cli`, from `test_verify.py` `c5f354e3`, 49 ported + 4 added (53).
   - 45 are planner, fingerprint and serialization tests. They had stayed in Showcase when those modules moved, and
     now run in the library.
   - The 4 CLI tests call `verify_cli.main` in-process with test bindings; the source ran `verify.py` as a
@@ -226,5 +226,5 @@ Ported tests:
   `claude_command`, `main`, …) is unchanged until AH5-12b. Mode 100755, as the source.
 - Ported tests: `test_task_runner`, 16 of `test_runner.py`'s 27 (`8678338c`) plus 2 seam tests. A test-side `runner`
   namespace binds the checks the way the shim does, with fixture data: `fixtures/task-runner` holds Showcase's
-  `task-result.schema.json`; its projection profiles are test constants. The 11 launch tests move with AH5-12b.
+  `task-result.schema.json`; its projection profiles are test constants. Of the other 11, 8 test the provider launch and move with AH5-12b. 3 (`render_prompt` and context trust) test Showcase's prompt policy and stay in Showcase permanently.
 - Showcase's `test_runner` passes 27/27 through the shim. No removals.

@@ -106,6 +106,8 @@ Where the earlier text conflicts, this section applies.
    | `verification.{supervisor,command,executor,retry}` | `verification/supervisor.py`, `verification_command.py` (generic part), `verification/executor.py` | 2026-10-18 (AH5-08) | 0.11.0 |
    | `state_snapshots` | `state_snapshots.py` | AH5-09 freeze notice | 0.12.0 |
    | `eval_runner` | `eval.py` (engine; `evals/*.json` stay Showcase-owned) | AH5-10 freeze notice | 0.12.0 |
+   | `verify_cli` | `verify.py` | AH5-11 freeze notice | 0.13.0 |
+   | `task_runner` | `runner.py`, **partial**: the provider-neutral checks; the launch stays Showcase-owned until AH5-12b | AH5-12a freeze notice | 0.13.0 |
 
    The table is kept current in `docs/migration/cutover.md`. Showcase policy that the shims bind stays
    Showcase-owned and is never frozen:

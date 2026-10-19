@@ -23,6 +23,8 @@ the shim, and every change goes to the library first.
 | `verification_sandbox.py`, `verification/workspace.py` | `agent_harness.{executables,sandbox}`, `agent_harness.verification.workspace` | 2026-10-18 | 0.10.0 |
 | `verification/supervisor.py`, `verification/executor.py`, `verification_command.py` (generic part) | `agent_harness.verification.{supervisor,executor,command,retry}` | 2026-10-18 | 0.11.0 |
 | `state_snapshots.py`, `eval.py` (engine) | `agent_harness.{state_snapshots,eval_runner}` | AH5-09/10 freeze notice | 0.12.0 |
+| `verify.py` | `agent_harness.verify_cli` | AH5-11 freeze notice (2026-10-18) | 0.13.0 |
+| `runner.py`, **partial**: the provider-neutral checks only (packet integrity, task-result schema projection and validation, git/path postconditions, `run_verification`) | `agent_harness.task_runner` | AH5-12a freeze notice (2026-10-18) | 0.13.0 |
 
 Showcase policy stays Showcase-owned and is never frozen. The shims bind it, or it stays beside them:
 - the Gradle environment, the `./gradlew` wrapper and the authority roots;
@@ -32,8 +34,9 @@ Showcase policy stays Showcase-owned and is never frozen. The shims bind it, or 
 - the manual-evidence part of `telemetry.py`;
 - `state_recovery.py`.
 
-`harness.py`, `runner.py`, `orchestrate.py`, `verify.py`, `design.py`, `wayfinder.py`, `verification_contract.py`,
-`control_plane.py` and `spec_inventory.py` are not moved yet; see `plan-remaining-2026-10-18.md`.
+Not moved yet: `harness.py`, `orchestrate.py`, `design.py`, `wayfinder.py`, `verification_contract.py`, `control_plane.py`,
+`spec_inventory.py`, and the rest of `runner.py`. The runner's provider launch, role prompts and projection profiles stay
+Showcase-owned until AH5-12b; prompts and profiles stay Showcase policy. See `plan-remaining-2026-10-18.md`.
 
 ## What changes
 
@@ -54,7 +57,7 @@ the compatibility shim in [`migration/showcase-wrapper/`](../../migration/showca
 | `telemetry.py` | library telemetry plus the Showcase-only manual evidence and CLI |
 | `verification_sandbox.py` | library sandbox and executable resolver; binds the Gradle environment, the `./gradlew` worktree wrapper and the `tooling/agent-harness` authority root (AH5-08a) |
 
-Everything else (`harness.py`, `orchestrate.py`, `runner.py`, `verify.py`, profiles, issuer registry, state under `.agent-state` and `.agent-runs/control`) stays in Showcase.
+Everything else stays in Showcase: `harness.py`, `orchestrate.py`, the non-moved part of `runner.py` (above), profiles, the issuer registry, and state under `.agent-state` and `.agent-runs/control`.
 Origin admission and completion stay blocked; the qualified track stays NOT_QUALIFIED.
 
 ## Install and pin
