@@ -280,10 +280,42 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
     per profile. The denied-command format is the one Showcase used before; a live Claude run is not part of the
     tests.
   - **Row 10:** `--print-command` still renders the old `codex_command`/`claude_command` argv, which also serve the
-    launches in `design.py`, `wayfinder.py` and `verification_contract.py` (AH5-13, AH5-16).
+    launches in `design.py`, `wayfinder.py` and `verification_contract.py` (AH5-13, AH5-16). It is now marked as
+    the legacy preview, not the launched command: a stderr notice, and the stdout line starts with
+    `# legacy preview, not the launched command:`. The prompt stays `<PROMPT>`. A test covers it.
   - **Preflight path:** `--preflight` checks `RUNS/<feature>/<task>`; the run's own `evidence` directory below it
     is checked again at launch.
   - Orchestrate calling `--preflight` before the attempt starts (Showcase-owned).
   - **Owner note (D1):** `DEFAULT_MODELS` is empty, so after the re-pin an orchestrate run without `--model` is
     refused before it starts.
   - agent-benchmark's re-check of the default Claude settings, which now carry the evidence-root deny rules.
+
+### Closing conditions (master, 2026-10-19)
+
+1. **Preflight before the attempt** is an acceptance criterion for Showcase's adoption, not a follow-up.
+   - Library side, tested (`test_runner_launch`): `--preflight` refuses a missing model, an unavailable sandbox and
+     an unprotected evidence root, and writes and starts nothing. A passed preflight is no standing permission:
+     the launch runs the same checks again (a sandbox that breaks after the preflight gives `preflight-refused`, and
+     the agent never starts).
+   - Showcase side, open: orchestrate calls `--preflight` before it creates or uses an attempt, and every refusal
+     leaves the attempt count and the active executions unchanged. Until then, orchestrate is not switched to the
+     12b runner as a finished integration.
+2. **Model:** every orchestrate invocation passes `--model` or uses Showcase's explicit configuration. Nothing
+   chooses a default model. Open on the Showcase side.
+3. **Claude restrictions: not confirmed.** The argv and settings tests do not prove that the Claude CLI honours
+   the denied commands and the file-tool deny rules on the evidence root. They are checked in agent-benchmark's
+   already-planned, authorised live trial at its re-pin, on the final code. Until then they are unconfirmed; where
+   they are a condition of Showcase's isolation, they block Showcase's adoption even though the sandbox probe passed.
+4. **`--print-command`:** marked as the legacy preview (row 10 above).
+5. **Exact candidate:** the final report gives the relation between `0674698`, `bf8d085` and the SHA after the
+   rebase, and checks every non-docs difference from the evaluated and rehearsed snapshots.
+6. **Publication:** through a pull request with signed commits and the required checks. No admin bypass without a
+   separate, explicit decision; the released 0.13.0 history is not rewritten.
+
+**0.13.0 baseline failures, kept explicit and not attributed to the migration.** They fail on both sides of the
+0.13.0 rehearsal, the released v0.12.0 included, so the Showcase base suite is not green on this host:
+- `test_harness.HarnessTest.test_conflicting_failed_task_replans_serialize_with_one_winner` (passes alone);
+- `test_harness.HarnessTest.test_register_manual_observation_serializes_scope_resolution_with_lifecycle_mutation`
+  (passes alone);
+- `test_verification_completion_boundary.OriginCompletionBoundaryTest.test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs`
+  (`SECRET_BEARING_CANDIDATE_UNSEALABLE`, also alone; the host-specific fixture error in `docs/specs/AH5-06/packet.md`).

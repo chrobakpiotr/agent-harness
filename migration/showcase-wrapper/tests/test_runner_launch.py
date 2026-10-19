@@ -26,6 +26,8 @@ FAKE_CODEX = textwrap.dedent('''\
     import json, os, sys, time
     argv = sys.argv[1:]
     if argv[:1] == ["sandbox"]:
+        if os.environ.get("FAKE_SANDBOX") == "broken":
+            sys.exit(1)
         os.execvp(argv[argv.index("--") + 1], argv[argv.index("--") + 1:])
     if argv[:1] == ["--version"]:
         print("codex-cli 0.160.0"); sys.exit(0)
@@ -89,11 +91,11 @@ class RunnerLaunchTest(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
 
-    def main(self, *extra, mode='ok'):
+    def main(self, *extra, mode='ok', sandbox='ok'):
         argv = ['runner.py', str(self.packet), '--provider', 'codex', '--worktree', str(self.worktree),
                 '--skip-verification', *extra]
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(sys, 'argv', argv), mock.patch.dict(os.environ, {'FAKE_MODE': mode}), \
+        with mock.patch.object(sys, 'argv', argv), mock.patch.dict(os.environ, {'FAKE_MODE': mode, 'FAKE_SANDBOX': sandbox}), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
                 runner.main()
@@ -132,6 +134,28 @@ class RunnerLaunchTest(unittest.TestCase):
         self.assertNotEqual(0, code)
         self.assertIn('preflight refused: evidence root is writable', err)
         self.assertFalse((self.worktree / '.agent-runs').exists())
+
+    def test_preflight_refuses_an_unavailable_sandbox_and_launch_checks_again(self):
+        """A passed preflight is no standing permission: the launch runs the same checks again."""
+        code, _, err = self.main('--model', 'm', '--preflight', sandbox='broken')
+        self.assertNotEqual(0, code)
+        self.assertIn('preflight refused: sandbox unavailable', err)
+        self.assertEqual([], list(self.runs.iterdir()))
+        self.assertEqual(0, self.main('--model', 'm', '--preflight')[0])
+        code, _, err = self.main('--model', 'm', sandbox='broken')  # the sandbox broke after the preflight
+        self.assertNotEqual(0, code)
+        self.assertEqual('preflight-refused', self.provenance()[1]['status'])
+        self.assertFalse(self.log.exists())  # the agent never started
+
+    def test_print_command_is_marked_as_the_legacy_preview(self):
+        """It is not the launched command line: marked, commented out, and without the prompt."""
+        code, out, err = self.main('--model', 'm', '--print-command')
+        self.assertEqual(0, code)
+        self.assertTrue(out.startswith('# legacy preview, not the launched command: codex exec'))
+        self.assertIn('LEGACY PREVIEW', err)
+        self.assertNotIn('fix the bug', out)
+        self.assertNotIn('sk-should-never-reach-the-cli', out)
+        self.assertFalse(self.log.exists())
 
     def test_a_run_records_the_library_result_and_reads_the_task_result_from_its_artifacts(self):
         code, out, _ = self.main('--model', 'm', '--reasoning', 'high', '--agent-timeout', '120')

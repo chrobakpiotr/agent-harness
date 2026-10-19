@@ -485,7 +485,11 @@ def main() -> None:
         rendered = [
             '<RESULT_PATH>' if item == str(preview_result) else '<PROMPT>' if item == prompt else item for item in cmd
         ]
-        print(shlex.join(rendered))
+        # AH5-12b: the run launches through agent_harness.execution; this preview is the legacy command line, kept for
+        # design/wayfinder/verification_contract. A leading '#' keeps it from being pasted and run as is.
+        print('LEGACY PREVIEW: not the command this runner launches (it launches through agent_harness.execution)',
+              file=sys.stderr)
+        print('# legacy preview, not the launched command: ' + shlex.join(rendered))
         return
 
     if not provider_cli_version:
