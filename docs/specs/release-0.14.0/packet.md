@@ -96,3 +96,14 @@
 - **Branch protection:** the push of `cc9d33a` to `main` was accepted as an admin bypass (no pull request,
   unsigned commits, required checks not run before the push), under the owner's direct-push decision. CI ran after
   the push and passed. The bypass does not mean those protections were satisfied.
+
+## Consumer handoff (2026-10-20)
+
+| Consumer | Pin now | Adoption of 0.14.0 | Rollback |
+|---|---|---|---|
+| Showcase | v0.13.0 `cfd92fc` (`ea8a54fa`) | one change: pin `cc9d33a`; `runner.py`, `verify.py`, `tests/test_cutover_wrapper.py`, `tests/test_runner_launch.py` from `migration/showcase-wrapper/`; its orchestrator patch checked against HEAD; explicit `--model`, `--agent-timeout`, `--preflight` before an attempt, no fallback; the three pin tests at 0.14.0; the four real-CLI checks (`docs/specs/AH5-12/packet.md`) | the whole 0.13.0 set: pin `cfd92fc`, the v0.13.0 shims, its current orchestrator |
+| agent-benchmark | v0.12.0 `1c569f2` (0.13.0 skipped on purpose) | re-pin check: full suite with its pin test at 0.14.0, re-grade on the qualified target, one live trial per CLI, resume fingerprint on the released install; runs started on 0.12.0 are not resumed under 0.14.0 | pin `1c569f2` and the matching integration changes; results and evidence kept |
+
+Each consumer reports its adoption commit, the harness pin, the check results, rollback and remaining limits. The
+external handbook delta (Showcase `docs/reviews/external-handbook-delta-2026-10-06.md`) gets a 0.14.0 entry from
+Showcase; the handbook itself is not marked synchronised until it is actually updated.

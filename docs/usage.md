@@ -28,23 +28,34 @@ result = execution.launch(request, backend, workspace=ws, evidence_root=evidence
 ```
 
 - The request's `provider` must be `claude`, `codex` or `opencode`, and its `model` is passed to the CLI.
-- **Fixed command lines.** The prompt goes in on stdin, so it can never act as a flag; there are no caller arguments.
+- **Command lines.** The prompt goes in on stdin, so it can never act as a flag. A consumer may pass validated
+  `cli_options` (0.14.0): sandbox mode (`read-only` for reviewers), output schema, strict Codex flags, reasoning,
+  Claude tools, denied commands, extra `deny_read`, max turns and budget, restricted mode, `dontAsk`. An option that
+  would loosen the library minimum raises `ValueError`. Reference: `docs/migration/agent-launch-adapter.md`.
 - **Credentials.** API keys and routing variables are removed from the CLI's environment, and the login method is
   pinned to the subscription. No spend.
 - **Sandboxes.**
   - Claude Code's Bash sandbox runs with no network and fails closed; login directories are unreadable; sandboxed
     Bash is allowed outright, so test commands run.
   - Codex runs with `--sandbox workspace-write`.
-  - If a sandbox probe fails, the request is `rejected` / `CAPABILITY_UNSUPPORTED`, with the reason in
-    `backend.rejection_reasons[request_id]`. There is no fallback mode.
-- **Evidence root.** It must be outside the workspace, `/tmp` and `$TMPDIR` (the sandboxes can write there),
-  otherwise the request is refused.
+  - Before launch (0.14.0), an isolation check runs the sandbox the run uses: it must run a command and block a write
+    into the evidence root.
+  - If a probe fails, the request is `rejected` / `CAPABILITY_UNSUPPORTED` before anything starts or is written,
+    with the reason in `backend.rejection_reasons[request_id]`. There is no fallback mode.
+- **Evidence root.** By real paths it must be outside the workspace, `/tmp` and `$TMPDIR` (the sandboxes can write
+  there), with no replaceable symlink on its path; a primary checkout is refused with the instruction to use a
+  linked worktree. Claude's file tools are denied it as well as sandboxed Bash.
 - **Result.**
   - `usage_events` hold the CLI's own token report; the raw output is the `agent-output` artifact.
   - The candidate is one workspace file (`candidate=`) or `git diff --binary <diff_base>` (`diff_base=`), built from
     a Git directory Harness owns.
-  - A run that is not `completed` has no candidate. Outputs carrying login credentials, in plain, base64 or hex form,
-    are withheld.
+  - A run that is not `completed` has no candidate.
+  - Further artifacts (0.14.0): `agent-stderr` (bounded, secret-checked) and, beside the result, `launch.json`
+    (argv without the prompt, the requested login mode, `billing_source_confirmed: false`).
+  - **Withheld output** (login credentials in plain, base64 or hex form, or over 8 MiB): since 0.14.0 the result
+    keeps the process's real `outcome`, `exit_code` and `drain`; no candidate and no `agent-output` are published,
+    and a `withheld` artifact (`withheld.json`) gives the reason, sizes and limits, never the content. Before
+    0.14.0 it was `error` / `PROVIDER_ERROR`.
 - **Provider errors.** They are `error` / `PROVIDER_ERROR`, and `backend.error_details[request_id]` says
   `quota_exhausted` (with `resets_at` when the CLI states it) or `provider_error`.
 - **Real CLIs.** Check them before a run: `PYTHONPATH=src python3 scripts/smoke-agent-cli.py`.
