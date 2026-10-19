@@ -159,3 +159,18 @@ acceptance criteria:
 | OpenCode 1.19.0 | exit 0 | Seatbelt blocked the write |
 
 No CLI that runs on this host today is refused. The check is rerun with the final 12b code before release.
+
+## AH5-12b — differences found while designing Showcase's adapter (reported before implementation)
+
+Row 8 has no change in meaning: Showcase's `provider_metadata` already comes from `agent_harness.telemetry`
+(`parse_codex_jsonl`, `parse_claude_envelope`). The adapter applies the same parsers to the backend's `agent-output`,
+which gives identical fields. The six points below change meaning and need a decision first.
+
+| # | Today (`runner.py`) | With `AgentCliBackend` | Proposal |
+|---|---|---|---|
+| D1 | `--model` is optional; without it the CLI uses its own default model. | A request must name a model (the contract's `request.model`). | The runner refuses without `--model`, or Showcase configures a default model per provider in its adapter. Making the model nullable would be a contract change; not proposed. |
+| D2 | No time limit (row 6). | A request carries `timeout_seconds`. | A new runner option, `--agent-timeout`, with a Showcase-chosen default, separate from the lease TTL. Showcase's value is needed. |
+| D3 | `stderr.log` holds the CLI's stderr. | The backend discards stderr (`stderr=DEVNULL`). | Either the library keeps stderr as a diagnostic artifact (an additive change; benchmark gets one more evidence file), or Showcase drops `stderr.log`, which has no runtime reader. |
+| D4 | The runner parses whatever the CLI prints. | Output containing a credential-shaped string is withheld, and the run ends `error`/`PROVIDER_ERROR`. | Accept (fail closed). A run that today would expose a credential in its result is refused. |
+| D5 | The run dir can be anywhere. | The evidence root must not be writable by the agent's sandbox (workspace, `/tmp`, `$TMPDIR`), otherwise the request is `rejected`. | Accept. Showcase's run dir (`.agent-runs` in the primary checkout) is outside its linked task worktrees. A run whose worktree *is* the primary checkout would be refused. |
+| D6 | Output size is unlimited. | Above `output_limit` (8 MiB) the output is withheld: no result, nothing claimed. | Accept (row 7: no result from incomplete output), or Showcase sets a larger `output_limit`. |
