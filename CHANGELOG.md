@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.14.0 — unreleased (prepared 2026-10-19)
+
+- Showcase's `runner.py` launches its agent through `agent_harness.execution.AgentCliBackend` (AH5-12b). One launch
+  path: the runner shim binds Showcase's models, profiles, prompts and provenance; there is no second
+  launch/cancel/evidence path. Decisions: `docs/specs/AH5-12/packet.md` (rows 1–11, D1–D6).
+- `AgentCliBackend` additions, all additive:
+  - `cli_options`: validated launch options (sandbox mode, output schema, strict Codex flags, reasoning, Claude
+    tools, denied commands, `deny_read`, max turns and budget, restricted mode, `dontAsk`). None can loosen the
+    library minimum.
+  - an isolation check before launch: the sandbox the run uses must run a command and block a write into the
+    evidence root. The evidence root must be unreachable by agent writes by real paths, symlinks included; a primary
+    checkout is refused with the instruction to use a linked worktree. A refusal is `rejected` before anything
+    starts or is written.
+  - `launch.json` (the argv without the prompt, the requested login mode, `billing_source_confirmed: false`) and
+    `agent-stderr` (size-bounded, secret-checked).
+  - Claude's file tools are denied the evidence root, beside the sandbox `denyWrite`.
+- **Semantic change (agent-benchmark checked it):** withheld output (credential-shaped, or over 8 MiB) keeps the
+  process's real `outcome`, `exit_code` and `drain`. Before, it became `error`/`PROVIDER_ERROR`. No candidate and
+  no `agent-output` are published, and a `withheld` artifact (`withheld.json`) gives the reason, sizes and limits,
+  never the content.
+- The Showcase runner shim: `--model` or a configured model (none configured: refused before the run),
+  `--agent-timeout` (default 1800 s), `--preflight` (checks without launching), provenance with the process outcome
+  and published artifacts, and old run directories read as they are.
+- Contract and digests unchanged.
+
 ## 0.13.0 — 2026-10-18
 
 - New `agent_harness.verify_cli`: the verification CLI (AH5-11). `main(argv, *, profile_root, store_factory,

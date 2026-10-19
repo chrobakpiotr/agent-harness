@@ -108,6 +108,7 @@ Where the earlier text conflicts, this section applies.
    | `eval_runner` | `eval.py` (engine; `evals/*.json` stay Showcase-owned) | AH5-10 freeze notice | 0.12.0 |
    | `verify_cli` | `verify.py` | AH5-11 freeze notice | 0.13.0 |
    | `task_runner` | `runner.py`, **partial**: the provider-neutral checks; the launch stays Showcase-owned until AH5-12b | AH5-12a freeze notice | 0.13.0 |
+   | `execution.AgentCliBackend` | `runner.py`: the agent launch (AH5-12b). The Showcase policy (models, profiles, prompts, provenance) stays in its shim | AH5-12 freeze notice | 0.14.0 |
 
    The table is kept current in `docs/migration/cutover.md`. Showcase policy that the shims bind stays
    Showcase-owned and is never frozen:
