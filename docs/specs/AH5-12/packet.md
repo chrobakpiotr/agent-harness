@@ -123,3 +123,39 @@ acceptance criteria:
     6. `verify_cli`'s description no longer breaks under `python -OO`.
     7. Counts corrected (`test_verify_cli` 53, `test_task_runner` 20); the consumers matrix shows Showcase on v0.12.0.
     8. A full rehearsal against the current consumer after these fixes; recorded with the release.
+
+## AH5-12b — consumer input and host checks (2026-10-19)
+
+**Showcase's readers of runner output** (Showcase, at `cbbdbca`):
+- `orchestrate.py` (`run_started_task`) reads the `provenance.json` path from the task result and uses its
+  `base_commit` to prepare the accepted plan.
+- `telemetry.reconcile_running` reads and updates `provenance.json` (`status`, `completed_at`, `abandon_reason`;
+  `orchestration_id`, `task`).
+- `telemetry.summarize` scans `provenance.json` and uses only `provider_metadata.cost_usd`,
+  `provider_metadata.usage`, and the top-level `provider`, `status` and `duration_ms`.
+- Nothing reads `stdout.log`, `stderr.log`, `exit-code.txt` or `provider-envelope.json` at runtime; they are
+  diagnostic. The verification serializer already classifies logs and envelopes as non-authoritative
+  (`test_verify.py`).
+
+**Consequences for 12b:**
+- **Row 7.** New runs keep writing `provenance.json`, with the same fields, built from the library result. An
+  explicit read adapter keeps legacy `provenance.json` readable for `orchestrate`/`telemetry` without rewriting
+  historical run directories. Logs and envelopes stay diagnostic-only.
+- **Row 8.** `provider_metadata.usage` keeps Showcase's six bounded counters (`input_tokens`, `output_tokens`,
+  `total_tokens`, `cached_input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`), mapped from the
+  contract's usage units, with unknown kept unknown. `cost_usd` comes only from a provider-reported value (Claude
+  `total_cost_usd`), otherwise null, never inferred. Codex `thread_id`/`terminal_event`/`event_count` and Claude
+  `session_id`/`duration_ms`/`duration_api_ms`/`num_turns` map from the backend's output where the CLI reports
+  them; anything not reported is null and listed.
+- **Acceptance tests.** Showcase's `test_telemetry.py`, `test_verify.py`, `test_runner.py` and `test_orchestrate.py`,
+  run through the shims, plus a read-adapter binding test in the library-owned `test_cutover_wrapper.py`.
+
+**Row 5 host check on agent-benchmark's only agent host** (this Mac, Darwin 24.6), with the 12b check at `e8b4b9e`:
+
+| CLI | Tool probe | Isolation check |
+|---|---|---|
+| Claude Code 2.1.289 | exit 0 | Seatbelt blocked the write |
+| codex-cli 0.160.0 | exit 0 | `codex sandbox` (read-only) blocked the write |
+| OpenCode 1.19.0 | exit 0 | Seatbelt blocked the write |
+
+No CLI that runs on this host today is refused. The check is rerun with the final 12b code before release.
