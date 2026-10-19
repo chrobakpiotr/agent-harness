@@ -14,6 +14,7 @@
 
 ## Before the release
 
-- agent-benchmark's re-check of the evaluation amendments (Claude's evidence-root deny rules, the quoted probe target).
+- ~~agent-benchmark's re-check of the evaluation amendments~~: passed on `bf8d085`.
+- Closing conditions 1–6 in `docs/specs/AH5-12/packet.md`; publication through a pull request with signed commits.
 - A rehearsal against the current Showcase with the 12b shims, and rollback.
 - Owner's order to publish.

@@ -288,7 +288,9 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
   - Orchestrate calling `--preflight` before the attempt starts (Showcase-owned).
   - **Owner note (D1):** `DEFAULT_MODELS` is empty, so after the re-pin an orchestrate run without `--model` is
     refused before it starts.
-  - agent-benchmark's re-check of the default Claude settings, which now carry the evidence-root deny rules.
+  - ~~agent-benchmark's re-check of the default Claude settings~~: **passed on `bf8d085`**, as on `757b16f`. Full
+    suite green apart from the version-pin assertion; all 7 scenarios classify unchanged; the quoted probe target
+    works with its fake sandbox. The Claude evidence-root deny rules only show in a live run (closing condition 3).
 
 ### Closing conditions (master, 2026-10-19)
 
