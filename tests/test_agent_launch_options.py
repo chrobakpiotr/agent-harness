@@ -1,6 +1,7 @@
 """AH5-12b: consumer launch options, the launch record and the sandbox isolation check of AgentCliBackend.
 
-Without options a run is exactly what it was (agent-benchmark's runs); the options only ever add restrictions.
+Without options the command line is what it was (agent-benchmark's runs), apart from Claude's evidence-root deny
+rules; the options only ever add restrictions.
 """
 import json
 import unittest
@@ -40,6 +41,19 @@ class LaunchOptionsTest(CliCase):
         # The environment held API keys and tokens beside the CLI's login: none reached either CLI.
         self.assertEqual({()}, {tuple(c["billing"]) for c in self.calls()})
 
+    def test_claude_file_tools_and_sandboxed_bash_are_denied_the_evidence_root(self):
+        """D5: the evidence root is in the sandbox denyWrite and denied to Edit/Write/NotebookEdit, with any options."""
+        self.fake("claude", json.dumps(CLAUDE_OK))
+        evidence = str((self.root / "evidence").resolve())
+        for i, options in enumerate((None, {"permission_mode": "dontAsk", "tools": ["Read", "Edit", "Write", "Bash"]})):
+            self.run_backend(self.claude("x", env=self.env, cli_options=options),
+                             self.request("claude", "sonnet", request_id=f"ev-{i}"))
+            argv = self.last_argv("claude")
+            settings = json.loads(argv[argv.index("--settings") + 1])
+            self.assertIn(evidence, settings["sandbox"]["filesystem"]["denyWrite"])
+            for tool in ("Edit", "Write", "NotebookEdit"):
+                self.assertIn(f"{tool}(/{evidence}/**)", settings["permissions"]["deny"])
+
     def test_codex_options_give_the_reviewer_read_only_and_the_strict_structured_launch(self):
         self.fake("codex", CODEX_STREAM)
         options = {"sandbox_mode": "read-only", "strict": True, "reasoning": "medium", "login_method": "chatgpt",
@@ -72,7 +86,11 @@ class LaunchOptionsTest(CliCase):
         self.assertTrue(set(execution._LOGIN_PATHS) <= set(settings["sandbox"]["filesystem"]["denyRead"]))
         self.assertEqual([], settings["sandbox"]["network"]["allowedDomains"])
         self.assertFalse(settings["sandbox"]["allowUnsandboxedCommands"])
-        self.assertEqual("WebFetch,WebSearch,Bash(git push *)", argv[argv.index("--disallowedTools") + 1])
+        self.assertEqual(["--disallowedTools", "WebFetch,WebSearch", "Bash(git push *)"],
+                         argv[argv.index("--disallowedTools"):argv.index("--disallowedTools") + 3])
+        start = argv.index("--allowedTools") + 1
+        end = next(i for i in range(start, len(argv)) if argv[i].startswith("--"))
+        self.assertEqual(["Read", "Glob", "Grep"], argv[start:end])  # Bash is allowed only through the sandbox
         self.assertEqual("dontAsk", argv[argv.index("--permission-mode") + 1])
         self.assertTrue({"--restricted", "--strict-mcp-config", "--no-session-persistence"} <= set(argv))
         effective = self.launch_record()["effective_permissions"]
@@ -159,6 +177,10 @@ class LaunchOptionsTest(CliCase):
         inside = self.root / "workspace" / "ev"
         inside.mkdir()
         self.assertIn("let a write into the evidence root", execution._isolation_refusal(probe, self.env, self.roots(inside)))
+        spaced = self.root / "workspace" / "my runs; x" / "ev"  # a path the shell must not split
+        spaced.mkdir(parents=True)
+        self.assertIn("let a write into the evidence root", execution._isolation_refusal(probe, self.env, self.roots(spaced)))
+        self.assertEqual([], list(spaced.iterdir()))
         self.assertEqual([], list(inside.iterdir()))  # the probe file is removed
 
     def test_stderr_is_a_bounded_diagnostic_artifact_checked_for_secrets(self):
@@ -188,6 +210,38 @@ class LaunchOptionsTest(CliCase):
                     self.assertNotIn("agent-stderr", names)
                     self.assertFalse(stderr_file.exists())
 
+
+    def test_codex_last_message_goes_with_the_output_and_stderr_has_the_size_limit(self):
+        """D3/D4: no task result from withheld output; stderr over the limit is withheld, the output kept."""
+        import stat
+        import textwrap
+        for name, stdout, stderr in (("leak", "key sk-ant-" + "a" * 40, ""), ("noisy", "ok", "e" * 200)):
+            with self.subTest(name):
+                script = self.root / "bin" / "codex"
+                script.write_text(textwrap.dedent(f"""\
+                    #!/usr/bin/env python3
+                    import sys
+                    argv = sys.argv[1:]
+                    if argv[:1] != ["exec"]:
+                        sys.exit(0)
+                    sys.stdin.read()
+                    open(argv[argv.index("--output-last-message") + 1], "w").write('{{"status": "pass"}}')
+                    sys.stdout.write({stdout!r})
+                    sys.stderr.write({stderr!r})
+                    """))
+                script.chmod(script.stat().st_mode | stat.S_IXUSR)
+                backend = execution.AgentCliBackend("codex", "x", env=self.env, output_limit=100,
+                                                    cli_options={"output_schema": {"type": "object"}})
+                result = self.run_backend(backend, self.request("codex", "m", request_id=name))
+                names = {a["name"] for a in result["artifacts"]}
+                record = self.withheld(name)
+                if name == "leak":
+                    self.assertEqual({"withheld"}, names)  # no last-message: no task result from withheld output
+                    self.assertIn("last-message", record["artifacts"])
+                else:
+                    self.assertEqual({"agent-output", "last-message", "withheld"}, names)
+                    self.assertEqual(("OUTPUT_LIMIT_EXCEEDED", ["agent-stderr"], 200, 100),
+                                     (record["reason_code"], record["artifacts"], record["size"], record["limit"]))
 
     def withheld(self, request_id):
         path = self.root / "evidence" / f"executions/{execution._slot(request_id)}/withheld.json"

@@ -628,7 +628,10 @@ class AgentCliBackend(ProcessBackend):
         """The library minimum merged with the consumer's options; the merge only ever adds restrictions."""
         options = self.cli_options
         settings = json.loads(json.dumps(_CLAUDE_SETTINGS))
-        settings["sandbox"]["filesystem"]["denyWrite"] = [str(Path(roots["evidence_root"]).resolve())]
+        evidence = str(Path(roots["evidence_root"]).resolve())
+        settings["sandbox"]["filesystem"]["denyWrite"] = [evidence]  # sandboxed Bash
+        # Claude's own file tools are not sandboxed: deny them the evidence root too (`//` is an absolute path)
+        settings["permissions"]["deny"] += [f"{tool}(/{evidence}/**)" for tool in sorted(_CLAUDE_WRITE_TOOLS)]
         settings["sandbox"]["filesystem"]["denyRead"] += list(options.get("deny_read", ()))
         if options.get("sandbox_mode") == "read-only":  # no write through tools, nor through sandboxed Bash
             settings["sandbox"]["filesystem"]["denyWrite"].append(str(Path(roots["workspace"]).resolve()))
@@ -646,7 +649,8 @@ class AgentCliBackend(ProcessBackend):
             argv += ["--model", model, "--output-format", "json",
                      "--permission-mode", options.get("permission_mode", "acceptEdits"),
                      "--settings", json.dumps(self._claude_settings(roots)),
-                     "--disallowedTools", ",".join(["WebFetch", "WebSearch", *options.get("denied_commands", ())])]
+                     # one argument per rule, as Showcase passed them: a rule may contain spaces and commas
+                     "--disallowedTools", "WebFetch,WebSearch", *options.get("denied_commands", ())]
             if "tools" in options:
                 argv += ["--tools", ",".join(options["tools"]),
                          "--allowedTools", *[t for t in options["tools"] if t != "Bash"]]
@@ -974,7 +978,7 @@ def _isolation_refusal(template, env, roots):
 
 def _default_isolation_probe(provider, sandbox_mode=None):
     """A command in the sandbox the run uses (its writable roots) that prints the marker and writes into evidence."""
-    attempt = ["sh", "-c", f"echo {_ISOLATION_MARKER}; echo x > {{target}}"]
+    attempt = ["sh", "-c", f'echo {_ISOLATION_MARKER}; echo x > "$1"', "sh", "{target}"]  # any path, quoted
     if provider == "codex":  # the run's own mode, run from the workspace as `codex exec` is
         return ["codex", "sandbox", "-c", f'sandbox_mode="{sandbox_mode or _CODEX_SANDBOX}"', "--", *attempt]
     if sys.platform == "darwin":  # Seatbelt, which Claude Code's sandbox (and OpenCode's profile) use on macOS

@@ -35,12 +35,14 @@ FAKE_CODEX = textwrap.dedent('''\
         time.sleep(60)
     print(json.dumps({"type": "turn.completed",
                       "usage": {"input_tokens": 3, "cached_input_tokens": 0, "output_tokens": 2}}))
-    if mode == "secret":
+    if mode.startswith("secret"):
         print("token sk-ant-" + "a" * 40)
-    with open(argv[argv.index("--output-last-message") + 1], "w") as f:
-        json.dump(RESULT, f)
+    if mode != "nolast":
+        with open(argv[argv.index("--output-last-message") + 1], "w") as f:
+            json.dump(RESULT, f)
     with open(os.environ["FAKE_LOG"], "a") as f:
         f.write(json.dumps({"argv": argv, "stdin": prompt}) + "\\n")
+    sys.exit(3 if mode == "secretfail" else 0)
 ''').replace('RESULT', repr(CODEX_RESULT))
 
 
@@ -150,6 +152,9 @@ class RunnerLaunchTest(unittest.TestCase):
                      'model_reasoning_effort="high"', 'forced_login_method="chatgpt"', '--output-schema'):
             self.assertIn(flag, call['argv'])
         self.assertEqual('workspace-write', call['argv'][call['argv'].index('--sandbox') + 1])
+        self.assertEqual(('forced_login_method="chatgpt"', False),
+                         (record['requested_login'], record['billing_source_confirmed']))
+        self.assertIsNone(record['provider_error'])
         self.assertNotIn('sk-should-never-reach-the-cli', ((run / record['artifacts']['agent-output']).parent / 'launch.json').read_text())
         # D3: stdout/stderr are read from the artifacts, no second copy; an old run's logs read as they are
         self.assertFalse((run / 'stdout.log').exists())
@@ -178,6 +183,31 @@ class RunnerLaunchTest(unittest.TestCase):
         self.assertNotIn('agent-output', record['artifacts'])
         self.assertEqual({'usage': None, 'cost_usd': None}, provenance['provider_metadata'])
         self.assertFalse((run / 'result.json').exists())
+
+    def test_a_process_failure_keeps_its_status_even_when_the_output_is_withheld(self):
+        """Row 11: a non-zero exit stays provider-error; the withheld reason is recorded beside it."""
+        self.assertNotEqual(0, self.main('--model', 'm', mode='secretfail')[0])
+        _, provenance = self.provenance()
+        self.assertEqual(('provider-error', 3, 'CREDENTIAL_SHAPED_OUTPUT'),
+                         (provenance['status'], provenance['agent_execution']['exit_code'],
+                          provenance['agent_execution']['withheld_reason']))
+
+    def test_no_last_message_means_no_task_result(self):
+        """Row 9: Codex without its last message gives no task result."""
+        code, _, err = self.main('--model', 'm', mode='nolast')
+        self.assertNotEqual(0, code)
+        self.assertIn('codex wrote no last message', err)
+        run, _ = self.provenance()
+        self.assertFalse((run / 'result.json').exists())
+
+    def test_a_refusal_at_launch_is_recorded_as_preflight_refused(self):
+        with mock.patch.object(runner, 'RUNS', self.worktree / '.agent-runs'):  # evidence the agent could write
+            code, _, err = self.main('--model', 'm')
+            (run,) = [p.parent for p in (self.worktree / '.agent-runs').rglob('provenance.json')]
+        self.assertNotEqual(0, code)
+        self.assertIn('refused before launch: evidence root is writable', err)
+        self.assertEqual('preflight-refused', json.loads((run / 'provenance.json').read_text())['status'])
+        self.assertFalse(self.log.exists())
 
     def test_the_agent_timeout_cancels_the_run(self):
         """D2: --agent-timeout bounds the agent; the outcome is recorded, never a task result."""

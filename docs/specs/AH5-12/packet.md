@@ -223,8 +223,9 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
 - **Live check, this host (2026-10-19):** with evidence outside the workspace, the Codex sandbox and Seatbelt both
   blocked the write; with evidence inside it, both the path check and the real sandbox write refused.
 - **Limit.** For Claude the probe reproduces the write set Claude Code's sandbox is configured with (Seatbelt or
-  bubblewrap); it does not run Claude itself, which would need a model call. Claude's file tools are additionally
-  limited to the workspace by `acceptEdits`, and the evidence root is in `denyWrite`.
+  bubblewrap); it does not run Claude itself, which would need a model call. Claude's file tools are not
+  sandboxed, so the evidence root is also denied to them: `Edit`/`Write`/`NotebookEdit(//<evidence root>/**)` in
+  `permissions.deny`, beside the sandbox `denyWrite` (evaluation amendment A2).
 
 ### Showcase adapter (runner shim) and final checks
 
@@ -249,3 +250,40 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
   command and blocks the write, as the isolation check requires. Benchmark re-pins after the release.
 - **Still open:** the independent evaluation; the orchestrate change
   that calls `--preflight` before the attempt starts is Showcase-owned (`orchestrate.py`, AH5-15).
+
+### Independent evaluation of AH5-12b
+
+- **Verdict: pass with amendments**, at `4251a248cc20db08e5ed9d63d9ed4cea6a1597be` (diff from `2e54508`), against
+  Showcase `49ab97f` and `cbbdbca`. No finding blocks Showcase's current paths and profiles.
+- **Applied after it:**
+  - **A1:** the isolation probe passes the target as a quoted shell argument. Before, an evidence path with a space
+    or a shell metacharacter made the check pass without testing anything. A test with such a path; the original
+    inline form is caught.
+  - **A2:** Claude's file tools are denied the evidence root in `permissions.deny`; a test covers the default and
+    Showcase's `dontAsk` profile. Removing the evidence root from `denyWrite` is caught.
+  - Claude's denied commands go as one argument per rule after `WebFetch,WebSearch`, as Showcase passed them, since
+    a rule can contain spaces and commas. Without options the argument is unchanged (`WebFetch,WebSearch`).
+  - Tests now catch: `last-message` published beside withheld output; an unbounded `agent-stderr`; `Bash` in
+    `--allowedTools`; an invented Codex result without `last-message`; a launch-time refusal recorded as
+    `provider-error`; withheld output taking priority over a process failure.
+  - **Row 11:** a non-zero exit, timeout or launch error keeps `provider-error` even when the output is withheld;
+    the withheld reason is recorded beside it. The provider's own failure report (`backend.error_details`: quota,
+    reset time) goes into `agent_execution.provider_error`.
+  - **Row 4:** `agent_execution` records `requested_login`, `billing_source_confirmed: false` and the path of
+    `launch.json`.
+  - Wording: without options the command line is unchanged apart from Claude's evidence-root deny rules; the
+    isolation check, `launch.json`, `agent-stderr` and the withheld semantics are new for every run.
+- **D6 resolution:** with the output withheld, usage is `unknown` and `provider_metadata` is null: usage is known
+  only from published output, and nothing is parsed from withheld output.
+- **Still open, explicitly:**
+  - **Rows 2/3, live Claude parse.** The tests check each flag and the effective permissions, not one golden argv
+    per profile. The denied-command format is the one Showcase used before; a live Claude run is not part of the
+    tests.
+  - **Row 10:** `--print-command` still renders the old `codex_command`/`claude_command` argv, which also serve the
+    launches in `design.py`, `wayfinder.py` and `verification_contract.py` (AH5-13, AH5-16).
+  - **Preflight path:** `--preflight` checks `RUNS/<feature>/<task>`; the run's own `evidence` directory below it
+    is checked again at launch.
+  - Orchestrate calling `--preflight` before the attempt starts (Showcase-owned).
+  - **Owner note (D1):** `DEFAULT_MODELS` is empty, so after the re-pin an orchestrate run without `--model` is
+    refused before it starts.
+  - agent-benchmark's re-check of the default Claude settings, which now carry the evidence-root deny rules.

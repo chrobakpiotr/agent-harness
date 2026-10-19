@@ -3,7 +3,9 @@
 - Status: **interface draft**, written against branch `ah5-12b-agent-launch`. It is not released. It ships with the
   12b release and its compatibility note. Decisions: `docs/specs/AH5-12/packet.md` (rows 1–11, D1–D6).
 - `AgentCliBackend` exists in released versions (v0.12.0 included). 12b adds `cli_options`, the isolation check,
-  `launch.json` and `agent-stderr`. Without `cli_options`, a run is exactly what it was before.
+  `launch.json` and `agent-stderr`. Without `cli_options` the command line is what it was, apart from Claude's
+  settings, which now also deny the file tools the evidence root. New for every run: the isolation check before
+  launch, `launch.json`, `agent-stderr`, and withheld output keeping its real outcome (`withheld.json`).
 
 ## Launch
 

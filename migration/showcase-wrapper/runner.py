@@ -195,16 +195,25 @@ def agent_request(args: argparse.Namespace, packet: dict[str, Any], model: str, 
         die(f'agent request refused before launch: {exc}')
 
 
-def execution_record(result: dict[str, Any], out: pathlib.Path, evidence: pathlib.Path) -> dict[str, Any]:
+def execution_record(result: dict[str, Any], out: pathlib.Path, evidence: pathlib.Path,
+                     backend: Any) -> dict[str, Any]:
     """The library result as provenance records it: process outcome and published artifacts, kept apart."""
     artifacts = {a['name']: str((evidence / a['path']).relative_to(out)) for a in result['artifacts']}
     withheld = None
     if 'withheld' in artifacts:
         withheld = json.loads((out / artifacts['withheld']).read_text(encoding='utf-8'))
+    launch_path = evidence / 'executions' / _execution._slot(result['request_id']) / 'launch.json'
+    launch = json.loads(launch_path.read_text(encoding='utf-8')) if launch_path.exists() else {}
     return {'outcome': result['outcome'], 'exit_code': result['exit_code'], 'error_code': result['error_code'],
             'drain': result['drain'], 'usage_completeness': result['usage_completeness'],
             'resolved_model': result['resolved_model'], 'artifacts': artifacts,
-            'withheld_reason': withheld['reason_code'] if withheld else None}
+            'withheld_reason': withheld['reason_code'] if withheld else None,
+            # row 4: the requested login only; the billing source is never claimed
+            'requested_login': launch.get('requested_login'),
+            'billing_source_confirmed': launch.get('billing_source_confirmed', False),
+            'launch_record': str(launch_path.relative_to(out)) if launch else None,
+            # row 11: the provider's own failure report (quota, reset time), as the library parsed it
+            'provider_error': backend.error_details.get(result['request_id'])}
 
 
 def run_output(out: pathlib.Path, stream: str) -> str | None:
@@ -531,7 +540,7 @@ def main() -> None:
     try:
         evidence = out / 'evidence'
         launched = _execution.launch(request, backend, workspace=str(worktree), evidence_root=str(evidence)).result()
-        record = execution_record(launched, out, evidence)
+        record = execution_record(launched, out, evidence, backend)
         stdout_path = record['artifacts'].get('agent-output')
         stdout = (out / stdout_path).read_text(encoding='utf-8') if stdout_path else None
         provenance.update({
@@ -547,10 +556,10 @@ def main() -> None:
         failure = None
         if launched['outcome'] == 'rejected':
             failure = 'preflight-refused', f'{args.provider} refused before launch: {backend.rejection_reason}'
+        elif launched['outcome'] != 'completed' or launched['exit_code'] != 0:  # row 11: today's status first
+            failure = 'provider-error', f'{args.provider} ended {launched["outcome"]} (exit {launched["exit_code"]})'
         elif record['withheld_reason']:
             failure = 'output-withheld', f'{args.provider} output withheld ({record["withheld_reason"]}); no task result'
-        elif launched['outcome'] != 'completed' or launched['exit_code'] != 0:
-            failure = 'provider-error', f'{args.provider} ended {launched["outcome"]} (exit {launched["exit_code"]})'
         if failure:
             provenance['status'] = failure[0]
             telemetry.atomic_write_json(out / 'provenance.json', provenance)
