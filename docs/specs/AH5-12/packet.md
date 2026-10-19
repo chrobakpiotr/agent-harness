@@ -53,14 +53,15 @@ evaluated separately from 0.13.0 (AH5-11 + AH5-12a).
 | 7 | accept, corrected for compatibility | New runs have one canonical record. Old run directories stay readable through an explicit read adapter, and historical evidence is never rewritten. Truncated output is marked, and a structured result reconstructed from incomplete output is not accepted. |
 | 8 | accept | A field mapping. Unknown stays unknown, never zero. Completeness is explicit. Historical telemetry stays readable. |
 
-**Discrepancy to report (row 2/4):**
-- `forced_login_method="chatgpt"` is not only Showcase's choice today. It is hard-coded in the library's Codex argv
-  (`execution.py`, `AgentCliBackend._argv`), and agent-benchmark runs with it.
-- Moving it to Showcase's adapter alone would change benchmark's Codex runs: they could then fall back to API-key
-  login.
-- Proposal: keep it as the library default for every caller (it enforces the library's no-API-billing rule).
-  Showcase's adapter also passes it explicitly, so its policy stays visible on its side.
-- Changing the library default for benchmark would be a separate decision.
+**Codex login method (row 2/4), decided by master on 2026-10-19:** `forced_login_method="chatgpt"` stays the
+library's current default for the Codex backend, and Showcase's adapter also passes it explicitly. Conditions, as
+acceptance criteria:
+- Benchmark keeps its current behaviour without any new configuration.
+- Without a suitable login session the run is refused. There is no fallback to an API key.
+- The compatibility check includes an environment that has an API key alongside a login session.
+- Provenance records the *requested* authentication mode. It is never presented as the provider's confirmation of
+  how the run was billed.
+- The decision covers only this Codex parameter: no other provider and no new option.
 
 ## AH5-12a — acceptance criteria
 
