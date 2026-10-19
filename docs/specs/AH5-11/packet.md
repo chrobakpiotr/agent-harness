@@ -62,3 +62,16 @@
   The two added tests, which are not in Showcase's suite:
   - `test_leaf_swapped_to_symlink_after_inspection_is_never_followed` (the inspect/open race);
   - `test_evidence_with_differing_pre_and_post_fingerprints_is_never_valid`.
+- Current consumer (2026-10-19). The rehearsal ran against Showcase `cbbdbca`, which is already cut over and pinned to
+  v0.12.0; the base side ran that pin (`BASE_PINNED=1`). The host was quiet, with load about 3–8, recorded in the
+  summary.
+  - Rollback is ok in all three directions.
+  - Wrapped-only differences:
+    - the three `test_qualification_report` version-pin tests, which move with the re-pin;
+    - Showcase's own `test_cutover_wrapper` eval test, overwritten by the copy and now merged into the library's
+      file;
+    - `test_verification_parity.test_runner_forwards_only_exact_accepted_plan_to_shared_cli`, a real AH5-12a
+      regression. The port imported `load_profile` at module level, while the source looks it up per call, which
+      Showcase's test patches. Fixed in `task_runner.run_verification`.
+  - With the fix installed, `test_verification_parity`, `test_runner` and the adversarial eval (7/7) pass on the
+    current consumer.

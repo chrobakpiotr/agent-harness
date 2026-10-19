@@ -24,7 +24,6 @@ from agent_harness.executables import (
     verify_executable_binding,
 )
 from agent_harness.machine_outcomes import is_control_outcome
-from agent_harness.verification.profile import load_profile
 
 SUPPORTED_SCHEMA_KEYWORDS = frozenset({
     '$schema', 'title', 'type', 'additionalProperties', 'required', 'properties',
@@ -480,6 +479,9 @@ def run_verification(
                         'machine_category': 'verification-blocked',
                         'reason_code': 'VERIFICATION_EXECUTION_PLAN_REQUIRED'}]
     try:
+        from agent_harness.verification.profile import (
+            load_profile,  # looked up per call, as in the source
+        )
         record = resolve_accepted(worktree, accepted_plan_id)
         profile_path = pathlib.Path(profile_root) / f"{record['profile_id']}.json"
         profile = load_profile(profile_path, repository=worktree)

@@ -62,7 +62,7 @@ Origin admission and completion stay blocked; the qualified track stays NOT_QUAL
 1. In `tooling/agent-harness/requirements.txt` add the pinned library next to `cryptography`:
    `agent-harness[grants] @ git+https://github.com/chrobakpiotr/agent-harness.git@<tag SHA>` (a tag SHA,
    never a branch).
-2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`.
+2. Copy the wrapper files (including `tests/test_cutover_wrapper.py`) over `tooling/agent-harness/`. `test_cutover_wrapper.py` is library-owned: send new binding tests to Harness rather than editing your copy, so that a re-pin does not drop them (Showcase's eval-binding test is merged from `cbbdbca`).
 3. In the same change, remove only the Showcase tests below. They patch Showcase names that calls inside
    the library cannot see. Each runs under the same name in the library's normal suite
    (`agent-harness/tests/test_verification_authority.py` and `test_verification_store.py`, run by

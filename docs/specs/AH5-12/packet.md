@@ -62,3 +62,16 @@ and is unaffected by every row.
   - Mutating the binding check, the consumer CLI or the profile root fails the suite.
   - Showcase's `test_runner`: 27/27 on both sides (scratch copies of `49ab97f`).
   - The rehearsal and evaluation are recorded with the release.
+- Current consumer (2026-10-19). The rehearsal ran against Showcase `cbbdbca`, which is already cut over and pinned to
+  v0.12.0; the base side ran that pin (`BASE_PINNED=1`). The host was quiet, with load about 3–8, recorded in the
+  summary.
+  - Rollback is ok in all three directions.
+  - Wrapped-only differences:
+    - the three `test_qualification_report` version-pin tests, which move with the re-pin;
+    - Showcase's own `test_cutover_wrapper` eval test, overwritten by the copy and now merged into the library's
+      file;
+    - `test_verification_parity.test_runner_forwards_only_exact_accepted_plan_to_shared_cli`, a real AH5-12a
+      regression. The port imported `load_profile` at module level, while the source looks it up per call, which
+      Showcase's test patches. Fixed in `task_runner.run_verification`.
+  - With the fix installed, `test_verification_parity`, `test_runner` and the adversarial eval (7/7) pass on the
+    current consumer.
