@@ -77,6 +77,9 @@ class CliCase(unittest.TestCase):
         """Claude backend whose probe is the fake CLI itself (the Linux default checks bubblewrap, tested apart)."""
         return execution.AgentCliBackend("claude", prompt, sandbox_probe=["claude", "--version"], **kw)
 
+    def withheld_record(self, request_id="req-1"):
+        return json.loads((self.root / "evidence" / f"executions/{execution._slot(request_id)}/withheld.json").read_text())
+
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
@@ -237,7 +240,12 @@ class AgentCliTest(CliCase):
         script.chmod(0o755)
         backend = self.claude("x", env=self.env, diff_base=base)
         result = self.run_backend(backend, self.request("claude", "sonnet"))
-        self.assertEqual(("error", None, "candidate"), (result["outcome"], result["candidate"], backend.withheld))
+        # D4/D6 (AH5-12b): the process outcome stays; candidate and output are withheld and the reason is recorded.
+        self.assertEqual(("completed", 0, None, None, "candidate"),
+                         (result["outcome"], result["exit_code"], result["error_code"], result["candidate"],
+                          backend.withheld))
+        self.assertEqual("CANDIDATE_UNSAFE_OBJECT", self.withheld_record()["reason_code"])
+        self.assertEqual({"withheld"}, {a["name"] for a in result["artifacts"]})
 
     def test_provider_error_has_no_candidate_and_quota_exhaustion_is_classified(self):
         ws = self.root / "workspace"
@@ -350,15 +358,21 @@ class AgentCliTest(CliCase):
         script.chmod(0o755)
         backend = self.claude("x", env=self.env, diff_base=base)
         result = self.run_backend(backend, self.request("claude", "sonnet"))
-        self.assertEqual(("error", "PROVIDER_ERROR", None, [], "candidate"),
-                         (result["outcome"], result["error_code"], result["candidate"], result["artifacts"],
-                          backend.withheld))
+        self.assertEqual(("completed", None, None, ["withheld"], "candidate"),
+                         (result["outcome"], result["error_code"], result["candidate"],
+                          [a["name"] for a in result["artifacts"]], backend.withheld))
+        record = self.withheld_record()
+        self.assertEqual("CREDENTIAL_SHAPED_OUTPUT", record["reason_code"])
+        self.assertFalse(record["secret_detected"])
+        self.assertNotIn(token, json.dumps(record))
         self.assertEqual([], list((self.root / "evidence").rglob("candidate")))
         self.assertEqual([], list((self.root / "evidence").rglob("agent-output")))
         self.fake("claude", json.dumps({**CLAUDE_OK, "result": "key sk-ant-" + "a" * 30}))
         backend = self.claude("x", env=self.env)
         result = self.run_backend(backend, self.request("claude", "sonnet", request_id="req-2"))
-        self.assertEqual(("error", [], "agent-output"), (result["outcome"], result["artifacts"], backend.withheld))
+        self.assertEqual(("completed", ["withheld"], "agent-output"),
+                         (result["outcome"], [a["name"] for a in result["artifacts"]], backend.withheld))
+        self.assertEqual("CREDENTIAL_SHAPED_OUTPUT", self.withheld_record("req-2")["reason_code"])
 
     def test_each_provider_failure_signal_alone_is_an_error(self):
         cases = {"claude-is_error": ("claude", json.dumps({**CLAUDE_OK, "is_error": True})),
@@ -445,7 +459,12 @@ class AgentCliTest(CliCase):
         self.fake("claude", json.dumps(CLAUDE_OK))
         result = self.run_backend(self.claude("x", env=self.env, output_limit=10),
                                   self.request("claude", "sonnet", request_id="req-2"))
-        self.assertEqual(("unknown", []), (result["usage_completeness"], result["artifacts"]))
+        self.assertEqual(("completed", "unknown", ["withheld"]),
+                         (result["outcome"], result["usage_completeness"], [a["name"] for a in result["artifacts"]]))
+        entry = self.withheld_record("req-2")["artifacts"][0]
+        self.assertEqual(("agent-output", "OUTPUT_LIMIT_EXCEEDED", 10, False),
+                         (entry["kind"], entry["reason_code"], entry["limit_bytes"], entry["observed_bytes_is_lower_bound"]))
+        self.assertGreater(entry["observed_bytes"], 10)
 
     def test_mismatched_request_or_missing_cli_is_refused_before_launch(self):
         self.fake("claude", json.dumps(CLAUDE_OK))

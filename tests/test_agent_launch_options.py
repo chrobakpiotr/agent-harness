@@ -7,6 +7,7 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
+import test_agent_cli
 from test_agent_cli import CLAUDE_OK, CliCase
 
 from agent_harness import execution
@@ -16,6 +17,7 @@ CODEX_STREAM = "\n".join(json.dumps(e) for e in (
 
 
 class LaunchOptionsTest(CliCase):
+    git = test_agent_cli.AgentCliTest.git
     def last_argv(self, cli):
         return [c["argv"] for c in self.calls() if c["cli"] == cli and c["argv"][:1] not in (["sandbox"], ["--version"])][-1]
 
@@ -143,6 +145,62 @@ class LaunchOptionsTest(CliCase):
                 else:
                     self.assertNotIn("agent-stderr", names)
                     self.assertFalse(stderr_file.exists())
+
+
+    def withheld(self, request_id):
+        path = self.root / "evidence" / f"executions/{execution._slot(request_id)}/withheld.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def test_withholding_keeps_the_process_outcome_in_every_scenario(self):
+        """D4/D6 (master point 10): process outcome, artifact publication and task acceptance are separate facts."""
+        leak = json.dumps({**CLAUDE_OK, "result": "key sk-ant-" + "a" * 30})
+        # exit 0 + withholding
+        self.fake("claude", leak)
+        result = self.run_backend(self.claude("x", env=self.env), self.request("claude", "sonnet", request_id="ok"))
+        self.assertEqual(("completed", 0, None), (result["outcome"], result["exit_code"], result["error_code"]))
+        self.assertEqual("CREDENTIAL_SHAPED_OUTPUT", self.withheld("ok")["reason_code"])
+        # process error + withholding: the error stays the process's own
+        self.fake("claude", leak, exit_code=3)
+        result = self.run_backend(self.claude("x", env=self.env), self.request("claude", "sonnet", request_id="err"))
+        self.assertEqual(("completed", 3), (result["outcome"], result["exit_code"]))  # the process's real exit
+        self.assertEqual("CREDENTIAL_SHAPED_OUTPUT", self.withheld("err")["reason_code"])
+        # timeout, uncertain drain + withholding: never reported as completed
+        self.fake("claude", leak, sleep=5)
+        request = dict(self.request("claude", "sonnet", request_id="slow"))
+        request["timeout_seconds"] = 1
+        result = self.run_backend(self.claude("x", env=self.env), request)
+        self.assertIn(result["outcome"], ("timeout", "unknown"))
+        self.assertIsNone(result["completion"])
+
+    def test_an_empty_patch_is_published_and_a_withheld_stderr_alone_keeps_the_output(self):
+        ws = self.root / "workspace"
+        self.git("init", "-q")
+        (ws / "a.txt").write_text("x\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD").decode().strip()
+        self.fake("claude", json.dumps(CLAUDE_OK))  # changes nothing
+        result = self.run_backend(self.claude("x", env=self.env, diff_base=base), self.request("claude", "sonnet"))
+        self.assertIsNotNone(result["candidate"])  # an empty patch can be graded
+        self.assertIsNone(self.withheld("req-1"))
+        import stat
+        import textwrap
+        script = self.root / "bin" / "claude"
+        script.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import sys
+            if sys.argv[1:2] == ["--version"]:
+                sys.exit(0)
+            sys.stdin.read()
+            sys.stderr.write("sk-ant-" + "b" * 40)
+            sys.stdout.write({json.dumps(CLAUDE_OK)!r})
+            """))
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+        result = self.run_backend(self.claude("x", env=self.env), self.request("claude", "sonnet", request_id="se"))
+        self.assertEqual({"agent-output", "withheld"}, {a["name"] for a in result["artifacts"]})
+        self.assertEqual([("agent-stderr", "CREDENTIAL_SHAPED_OUTPUT")],
+                         [(a["kind"], a["reason_code"]) for a in self.withheld("se")["artifacts"]])
+        self.assertNotIn("sk-ant-", json.dumps(self.withheld("se")))
 
 
 if __name__ == "__main__":
