@@ -241,5 +241,11 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
   `test_cutover_wrapper`, `test_telemetry`, `test_verify`, `test_orchestrate`: 132 tests pass.
 - **Host isolation check, final code (2026-10-19, this Mac):** Claude Code 2.1.289, codex-cli 0.160.0 and
   OpenCode 1.19.0: tool probe exit 0, and each sandbox blocked the write into the evidence root.
-- **Still open:** benchmark compatibility on the final code; the independent evaluation; the orchestrate change
+- **Benchmark compatibility on `757b16f` (agent-benchmark `035f5a2`, `ab5-07-report.md`): pass.** Full suite green
+  apart from the expected version-pin assertion. `withheld.json` is read by name, `details[]` included. A non-zero
+  exit is `completed` with its exit code and graded normally; an empty patch publishes a candidate with no `withheld`
+  artifact and is graded normally; withheld output is INVALID with its reason; a withheld stderr alone is graded as
+  usual; a timeout is counted and ungraded. Benchmark's only change: its fake `codex sandbox` test double now runs the
+  command and blocks the write, as the isolation check requires. Benchmark re-pins after the release.
+- **Still open:** the independent evaluation; the orchestrate change
   that calls `--preflight` before the attempt starts is Showcase-owned (`orchestrate.py`, AH5-15).
