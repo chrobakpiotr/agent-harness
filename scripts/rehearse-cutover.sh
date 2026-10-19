@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # AH5-06a: rehearse the Showcase cutover on two exports (baseline, library wrapper); Showcase is never modified.
-# usage: scripts/rehearse-cutover.sh <showcase checkout> [<sha>]   (WORK=<dir> keeps the results)
+# usage: scripts/rehearse-cutover.sh <showcase checkout> [<sha>]   (WORK=<dir> keeps the results; JOBS=<n> parallel
+#        test processes per side, default 8; BASE_PINNED=1 when <sha> already pins the library, so the base side
+#        runs that pin instead of no library)
 set -euo pipefail
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
@@ -20,6 +22,7 @@ head_before=$(git -C "$showcase" rev-parse --short HEAD)
 
 # The committed library and shim, never uncommitted working-tree changes.
 library_sha=$(git -C "$repo" rev-parse HEAD)
+started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ); started_load=$(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg)
 mkdir -p "$work/library" && git -C "$repo" archive HEAD | tar -x -C "$work/library"
 "$python" -m venv "$work/build-venv"
 "$work/build-venv/bin/pip" install --quiet build
@@ -61,7 +64,12 @@ rehearse_side() {
   "$python" -m venv "$work/$side-venv"
   "$work/$side-venv/bin/pip" install --quiet --upgrade pip
   "$work/$side-venv/bin/pip" install --quiet --only-binary=cryptography "$crypto"
-  if [ "$side" = wrapped ]; then "$work/$side-venv/bin/pip" install --quiet "$wheel"; fi
+  if [ "$side" = wrapped ]; then "$work/$side-venv/bin/pip" install --quiet "$wheel"
+  elif [ -n "${BASE_PINNED:-}" ]; then
+    # Rehearsing against a consumer that already pins the library: the base side runs exactly that pin.
+    pin=$(grep -E '^agent-harness' "$work/$side/tooling/agent-harness/requirements.txt" | sed 's/\[grants\]//')
+    "$work/$side-venv/bin/pip" install --quiet "$pin"
+  fi
   py="$work/$side-venv/bin/python"
   # Tests start `python3` subprocesses; in Showcase CI that is the interpreter the requirements went into.
   export PATH="$work/$side-venv/bin:$PATH"
@@ -126,4 +134,7 @@ diff <(mask "$work/base-ci.txt") <(mask "$work/wrapped-ci.txt") > "$work/ci-mask
   && echo "ci output after masking durations and eval ids: identical" \
   || echo "ci output after masking durations and eval ids differs: see $work/ci-masked.diff"
 echo "library: $library_sha (committed HEAD)"
+# Shared-host record: other workloads (e.g. agent-benchmark grading) can read when this run loaded the host.
+echo "host window: $started_utc to $(date -u +%Y-%m-%dT%H:%M:%SZ); load at start: $started_load; at end: $(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg)"
+[ -n "${BASE_PINNED:-}" ] && echo "base side: the consumer's own agent-harness pin ($(grep -E '^agent-harness' "$work/base/tooling/agent-harness/requirements.txt"))"
 echo "results: $work"

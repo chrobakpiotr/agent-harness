@@ -46,3 +46,19 @@
 - AC2:
   - Scratch copies of Showcase `49ab97f`: `test_verify` 49 OK on both sides.
   - `test_cutover_wrapper` OK on the wrapped side, including the new `verify` binding test.
+- AC1, coverage gap (2026-10-18). The test is whether faults are caught, not how many tests run. Six guards in the
+  planner, fingerprint and serialization modules were mutated. Results with the library's previous verification
+  suite (203 tests, which never included `test_verify.py`) and with the ported tests:
+
+  | Mutation | Previous suite | + ported `test_verify` | + 2 added tests |
+  |---|---|---|---|
+  | directory open follows symlinks (no `O_NOFOLLOW`) | passes (gap) | caught | caught |
+  | file open blocks on a FIFO (no `O_NONBLOCK`) | passes (gap) | caught | caught |
+  | evidence receipt hash unchecked | passes (gap) | caught | caught |
+  | known secrets ignored | caught | caught | caught |
+  | leaf file open follows a symlink (no `O_NOFOLLOW`) | passes (gap) | passes (gap) | caught |
+  | pre/post fingerprint equality unchecked | passes (gap) | passes (gap) | caught |
+
+  The two added tests, which are not in Showcase's suite:
+  - `test_leaf_swapped_to_symlink_after_inspection_is_never_followed` (the inspect/open race);
+  - `test_evidence_with_differing_pre_and_post_fingerprints_is_never_valid`.

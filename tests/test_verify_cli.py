@@ -445,6 +445,33 @@ class PlannerTest(unittest.TestCase):
                 observation = observe_inputs(self.root, (pattern,), changed_surface(self.root, self.base))
                 self.assertIn('non-cacheable-symlink-input', observation.reasons)
 
+    def test_leaf_swapped_to_symlink_after_inspection_is_never_followed(self):
+        """Added in AH5-11: the leaf open itself refuses a symlink, even when the earlier inspection saw a file."""
+        from agent_harness.verification import fingerprint
+        outside = self.root.parent / (self.root.name + '-outside.py')
+        outside.write_text('outside content')
+        self.addCleanup(outside.unlink)
+        (self.root / 'src/a.py').unlink()
+        (self.root / 'src/a.py').symlink_to(outside)
+        real = fingerprint._component_kind
+
+        def raced(root, relative):  # inspection happens before the swap
+            kind, path, info = real(root, relative)
+            return ('file', path, os.stat(path)) if relative == 'src/a.py' and kind == 'symlink' else (kind, path, info)
+
+        with mock.patch.object(fingerprint, '_component_kind', side_effect=raced):
+            observation = observe_inputs(self.root, ('src/a.py',), changed_surface(self.root, self.base))
+        self.assertIn('non-cacheable-symlink-input', observation.reasons)
+
+    def test_evidence_with_differing_pre_and_post_fingerprints_is_never_valid(self):
+        """Added in AH5-11: a receipt whose post-run fingerprint differs from the pre-run one cannot be reused."""
+        good = self.receipt(self.plan().decisions[0])
+        self.assertTrue(valid_evidence(good))
+        raw = evidence_record(good, include_receipt=False)
+        raw['post_fingerprint'] = 'f' * 64
+        changed = dataclasses.replace(good, post_fingerprint='f' * 64, receipt_hash=digest(raw))
+        self.assertFalse(valid_evidence(changed))
+
     def test_sensitive_identity_disables_fingerprint(self):
         safety = SafetyPolicy(('CANARY-sensitive-name',))
         (self.root / 'src/CANARY-sensitive-name').write_text('x')
