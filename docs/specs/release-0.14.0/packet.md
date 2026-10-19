@@ -1,6 +1,6 @@
 # Version 0.14.0 — the runner's agent launch on AgentCliBackend (AH5-12b)
 
-- Status: prepared; release on the owner's order, after 0.13.0. Distribution: annotated Git tag `v0.14.0`;
+- Status: **released** 2026-10-19 on the owner's order. Distribution: annotated Git tag `v0.14.0`;
   consumers pin the tag SHA.
 - Scope: AH5-12b (`docs/specs/AH5-12/packet.md`). The contract, `probe_digest`, the shipped reviewed reference and
   the supported API names are unchanged. One semantic change: withheld output keeps the process's real outcome.
@@ -83,3 +83,16 @@
 - **Showcase CI:** run 39324499981 passed for `ea8a54fa`; run 39327994011 passed for `8cfaf08`.
   `Dependency review` was **skipped** (it runs on pull requests only) and is not counted as a check performed; it is
   recorded as a CI coverage gap for a later improvement packet, outside this cutover.
+
+## Evidence (2026-10-19)
+
+- AC1: `__version__` 0.14.0; CHANGELOG `## 0.14.0` with the semantic-change note; README pins `@v0.14.0`.
+- AC2: `scripts/check-wheel.sh` on the release commit `cc9d33a`: 529 tests OK, 2 skipped. CI run 39330108444 for
+  `cc9d33a`: success (Offline package checks, Python 3.13).
+- AC3: `refs/tags/v0.14.0` = `60eb12eb` → commit `cc9d33a4feac3f1462e7fe65cdabec3389a70f3a`, pushed with `main`.
+  - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.14.0`; `AgentCliBackend` takes
+    `cli_options` and has the default isolation probe.
+  - The shipped reference carries the installed probe digest (`sha256:ee87222a…`).
+- **Branch protection:** the push of `cc9d33a` to `main` was accepted as an admin bypass (no pull request,
+  unsigned commits, required checks not run before the push), under the owner's direct-push decision. CI ran after
+  the push and passed. The bypass does not mean those protections were satisfied.
