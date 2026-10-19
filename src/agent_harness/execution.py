@@ -369,25 +369,31 @@ class ProcessBackend:
         """Work before the child starts; False refuses the launch (``error`` / ``LAUNCH_FAILED``)."""
         return True
 
+    def _errors(self, request, roots):
+        """Where the child's stderr goes: discarded unless a backend keeps it as a diagnostic artifact."""
+        return subprocess.DEVNULL
+
     def run(self, request, roots, cancelled, execution_id, started_at):
         workspace = Path(roots["workspace"])
         if not self._prepare(request, roots):
             now = _now()
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         output = self._output(request, roots)
+        errors = self._errors(request, roots)
         try:
             child = subprocess.Popen(self._argv(request, roots), cwd=workspace, env=self._env(request, roots),
                                      start_new_session=True,
                                      stdin=subprocess.DEVNULL if self._stdin is None else subprocess.PIPE,
-                                     stdout=output, stderr=subprocess.DEVNULL)
+                                     stdout=output, stderr=errors)
             if self._stdin is not None:  # fed from a thread: a child that never reads still times out
                 threading.Thread(target=_feed, args=(child.stdin, self._stdin), daemon=True).start()
         except OSError:
             now = _now()
             return self._body("error", None, "confirmed", started_at, now, error_code="LAUNCH_FAILED")
         finally:
-            if output is not subprocess.DEVNULL:
-                output.close()
+            for stream in (output, errors):
+                if stream is not subprocess.DEVNULL:
+                    stream.close()
         deadline = time.monotonic() + request["timeout_seconds"]
         outcome = None
         while child.poll() is None:
@@ -758,6 +764,12 @@ class AgentCliBackend(ProcessBackend):
         path.parent.mkdir(parents=True, exist_ok=True)
         return path.open("wb")
 
+    def _errors(self, request, roots):
+        """D3: the CLI's stderr is kept as a size-bounded diagnostic artifact, checked for secrets like stdout."""
+        path = self._output_path(request, roots).parent / "agent-stderr"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path.open("wb")
+
     def _git_dir(self, request, roots):
         return Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/base.git"
 
@@ -798,6 +810,16 @@ class AgentCliBackend(ProcessBackend):
         if body["candidate"] is not None and _leaks((Path(roots["evidence_root"]) / body["candidate"]["path"])
                                                     .read_bytes(), secrets):
             return self._withhold(body, request, roots, "candidate")
+        stderr_path = self._output_path(request, roots).parent / "agent-stderr"
+        stderr_artifact = None
+        if stderr_path.is_file():
+            stderr_data = stderr_path.read_bytes()
+            if len(stderr_data) > self.output_limit or _leaks(stderr_data, secrets):  # diagnostics only: drop it
+                stderr_path.unlink()
+            else:
+                stderr_artifact = {"name": "agent-stderr", "path": str(stderr_path.relative_to(roots["evidence_root"])),
+                                   "sha256": "sha256:" + hashlib.sha256(stderr_data).hexdigest(),
+                                   "size": len(stderr_data)}
         path = self._output_path(request, roots)
         size = path.stat().st_size
         # ponytail: the limit is checked after exit, so a runaway CLI can still fill the disk; enforce it while
@@ -809,6 +831,8 @@ class AgentCliBackend(ProcessBackend):
             return self._withhold(body, request, roots, "agent-output")
         body["artifacts"] = [{"name": "agent-output", "path": str(path.relative_to(roots["evidence_root"])),
                               "sha256": "sha256:" + hashlib.sha256(data).hexdigest(), "size": size}]
+        if stderr_artifact is not None:
+            body["artifacts"].append(stderr_artifact)
         last = path.parent / "last-message"
         if self.provider == "codex" and "output_schema" in self.cli_options and last.is_file():
             message = last.read_bytes()
@@ -840,7 +864,7 @@ class AgentCliBackend(ProcessBackend):
 
     def _withhold(self, body, request, roots, what):
         """A credential-shaped string in the output: keep neither candidate nor output, report an error."""
-        for name in ("candidate", "agent-output", "last-message"):
+        for name in ("candidate", "agent-output", "last-message", "agent-stderr"):
             (Path(roots["evidence_root"]) / f"executions/{_slot(request['request_id'])}/{name}").unlink(missing_ok=True)
         self.withheld = what
         body.update(outcome="error", exit_code=None, completion=None, error_code="PROVIDER_ERROR", candidate=None,

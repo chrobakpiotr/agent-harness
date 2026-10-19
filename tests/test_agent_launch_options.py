@@ -117,5 +117,33 @@ class LaunchOptionsTest(CliCase):
         self.assertFalse([c for c in self.calls() if c["argv"][:1] == ["exec"]])  # no agent process started
 
 
+    def test_stderr_is_a_bounded_diagnostic_artifact_checked_for_secrets(self):
+        """D3: stderr is kept as `agent-stderr`; a credential-shaped stderr is dropped, never published."""
+        import stat
+        import textwrap
+        for name, text in (("clean", "warning: slow network"), ("secret", "token sk-ant-" + "a" * 40)):
+            with self.subTest(name):
+                script = self.root / "bin" / "claude"
+                script.write_text(textwrap.dedent(f"""\
+                    #!/usr/bin/env python3
+                    import json, sys
+                    if sys.argv[1:2] == ["--version"]:
+                        sys.exit(0)
+                    sys.stdin.read()
+                    sys.stderr.write({text!r})
+                    sys.stdout.write({json.dumps(CLAUDE_OK)!r})
+                    """))
+                script.chmod(script.stat().st_mode | stat.S_IXUSR)
+                result = self.run_backend(self.claude("x", env=self.env), self.request("claude", "sonnet", request_id=f"req-{name}"))
+                names = [a["name"] for a in result["artifacts"]]
+                stderr_file = self.root / "evidence" / f"executions/{execution._slot(f'req-{name}')}/agent-stderr"
+                if name == "clean":
+                    self.assertIn("agent-stderr", names)
+                    self.assertEqual(text, stderr_file.read_text())
+                else:
+                    self.assertNotIn("agent-stderr", names)
+                    self.assertFalse(stderr_file.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
