@@ -89,4 +89,5 @@
     5. `test_profile_hash_mismatch_refuses_before_any_launch`.
     6. `verify_cli`'s description no longer breaks under `python -OO`.
     7. Counts corrected (`test_verify_cli` 53, `test_task_runner` 20); the consumers matrix shows Showcase on v0.12.0.
-    8. A full rehearsal against the current consumer after these fixes; recorded with the release.
+    8. A full rehearsal against the current consumer after these fixes: done (`rehearsal-0130`), every difference
+       explained, rollback ok; recorded in `docs/specs/release-0.13.0/packet.md`.
