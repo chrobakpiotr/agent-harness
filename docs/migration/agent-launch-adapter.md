@@ -73,5 +73,38 @@ The runner's own repository and worktree validation stays (row 2): `--skip-git-r
   - `stdout.log`/`stderr.log` are compatible *reads* of the `agent-output`/`agent-stderr` artifacts, not a second
     write (D3).
   - Legacy run directories are read as they are and never rewritten (row 7).
-- **Withheld output** (credential-shaped, or over 8 MiB) gives no `agent-output` and no candidate. How the outcome
-  reports it is an open point under confirmation: the packet's "withheld-outcome divergence".
+- **Withheld output** (credential-shaped, or over 8 MiB) gives no `agent-output` and no candidate. The process facts
+  stay as they were (`outcome`, `exit_code`, `drain`); an artifact `withheld` (`withheld.json`) says why:
+
+  ```json
+  {"schema_version": 1, "reason_code": "OUTPUT_LIMIT_EXCEEDED | CREDENTIAL_SHAPED_OUTPUT",
+   "artifacts": ["agent-output", "last-message"], "size": 9000000, "limit": 8388608, "size_is_lower_bound": false,
+   "details": [{"artifact": "agent-output", "reason_code": "...", "size": 9000000, "limit": 8388608,
+                "size_is_lower_bound": false}],
+   "secret_detected": false, "note": "process outcome, artifact publication and task-result acceptance are separate facts"}
+  ```
+
+  `size`/`limit` are null for a credential-shaped artifact. `details[].reason_code` can also be
+  `CANDIDATE_UNSAFE_OBJECT`, `CANDIDATE_UNAVAILABLE`, or `WITHHELD_WITH_OUTPUT` (dropped because the main output was
+  withheld). A withheld `agent-stderr` alone keeps the output and the candidate.
+
+## Showcase's runner adapter (`migration/showcase-wrapper/runner.py`)
+
+- **`--preflight`**: resolves the model, builds the request and runs `backend.refuse()` (model, CLI, sandbox,
+  isolation, evidence protection). It prints `preflight: ok` (exit 0) or `preflight refused: <reason>` (non-zero).
+  It launches nothing and writes nothing. `orchestrate` calls it **before** the lifecycle starts the attempt, so a
+  refusal never uses an attempt (row 5). A refusal at launch time is still recorded (`status: preflight-refused`).
+- **D1:** `--model`, else `DEFAULT_MODELS[provider]` (empty: refused before anything is written). Provenance has
+  `model_requested`, `model_source` (`argument` | `configuration`) and `model_resolved` (the provider's report).
+- **D2:** `--agent-timeout`, default 1800 s, 1..86400. Orchestrate's lease heartbeat runs until the runner exits,
+  so the lease covers execution, cancel, drain and the result write.
+- **Provenance:** the same `provenance.json` with the same fields, plus `agent_execution` (the process outcome,
+  exit code, error code, drain, usage completeness, published artifacts relative to the run dir, `withheld_reason`).
+  `provider_metadata` comes from the same parsers applied to the published `agent-output`; with no published
+  output it is `{"usage": null, "cost_usd": null}`.
+- **Statuses:** `preflight-refused`; `output-withheld` (not a provider error); `provider-error` (non-zero exit,
+  timeout, cancel, launch error or unknown).
+- **Logs:** `run_output(run_dir, 'stdout' | 'stderr')` reads an old run's `stdout.log`/`stderr.log` as they are, and
+  a new run's library artifacts. Nothing writes a second copy; `provider-envelope.json` is no longer written.
+- **Not moved yet:** `codex_command`/`claude_command` stay, for `--print-command` and for the launches in
+  `design.py`, `wayfinder.py` and `verification_contract.py`. Those move with their own packets (AH5-13, AH5-16).

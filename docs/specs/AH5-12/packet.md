@@ -225,3 +225,21 @@ records model IDs in Showcase's versioned configuration. This applies D1's own r
 - **Limit.** For Claude the probe reproduces the write set Claude Code's sandbox is configured with (Seatbelt or
   bubblewrap); it does not run Claude itself, which would need a model call. Claude's file tools are additionally
   limited to the workspace by `acceptEdits`, and the evidence root is in `denyWrite`.
+
+### Showcase adapter (runner shim) and final checks
+
+- **Interface:** `docs/migration/agent-launch-adapter.md` ("Showcase's runner adapter").
+- **Tests** (`migration/showcase-wrapper/tests/test_runner_launch.py`, run in a Showcase checkout): D1 refusal before
+  anything is written and the configured model; preflight ok and refused without a run dir or CLI call; a run's
+  provenance, task result from the `last-message` artifact, prompt on stdin, the strict Codex flags, keys absent
+  from `launch.json`, logs read from artifacts and from an old run; reviewer `read-only`; withheld output keeps
+  `completed`/0 with `CREDENTIAL_SHAPED_OUTPUT` and no metadata; `--agent-timeout` gives `timeout`; Claude profile
+  options accepted by the library, reviewers without write tools.
+- **Mutations caught:** preflight never refusing; a model fallback; withheld output ignored; the timeout not passed;
+  a reviewer with `Edit`.
+- **Showcase suites through the 12b shims** (Showcase `cbbdbca`): `test_runner_launch`, `test_runner`,
+  `test_cutover_wrapper`, `test_telemetry`, `test_verify`, `test_orchestrate`: 132 tests pass.
+- **Host isolation check, final code (2026-10-19, this Mac):** Claude Code 2.1.289, codex-cli 0.160.0 and
+  OpenCode 1.19.0: tool probe exit 0, and each sandbox blocked the write into the evidence root.
+- **Still open:** benchmark compatibility on the final code; the independent evaluation; the orchestrate change
+  that calls `--preflight` before the attempt starts is Showcase-owned (`orchestrate.py`, AH5-15).
