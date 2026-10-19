@@ -1,6 +1,6 @@
 # Version 0.13.0 — verification CLI and the runner's checks (AH5-11, AH5-12a)
 
-- Status: prepared; release on the owner's order. Distribution: annotated Git tag `v0.13.0`; consumers pin the
+- Status: **released** 2026-10-19 on the owner's order. Distribution: annotated Git tag `v0.13.0`; consumers pin the
   tag SHA.
 - Scope: AH5-11 `agent_harness.verify_cli`; AH5-12a `agent_harness.task_runner`. The contract, `probe_digest`, the
   shipped reviewed reference and the supported API are unchanged.
@@ -41,3 +41,13 @@
   - **Rollback:** wrapped → base, base → wrapped and base → base all ok.
 - **Limits:** the full suite ran under a paused, then resumed, schedule; timing-sensitive tests were judged by
   rerunning them alone.
+
+## Evidence (2026-10-19)
+
+- AC1: `__version__` 0.13.0; CHANGELOG `## 0.13.0`; README pins `@v0.13.0`.
+- AC2: `scripts/check-wheel.sh` on the release commit `cfd92fc`: 515 tests OK, 2 skipped. CI for `cfd92fc`:
+  success (Offline package checks, Python 3.13).
+- AC3: `refs/tags/v0.13.0` = `35bccd17` → commit `cfd92fcfb0c572b1b462d605709e7be8b7801b71`, pushed with `main`.
+  - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.13.0`.
+  - `verify_cli` and `task_runner` import.
+  - The shipped reference carries the installed probe digest (`sha256:ee87222a…`).
