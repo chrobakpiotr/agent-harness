@@ -174,3 +174,28 @@ which gives identical fields. The six points below change meaning and need a dec
 | D4 | The runner parses whatever the CLI prints. | Output containing a credential-shaped string is withheld, and the run ends `error`/`PROVIDER_ERROR`. | Accept (fail closed). A run that today would expose a credential in its result is refused. |
 | D5 | The run dir can be anywhere. | The evidence root must not be writable by the agent's sandbox (workspace, `/tmp`, `$TMPDIR`), otherwise the request is `rejected`. | Accept. Showcase's run dir (`.agent-runs` in the primary checkout) is outside its linked task worktrees. A run whose worktree *is* the primary checkout would be refused. |
 | D6 | Output size is unlimited. | Above `output_limit` (8 MiB) the output is withheld: no result, nothing claimed. | Accept (row 7: no result from incomplete output), or Showcase sets a larger `output_limit`. |
+
+### D1–D6 decisions (master, 2026-10-19); conditions are acceptance criteria
+
+| # | Decision |
+|---|---|
+| D1 | The model is resolved before launch: `--model` first, then Showcase's versioned per-provider configuration. If both are missing, the run is refused before the attempt starts. No model is chosen by the harness, and the CLI's default model is not relied on. The requested model is recorded, and the actual model separately when the provider reports it. No contract change. |
+| D2 | `--agent-timeout`, Showcase default 1800 s, explicitly overridable. It is an operational limit, not an SLO, and not a new library default. The lease is renewed or covers execution plus cancel, drain and writing the result; an inconsistent configuration is refused before launch. |
+| D3 | The library keeps stderr as a size-bounded diagnostic artifact, with the same secret check as stdout. Showcase may read `stderr.log` compatibly, but there is no second independent write. Benchmark compatibility is checked. |
+| D4 | Suspect output is withheld, with an unambiguous reason code. The suspect content never appears in errors or logs, and the harness never claims a real secret was found. Safe execution metadata is kept. No automatic retry. |
+| D5 | The evidence root must be protected from agent writes. Neither the name `.agent-runs` nor a location outside the worktree proves that: the real writable roots, symlinks and sandbox are checked. A primary checkout is refused when protection cannot be assured, with a clear instruction to use an isolated worktree. |
+| D6 | The output limit stays at 8 MiB. Exceeding it may withhold the output and block acceptance of the task result, but there is still a terminal contract result. The reason, the limit-exceeded fact, the known process state, cancel/drain and usage are all kept. Truncated output is never parsed as a complete result. |
+| Shared rule (D3/D4/D6) | The process outcome, whether artifacts can be published, and whether the task result is accepted are separate facts. A failure to publish output does not prove the agent changed no files. |
+| Row 8 | Semantics unchanged: `provider_metadata` already uses the shared parsers. The compatibility check stays; no parser migration. |
+
+**New divergence, raised for confirmation (D4/D6 with the shared rule):**
+- Today `_withhold` turns a withheld output into `outcome: error`, `error_code: PROVIDER_ERROR`, even when the CLI
+  exited 0. That labels a publication failure as a provider failure. agent-benchmark receives this today.
+- The contract's result fields are fixed, so there is no field for a withheld reason.
+- Proposal: keep the process's real `outcome`/`exit_code`/`drain`. Publish no candidate and no `agent-output`, and
+  add an evidence artifact `withheld.json` with an explicit reason code (`OUTPUT_LIMIT_EXCEEDED` or
+  `CREDENTIAL_SHAPED_OUTPUT`), the size and limit, and no content.
+- That changes what benchmark sees: a `completed` run without a candidate instead of an `error`. It needs
+  benchmark's compatibility check before it lands.
+- The alternative keeps today's `error`/`PROVIDER_ERROR` and only adds `withheld.json`. It is compatible, but it
+  blurs the process outcome.
