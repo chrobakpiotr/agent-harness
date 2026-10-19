@@ -199,3 +199,7 @@ which gives identical fields. The six points below change meaning and need a dec
   benchmark's compatibility check before it lands.
 - The alternative keeps today's `error`/`PROVIDER_ERROR` and only adds `withheld.json`. It is compatible, but it
   blurs the process outcome.
+
+**D1, default models (2026-10-19).** Neither Harness nor Showcase picks models. Showcase's per-provider default
+configuration starts **empty**: without `--model`, the run is refused before launch (fail closed) until the owner
+records model IDs in Showcase's versioned configuration. This applies D1's own rule; it is not a new divergence.
