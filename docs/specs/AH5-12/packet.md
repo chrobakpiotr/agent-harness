@@ -22,8 +22,9 @@
 
 ## AH5-12b — the eight behaviour changes, each for its own acceptance
 
-Consumers: Showcase is the only caller of `runner.py`. agent-benchmark already uses `AgentCliBackend` directly
-and is unaffected by every row.
+Consumers: Showcase is the only caller of `runner.py`, but agent-benchmark uses the same `AgentCliBackend`
+(`harness_port.py`). Every change to its options, defaults or results needs a compatibility check for benchmark.
+Showcase-only policy is passed through Showcase's adapter; it does not become a library default.
 
 | # | Old (Showcase `runner.py` at `49ab97f`) | New (runner on `AgentCliBackend`) | Impact on Showcase | Acceptance criterion | Basis | Accepted |
 |---|---|---|---|---|---|---|
@@ -35,6 +36,31 @@ and is unaffected by every row.
 | 6 | No timeout and no cancel. | The request's limits apply (wall time, cancel with grace). Without them the library defaults apply. | A run longer than the limit is cancelled. Showcase sets its limits per packet (lease TTL). | Showcase passes its limit; a test shows cancel at the limit leaves no agent process and a `timeout`/`cancel` result. | Bounded execution; the cancel and drain path already exists in the library. | pending |
 | 7 | Evidence is `stdout.log`, `stderr.log`, `exit-code.txt` and `provenance.json` in Showcase's run dir, written by the runner. | The library result and evidence root (stdout up to 8 MiB, the usage summary, the contract result) are the source of truth. Showcase writes its provenance from that result. | Run-dir files change in shape. Readers of `stdout.log` and similar (telemetry, orchestrate) must read the result. | Every Showcase reader of those files is listed and updated; orchestrate and telemetry tests pass on the new layout; nothing reads the old files. | One evidence path (master rule 7). | pending |
 | 8 | `provider_metadata` parses the CLI's stdout in the runner. | The backend's usage parsing (`usage_completeness`, ADR 0002) is used. | Telemetry fields come from the contract's usage. The old fields map 1:1 or are listed as dropped. | A mapping table from the old to the new fields; Showcase's telemetry tests pass. | One usage rule (ADR 0002). | pending |
+
+### Decisions (master review, 2026-10-19)
+
+All eight rows are accepted with the conditions below; no further table approval is needed. 12b is implemented and
+evaluated separately from 0.13.0 (AH5-11 + AH5-12a).
+
+| # | Decision | Conditions that become acceptance criteria |
+|---|---|---|
+| 1 | accept | The full prompt and its encoding are preserved on stdin. A prompt missing from argv does not mean it is missing from logs: the evidence and logs are checked as well. |
+| 2 | accept, corrected | Per-profile sandbox modes are kept, especially reviewer `read-only`. `forced_login_method=chatgpt` is Showcase policy (see the discrepancy below). `--skip-git-repo-check` never replaces the runner's own check that it is in the right repository and worktree. |
+| 3 | accept | Effective permissions are checked after the settings merge, not only the argv. A reviewer cannot write through Bash either. Network, MCP and credential-path restrictions are kept. |
+| 4 | accept *strip* for Showcase, no fallback | The authentication mode is recorded per run, with no secrets. The actual billing source is not claimed unless the provider confirms it. Benchmark's policy is unchanged. The migration note says: authenticate through the provider CLI first. |
+| 5 | accept, with a condition | `claude --version` proves only that the CLI is available, and `bwrap`/`socat` being present proves only that the tools exist. Tool availability is checked separately from an isolation check that actually exercises the sandbox. Runtime enforcement is kept; there is no fallback; a refusal does not consume or start the task attempt. |
+| 6 | accept | The execution time limit and the lease TTL stay distinct. There is time for cancel, drain and writing the result. If the end of descendant processes cannot be confirmed, the result reports uncertainty, not a successful cleanup. |
+| 7 | accept, corrected for compatibility | New runs have one canonical record. Old run directories stay readable through an explicit read adapter, and historical evidence is never rewritten. Truncated output is marked, and a structured result reconstructed from incomplete output is not accepted. |
+| 8 | accept | A field mapping. Unknown stays unknown, never zero. Completeness is explicit. Historical telemetry stays readable. |
+
+**Discrepancy to report (row 2/4):**
+- `forced_login_method="chatgpt"` is not only Showcase's choice today. It is hard-coded in the library's Codex argv
+  (`execution.py`, `AgentCliBackend._argv`), and agent-benchmark runs with it.
+- Moving it to Showcase's adapter alone would change benchmark's Codex runs: they could then fall back to API-key
+  login.
+- Proposal: keep it as the library default for every caller (it enforces the library's no-API-billing rule).
+  Showcase's adapter also passes it explicitly, so its policy stays visible on its side.
+- Changing the library default for benchmark would be a separate decision.
 
 ## AH5-12a — acceptance criteria
 
