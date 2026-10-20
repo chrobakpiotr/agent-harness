@@ -75,7 +75,10 @@ class RunnerLaunchTest(unittest.TestCase):
         self.packet = self.root / 'packet.json'
         self.packet.write_text(json.dumps({'feature': 'F', 'task': 'T-1', 'role': 'builder',
                                            'agent_profile': 'builder'}))
-        env = {'PATH': f'{bin_dir}:/usr/bin:/bin', 'HOME': str(self.root), 'FAKE_LOG': str(self.log),
+        # Keep the interpreter available to the fake CLI's /usr/bin/env shebang
+        # even in python:*-slim, where Python is installed under /usr/local/bin.
+        env = {'PATH': f'{bin_dir}:{pathlib.Path(sys.executable).parent}:/usr/bin:/bin',
+               'HOME': str(self.root), 'FAKE_LOG': str(self.log),
                'OPENAI_API_KEY': 'sk-should-never-reach-the-cli'}
         writable = lambda ws: [pathlib.Path(ws).resolve()]
         for patch in (mock.patch.dict(os.environ, env, clear=True),

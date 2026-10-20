@@ -119,3 +119,22 @@ Showcase; the handbook itself is not marked synchronised until it is actually up
 - Rollback: pin `1c569f2`; its integration works on both versions; results and evidence kept.
 - Limits: the Claude restriction evidence holds for Claude Code 2.1.289 on the tested macOS host only. Details:
   agent-benchmark `ab5-07-report.md` and its handover (`23fe652`).
+
+### Showcase adoption (its report, 2026-10-20; not independently reviewed here)
+
+- Adoption commit `89382cd24e3c8cd61dca6e6d9d4fb04f529b2a0e`, pin v0.14.0 `cc9d33a`; its exact-SHA CI run
+  39333226560: success. 173 focused Python tests passed.
+- The shims `runner.py`, `verify.py` and `tests/test_cutover_wrapper.py` are byte-identical to v0.14.0 (checked here).
+  `tests/test_runner_launch.py` differs by one portability fix: the fake CLI's `PATH` includes the interpreter's
+  directory, so its `/usr/bin/env python3` shebang works in `python:*-slim`, where Python is under `/usr/local/bin`.
+  The fix was taken into the library-owned copy after the release (test only, no code change); it ships with the next
+  release, and v0.14.0 is not re-tagged.
+- The four real-CLI checks passed for the recorded macOS Claude Code 2.1.289 setup: a refused preflight creates or
+  uses no attempt; `denied_commands`; the reviewer cannot write, Bash included; evidence protection with the real
+  launch options. Scope: that host and CLI version only.
+- Rollback reproduced the complete pre-adoption (0.13.0) tree.
+- Showcase's external handbook delta is updated through `fd96eeb` (one launch path, explicit model and timeout,
+  preflight, evidence-root isolation, reviewer restrictions, withheld-output semantics, the scope of the Claude
+  evidence). The external handbook itself is not updated yet; its owner applies it.
+- The pushes were direct pushes through branch-protection bypasses (PR, expected status checks, signatures); those
+  controls were not passed. Dependency Review was skipped, recorded as a CI coverage gap.
