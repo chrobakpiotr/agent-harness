@@ -332,7 +332,7 @@ class FeatureStateTest(FeatureCase):
         }
         for message, change in cases.items():
             with self.subTest(message):
-                code, err = refused(lambda: fs.validate_loaded_state(feature, doc, {**good, **change}))
+                code, err = refused(lambda change=change: fs.validate_loaded_state(feature, doc, {**good, **change}))
                 self.assertEqual((2, True), (code, message in err))
         code, err = refused(lambda: fs.validate_state_identity(feature, doc, good, fingerprint=lambda path: 'other'))
         self.assertIn('fingerprint differs', err)
