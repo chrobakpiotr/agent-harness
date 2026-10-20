@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 — unreleased (prepared 2026-10-20)
 
 - New `agent_harness.verification_contract`: the verification-contract validation (AH5-13). The repository root,
   the constitution path and the active-feature layout are explicit; none is built in. Contract authoring stays with
   the consumer.
-- The Showcase runner shim's fake CLI finds the interpreter outside `/usr/bin` (Showcase's portability fix).
+- The Showcase runner shim's test (`tests/test_runner_launch.py`) lets its fake CLI find the interpreter outside
+  `/usr/bin`, as in `python:*-slim` (Showcase's portability fix, test only). An extra difference from 0.14.0.
+- Contract and digests unchanged.
 
 ## 0.14.0 — unreleased (prepared 2026-10-19)
 
