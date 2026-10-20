@@ -107,3 +107,15 @@
 Each consumer reports its adoption commit, the harness pin, the check results, rollback and remaining limits. The
 external handbook delta (Showcase `docs/reviews/external-handbook-delta-2026-10-06.md`) gets a 0.14.0 entry from
 Showcase; the handbook itself is not marked synchronised until it is actually updated.
+
+### agent-benchmark adoption (its report, 2026-10-20; not independently reviewed here)
+
+- Adoption commit `e103af9`, pin v0.14.0 `cc9d33a`; its CI run 39333480702: success. The push was an authorised
+  direct push through a branch-protection bypass, recorded apart from the CI result.
+- Full suite 160/160 with the pin test; qualified re-grade 40/40 identical; one live trial each for Claude, Codex
+  and OpenCode, all completed and graded, zero spend; the resume fingerprint on the released install is non-null
+  and accepted; runs started on 0.12.0 are refused at resume, none resumed. The Claude restriction check was not
+  repeated (mechanism unchanged).
+- Rollback: pin `1c569f2`; its integration works on both versions; results and evidence kept.
+- Limits: the Claude restriction evidence holds for Claude Code 2.1.289 on the tested macOS host only. Details:
+  agent-benchmark `ab5-07-report.md` and its handover (`23fe652`).
