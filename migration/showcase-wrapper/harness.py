@@ -297,7 +297,7 @@ def state_path(feature_dir: pathlib.Path) -> pathlib.Path:
 
 
 def lock_path(feature_dir: pathlib.Path) -> pathlib.Path:
-    return _state.lock_path(feature_dir, policy=_policy())
+    return _state.lock_path(feature_dir, policy=_policy(), locking=fcntl)
 
 
 def recover_prepared_state_locked(feature_dir: pathlib.Path) -> None:

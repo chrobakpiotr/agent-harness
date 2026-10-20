@@ -306,6 +306,14 @@ class FeatureStateTest(FeatureCase):
         self.assertEqual(self.root / '.agent-state' / f'TST-001-{legacy}.json',
                          fs.main_legacy_state_path(feature, policy=self.policy))
 
+    def test_the_lock_refuses_without_cross_process_locking(self):
+        """The guard Showcase tests by removing its `fcntl` binding reaches the library."""
+        feature = self.feature()
+        code, err = refused(lambda: fs.lock_path(feature, policy=self.policy, locking=None))
+        self.assertEqual(2, code)
+        self.assertIn('LIFECYCLE_LOCK_UNAVAILABLE', err)
+        self.assertFalse((self.root / '.agent-state').exists())
+
     def test_a_linked_worktree_resolves_the_same_state(self):
         feature = self.feature()
         git(self.root, 'add', '-A')

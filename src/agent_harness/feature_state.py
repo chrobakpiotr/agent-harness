@@ -59,10 +59,10 @@ def state_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.P
     return runtime_state_dir(feature_dir, policy=policy) / f'{feature_dir.name}-{state_key(feature_dir, policy=policy)}.json'
 
 
-def lock_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.Path:
+def lock_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy, locking: Any = fcntl) -> pathlib.Path:
     # Snapshots capture the complete repository authority tree. One lock prevents
     # cross-feature commits from producing a torn snapshot.
-    if fcntl is None:
+    if locking is None:  # the consumer passes its own `fcntl` binding, so its tests reach this guard
         die('LIFECYCLE_LOCK_UNAVAILABLE: cross-process lifecycle locking is required')
     return state_snapshots.lifecycle_lock_path(policy.repo_base(feature_dir))
 
