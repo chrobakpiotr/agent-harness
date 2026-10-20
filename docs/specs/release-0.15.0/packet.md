@@ -35,3 +35,4 @@
   `verification_contract.py` shim, the version (0.15.0) and Showcase's test portability fix. The shim change was
   checked directly: Showcase's `test_verification_contract`, `test_cutover_wrapper` and `test_wayfinder` pass through
   it (30 tests).
+- **Wheel:** `scripts/check-wheel.sh` on `9134b1f`: 545 tests OK, 2 skipped. Later commits change only `docs/`.
