@@ -1,6 +1,6 @@
 # Version 0.15.0 — verification-contract validation (AH5-13)
 
-- Status: prepared; release on the owner's order. Distribution: annotated Git tag `v0.15.0`; consumers pin the tag
+- Status: **released** 2026-10-20 on the owner's order. Distribution: annotated Git tag `v0.15.0`; consumers pin the tag
   SHA.
 - Scope: AH5-13 `agent_harness.verification_contract` (`docs/specs/AH5-13/packet.md`). Extra difference from 0.14.0:
   Showcase's portability fix in the library-owned `migration/showcase-wrapper/tests/test_runner_launch.py` (test only).
@@ -36,3 +36,23 @@
   checked directly: Showcase's `test_verification_contract`, `test_cutover_wrapper` and `test_wayfinder` pass through
   it (30 tests).
 - **Wheel:** `scripts/check-wheel.sh` on `9134b1f`: 545 tests OK, 2 skipped. Later commits change only `docs/`.
+
+## Evidence (2026-10-20)
+
+- AC1: `__version__` 0.15.0; CHANGELOG `## 0.15.0`; README pins `@v0.15.0`.
+- AC2: `scripts/check-wheel.sh` on the release code (`9134b1f`; `717f4ba` adds only docs): 545 tests OK, 2 skipped.
+  CI run 39397347276 for `717f4ba`: success (Offline package checks, Python 3.13).
+- AC3: `refs/tags/v0.15.0` = `0e78e92e` → commit `717f4bab01c692963e6b66b680a947b45734226f`, pushed with `main`.
+  - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.15.0`; `verification_contract` imports, and
+    a call without its seams raises `TypeError`.
+  - The shipped reference carries the installed probe digest (`sha256:ee87222a…`).
+- **Branch protection:** the push of `717f4ba` to `main` was accepted as an admin bypass (no pull request, unsigned
+  commits, required checks not run before the push), under the owner's direct-push decision. CI ran after the push
+  and passed. The bypass does not mean those protections were satisfied.
+
+## Consumer handoff
+
+| Consumer | Pin now | Adoption of 0.15.0 | Rollback |
+|---|---|---|---|
+| Showcase | v0.14.0 `cc9d33a` (`89382cd`) | pin `717f4ba`; copy `verification_contract.py` (mode 100755), `tests/test_cutover_wrapper.py` and `tests/test_runner_launch.py` from `migration/showcase-wrapper/`; move the three version-pin tests to 0.15.0; run CI | the whole 0.14.0 set: pin `cc9d33a` and the previous copies |
+| agent-benchmark | v0.14.0 `cc9d33a` | not needed: it does not use `verification_contract`, and 0.15.0 changes nothing it uses. A re-pin is optional | — |

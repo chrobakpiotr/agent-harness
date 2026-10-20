@@ -1,7 +1,7 @@
 # AH5-13 — Move the verification-contract validation (`verification_contract.py`)
 
-- Status: **implemented on branch `ah5-13-verification-contract`**; independent evaluation passed with amendments
-  (applied, below); rehearsal pending.
+- Status: **released in 0.15.0** (2026-10-20); independent evaluation passed with amendments (applied, below);
+  rehearsal and rollback passed (`docs/specs/release-0.15.0/packet.md`).
   Release on the owner's order.
 - Source: Showcase `tooling/agent-harness/verification_contract.py` at `fd96eeb` (352 lines; the file last changed at
   `486309b`) and `tests/test_verification_contract.py`.

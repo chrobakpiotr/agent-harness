@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.15.0 — unreleased (prepared 2026-10-20)
+## 0.15.0 — 2026-10-20
 
 - New `agent_harness.verification_contract`: the verification-contract validation (AH5-13). The repository root,
   the constitution path and the active-feature layout are explicit; none is built in. Contract authoring stays with
