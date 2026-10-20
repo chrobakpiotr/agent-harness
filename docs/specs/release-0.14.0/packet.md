@@ -113,7 +113,8 @@ Showcase; the handbook itself is not marked synchronised until it is actually up
 - Adoption commit `e103af9`, pin v0.14.0 `cc9d33a`; its CI run 39333480702: success. The push was an authorised
   direct push through a branch-protection bypass, recorded apart from the CI result.
 - Full suite 160/160 with the pin test; qualified re-grade 40/40 identical; one live trial each for Claude, Codex
-  and OpenCode, all completed and graded, zero spend; the resume fingerprint on the released install is non-null
+  and OpenCode, all completed and graded (reported as "zero spend"; the source of that measurement is pending agent-benchmark's
+  clarification, and a cost not measured is unknown: no extra subscription charge is not zero usage cost); the resume fingerprint on the released install is non-null
   and accepted; runs started on 0.12.0 are refused at resume, none resumed. The Claude restriction check was not
   repeated (mechanism unchanged).
 - Rollback: pin `1c569f2`; its integration works on both versions; results and evidence kept.
