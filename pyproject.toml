@@ -39,6 +39,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "src/agent_harness/eval_runner.py" = ["F841", "UP017"]
 "src/agent_harness/task_runner.py" = ["C401", "TRY004"]
 "src/agent_harness/state_snapshots.py" = ["SIM102", "TRY203", "UP017", "UP022"]
+# Verbatim from harness.py (AH5-14a): `validate_loaded_state` keeps the source's unused `expected`.
+"src/agent_harness/feature_state.py" = ["F841"]
 # Verbatim executor: its per-gate callbacks run synchronously inside their own loop iteration.
 "src/agent_harness/verification/executor.py" = ["B023"]
 "src/agent_harness/sandbox.py" = ["BLE001", "SIM102", "TRY004", "UP037"]
@@ -54,6 +56,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "migration/showcase-wrapper/runner.py" = ["F401", "I001", "RUF100", "UP017"]
 # Showcase's verification_contract.py: verbatim apart from the AH5-13 bindings; its imports serve generate.
 "migration/showcase-wrapper/verification_contract.py" = ["F401", "RUF100"]
+# Showcase's harness.py: verbatim apart from the AH5-14a bindings (7,000 lines of its own code, restyled only by Showcase).
+"migration/showcase-wrapper/harness.py" = ["ALL"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
