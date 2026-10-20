@@ -56,3 +56,12 @@
 |---|---|---|---|
 | Showcase | v0.14.0 `cc9d33a` (`89382cd`) | pin `717f4ba`; copy `verification_contract.py` (mode 100755), `tests/test_cutover_wrapper.py` and `tests/test_runner_launch.py` from `migration/showcase-wrapper/`; move the three version-pin tests to 0.15.0; run CI | the whole 0.14.0 set: pin `cc9d33a` and the previous copies |
 | agent-benchmark | v0.14.0 `cc9d33a` | not needed: it does not use `verification_contract`, and 0.15.0 changes nothing it uses. A re-pin is optional | — |
+
+### Showcase adoption (its commits, checked here 2026-10-20)
+
+- Adoption commit `68d22c7`, with the docs commit `36497846b0e23121ff1d094412b23be5eb19c998`; pin
+  `717f4ba`. CI for `3649784`: success (4 workflow runs).
+- Checked here: `verification_contract.py` (mode 100755), `tests/test_cutover_wrapper.py`,
+  `tests/test_runner_launch.py`, `runner.py` and `verify.py` are byte-identical to v0.15.0. The other changes are the
+  version constant and the three version-pin tests (0.14.0 → 0.15.0), its handbook delta and handover.
+- Showcase's own report (rollback, bindings, consumer tests) is not repeated here.
