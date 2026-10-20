@@ -233,9 +233,9 @@ Ported tests:
 
 | Library file | Source | Changes |
 |---|---|---|
-| `agent_harness/verification_contract.py` | `verification_contract.py` (last changed `486309b`): `VALID_REQUIREMENT`, `VALID_ORIGINS`, `VALID_SOURCE_TYPES`, `die`, `sha`, `load_json`, `requirement`, `input_hashes`, `validate_contract`, `criterion_ids` | **[seam]** `input_hashes(..., repo_root=, repository=, constitution=)` and `validate_contract(..., repo_root=, repository=, constitution=, is_active=)`: the source used its own `repo_root()`, `REPO`, the path `docs/agentic-sdd/constitution.md` and `is_active_feature_dir`. No other change. |
+| `agent_harness/verification_contract.py` | `verification_contract.py` (last changed `486309b`): `VALID_REQUIREMENT`, `VALID_ORIGINS`, `VALID_SOURCE_TYPES`, `die`, `sha`, `load_json`, `requirement`, `input_hashes`, `validate_contract`, `criterion_ids` | **[seam]** `input_hashes(..., repo_root=, repository=, constitution=)` and `validate_contract(..., repo_root=, repository=, constitution=, is_active=)`: the source used its own `repo_root()`, `REPO`, the path `docs/agentic-sdd/constitution.md` and `is_active_feature_dir`. Otherwise: the local `constitution` renamed `constitution_path`, and the library's module docstring and imports. |
 
 - Showcase's shim is its own file: the moved definitions are replaced by bindings, looked up per call; `repo_root`,
   `is_active_feature_dir`, `prompt`, `provider_args`, `generate` and `main` are unchanged. Mode 100755, as the source.
-- Ported tests: `test_verification_contract`, the source's 4 plus 2 seam tests and 7 rule tests. Showcase's own 4 pass
-  through the shim. No removals.
+- Ported tests: `test_verification_contract`, the source's 4 plus 12 added (5 seam and staleness, 7 rule tests).
+  Showcase's own 4 pass through the shim. No removals.

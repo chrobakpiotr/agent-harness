@@ -63,7 +63,6 @@ def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None)
                                    constitution=CONSTITUTION, is_active=lambda path: is_active_feature_dir(path))
 
 
-
 def prompt(feature_dir: pathlib.Path, worktree: pathlib.Path) -> str:
     root = repo_root()
     rel = feature_dir.resolve().relative_to(root)

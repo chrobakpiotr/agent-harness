@@ -1,7 +1,7 @@
 """Ported from Showcase `tooling/agent-harness/tests/test_verification_contract.py` at `fd96eeb` (AH5-13).
 
 The four source tests set the module's `REPO`; here the bindings are explicit. The other tests cover the seams and
-each validation rule the source tests left unchecked.
+further validation rules; the packet lists the mutations they catch, a selection and not an exhaustive list.
 """
 import json
 import pathlib
@@ -88,7 +88,7 @@ class VerificationContractTest(unittest.TestCase):
         self.assertEqual(vc.sha(self.root / 'rules.md'), moved['constitution_sha256'])
 
     def test_a_changed_constitution_or_design_record_makes_the_contract_stale(self):
-        for name in (CONSTITUTION, 'docs/specs/VC-TEST-001/design/gate.json'):
+        for name in (CONSTITUTION, 'docs/specs/VC-TEST-001/spec.md', 'docs/specs/VC-TEST-001/design/gate.json'):
             with self.subTest(name):
                 self.write(self.contract())
                 original = (self.root / name).read_text()
@@ -102,6 +102,20 @@ class VerificationContractTest(unittest.TestCase):
         self.assertIn('verification contract is stale: inputs.master_closure_sha256 does not match current artifact',
                       self.validate())
 
+    def test_missing_or_empty_inputs_are_stale(self):
+        for inputs in ({}, None):
+            with self.subTest(inputs=inputs):
+                doc = self.contract()
+                if inputs is None:
+                    del doc['inputs']
+                else:
+                    doc['inputs'] = inputs
+                self.write(doc)
+                errors = self.validate()
+                for key in ('spec_sha256', 'plan_sha256', 'constitution_sha256', 'design_gate_sha256'):
+                    self.assertIn(f'verification contract is stale: inputs.{key} does not match current artifact',
+                                  errors)
+
     def test_an_unreadable_input_skips_the_staleness_check_only(self):
         """As the source: an input that cannot be hashed is not reported stale; the other rules still apply."""
         self.write(self.contract())
@@ -113,11 +127,16 @@ class VerificationContractTest(unittest.TestCase):
         self.assertIn('missing required verification-contract.json', self.validate(is_active=lambda p: False,
                                                                                    require=True))
         self.assertEqual([], self.validate(require=False))
+        doc = self.contract()  # only a required contract needs an independent criterion
+        doc['criteria'][0]['origin'] = 'spec-derived'
+        self.write(doc)
+        self.assertEqual([], self.validate(require=False))
+        (self.feature / 'verification-contract.json').unlink()
         seen = []
         self.validate(is_active=lambda p: seen.append(p) or True)
         self.assertEqual([self.feature], seen)
 
-    # -- rules the source tests left unchecked --
+    # -- further rules --
 
     def test_document_level_rules(self):
         cases = {
@@ -165,8 +184,8 @@ class VerificationContractTest(unittest.TestCase):
                 self.assertIn(message, self.validate())
 
     def test_exemptions_need_a_unique_id_a_final_status_and_a_human_approver(self):
-        def exemption(**fields):
-            return {'id': 'VX-001', 'status': 'rejected', **fields}
+        def exemption(**fields):  # the schema's fields: id, scope, reason, status, approved_by
+            return {'id': 'VX-001', 'scope': 'load', 'reason': 'expensive', 'status': 'rejected', **fields}
         cases = {
             'exemptions[0] must be an object': ['x'],
             'exemptions[0].id must be a unique VX-* id': [exemption(id='X-1')],
@@ -182,11 +201,25 @@ class VerificationContractTest(unittest.TestCase):
                 doc['exemptions'] = exemptions
                 self.write(doc)
                 self.assertIn(message, self.validate())
-        for approver in ('human', 'human:alice'):
+        for fields in ({'status': 'accepted', 'approved_by': 'human'}, {'status': 'accepted', 'approved_by': 'human:alice'},
+                       {'status': 'rejected'}):  # a rejected exemption needs no approver
             doc = self.contract()
-            doc['exemptions'] = [exemption(status='accepted', approved_by=approver)]
+            doc['exemptions'] = [exemption(**fields)]
             self.write(doc)
             self.assertEqual([], self.validate())
+
+    def test_criterion_ids_keep_only_string_ids(self):
+        doc = self.contract()
+        doc['criteria'] += [{'id': 7}, 'x', {'statement': 'no id'}]
+        self.write(doc)
+        self.assertEqual({'VC-001'}, vc.criterion_ids(self.feature))
+
+    def test_die_exits_with_code_2(self):
+        import contextlib
+        import io
+        with contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as raised:
+            vc.die('bad')
+        self.assertEqual((2, 'ERROR: bad\n'), (raised.exception.code, err.getvalue()))
 
     def test_requirement_defaults_to_optional(self):
         (self.feature / 'design.json').unlink()
