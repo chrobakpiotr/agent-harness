@@ -219,6 +219,25 @@ class WrapperBindingTest(unittest.TestCase):
             runner.project_task_result_schema({}, 'codex', 'v')
         self.assertIs(runner.TASK_RESULT_PROJECTION_PROFILES, project.call_args.kwargs['profiles'])
 
+    def test_verification_contract_binds_showcase_layout_and_patches_reach_it(self):
+        import verification_contract as vc
+
+        from agent_harness import verification_contract as library_vc
+        with mock.patch.object(library_vc, 'validate_contract', return_value=['x']) as validate:
+            self.assertEqual(['x'], vc.validate_contract(HARNESS, require=True))
+            kwargs = validate.call_args.kwargs
+            with mock.patch.object(vc, 'REPO', HARNESS / 'elsewhere'):  # Showcase's tests patch REPO: per call
+                vc.validate_contract(HARNESS)
+            self.assertEqual(HARNESS / 'elsewhere', validate.call_args.kwargs['repository'])
+        self.assertEqual((True, 'docs/agentic-sdd/constitution.md'), (kwargs['require'], kwargs['constitution']))
+        self.assertEqual(vc.REPO, kwargs['repository'])
+        self.assertFalse(kwargs['is_active'](HARNESS))  # Showcase's docs/specs layout
+        self.assertTrue(kwargs['is_active'](HARNESS.parents[1] / 'docs' / 'specs' / 'X'))
+        with mock.patch.object(vc, 'repo_root', return_value=HARNESS) as root:
+            self.assertEqual(HARNESS, kwargs['repo_root']())
+        root.assert_called_once_with()
+        self.assertIs(library_vc.criterion_ids, vc.criterion_ids)
+
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],
                              capture_output=True, text=True, check=True).stdout

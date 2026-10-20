@@ -228,3 +228,14 @@ Ported tests:
   namespace binds the checks the way the shim does, with fixture data: `fixtures/task-runner` holds Showcase's
   `task-result.schema.json`; its projection profiles are test constants. Of the other 11, 8 test the provider launch and move with AH5-12b. 3 (`render_prompt` and context trust) test Showcase's prompt policy and stay in Showcase permanently.
 - Showcase's `test_runner` passes 27/27 through the shim. No removals.
+
+## AH5-13 — verification-contract validation (Showcase `fd96eeb`, 2026-10-20)
+
+| Library file | Source | Changes |
+|---|---|---|
+| `agent_harness/verification_contract.py` | `verification_contract.py` (last changed `486309b`): `VALID_REQUIREMENT`, `VALID_ORIGINS`, `VALID_SOURCE_TYPES`, `die`, `sha`, `load_json`, `requirement`, `input_hashes`, `validate_contract`, `criterion_ids` | **[seam]** `input_hashes(..., repo_root=, repository=, constitution=)` and `validate_contract(..., repo_root=, repository=, constitution=, is_active=)`: the source used its own `repo_root()`, `REPO`, the path `docs/agentic-sdd/constitution.md` and `is_active_feature_dir`. No other change. |
+
+- Showcase's shim is its own file: the moved definitions are replaced by bindings, looked up per call; `repo_root`,
+  `is_active_feature_dir`, `prompt`, `provider_args`, `generate` and `main` are unchanged. Mode 100755, as the source.
+- Ported tests: `test_verification_contract`, the source's 4 plus 2 seam tests and 7 rule tests. Showcase's own 4 pass
+  through the shim. No removals.

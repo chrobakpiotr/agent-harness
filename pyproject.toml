@@ -52,6 +52,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "migration/showcase-wrapper/verify.py" = ["EXE001"]
 # Showcase's runner.py: verbatim apart from the AH5-12a bindings; its imports serve the launch kept until 12b.
 "migration/showcase-wrapper/runner.py" = ["F401", "I001", "RUF100", "UP017"]
+# Showcase's verification_contract.py: verbatim apart from the AH5-13 bindings; its imports serve generate.
+"migration/showcase-wrapper/verification_contract.py" = ["F401", "RUF100"]
 # Ported Showcase tests: only imports and seams changed (provenance.md).
 "tests/test_verification_authority.py" = ["C408", "I001", "SIM117"]
 "tests/test_executables.py" = ["SIM117"]
