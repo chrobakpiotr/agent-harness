@@ -95,7 +95,8 @@ amendments.
 - The shim changes `verification_contract.py`'s content, which is one of Showcase's protocol-fingerprint inputs
   (`harness.py`); the cutover changes that fingerprint, as earlier cutovers did. The moved logic stays covered:
   `requirements.txt`, which pins the library, is a fingerprint input too (`harness.py:231`).
-- **Kept verbatim, recorded for a later rules decision (no rule changes in AH5-13):**
+- **Kept verbatim, recorded for a later rules decision (no rule changes in AH5-13);** the register with trigger,
+  behaviour, effect and proposed change is `findings-2026-10-20.md`:
   - **Fail-open staleness:** if an input cannot be hashed (`OSError`, or `repo_root` dies), the whole staleness
     check is skipped and the contract can pass (`test_an_unreadable_input_skips_the_staleness_check_only` pins the
     source's behaviour). It conflicts in spirit with the plan's fail-closed rule.
