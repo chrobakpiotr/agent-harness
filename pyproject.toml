@@ -41,6 +41,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "src/agent_harness/state_snapshots.py" = ["SIM102", "TRY203", "UP017", "UP022"]
 # Verbatim from harness.py (AH5-14a): `validate_loaded_state` keeps the source's unused `expected`.
 "src/agent_harness/feature_state.py" = ["F841"]
+# Verbatim from harness.py (AH5-14b-1): `initial_state` keeps the source's `dt.timezone.utc`.
+"src/agent_harness/feature_access.py" = ["UP017"]
 # Verbatim executor: its per-gate callbacks run synchronously inside their own loop iteration.
 "src/agent_harness/verification/executor.py" = ["B023"]
 "src/agent_harness/sandbox.py" = ["BLE001", "SIM102", "TRY004", "UP037"]
