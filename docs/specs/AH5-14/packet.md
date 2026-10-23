@@ -124,3 +124,42 @@ rehearsal and the evaluation (below); each has a library test.
   `test_packet_identity_bridge` and `test_cutover_wrapper` pass through the shim. `test_harness`, one test per
   process through the shim at `b086960`: 255/255 pass. Three needed the candidate installed (they start `harness.py`
   in a subprocess, which loads the installed library, not the source tree): with `b086960` installed they pass too.
+
+## AH5-14b — boundaries and dependencies (recorded before any code, 2026-10-23)
+
+Authorised by master (2026-10-23): lifecycle transitions. Source: Showcase `harness.py` at `3649784` (unchanged
+since `fd96eeb`). Method: the same call graph as 14a, from each transition's command.
+
+**Every lifecycle transition runs on one base.** `cmd_claim`, `heartbeat`/`cmd_heartbeat`, `recover_stale_leases`,
+`cmd_release`, `cmd_fail`, `cmd_complete`, `cmd_start`, `cmd_replan_task`, `cmd_reopen`, `cmd_reconcile_feature` and
+`ready_ids` all read or mutate state through `locked_state` (lock, load, write) or `_read_state_unlocked_pure`
+(read). That base is about 530 lines:
+
+| Group | Functions | Depends on |
+|---|---|---|
+| Lock and load | `locked_state`, `lifecycle_state_lock`, `_load_state_unlocked`, `_resolve_state_unlocked`, `initial_state`, `_read_state_unlocked_pure`, `fail_on_verification_store_error` | 14a (`save_state`, `state_path`, `lock_path`, `validate_loaded_state`); the two groups below |
+| Completion-record readers (read only) | `completion_records`, `repaired_completion_records`, `read_completion_authority`, `validate_completion_authority_shape`, `legacy_completion_bindings`, `validate_legacy_binding_shape`, `legacy_binding_as_completion`, `completion_authority_dir`, `completion_record_id`, `legacy_completion_binding_id`, `canonical_json_sha256`, `safe_task_id`, `_valid_completion_*` | none outside this table |
+| Recovery checks on load | `recover_prepared_state_locked` and `state_snapshot_status` (the library's `state_snapshots`); `state_recovery_required` and `state_recovery_incident` | `state_recovery_required` reads Showcase's own incident history and recovery epochs (`state_recovery`, which stays Showcase-owned), with Showcase specifics such as `max_rework_attempts == 2` |
+
+**Consequence.** The transitions cannot move first, as the plan's order (14b before 14d) assumes. Moved alone, they
+would call back into Showcase for locking, loading and the recovery check, and a shared integrity rule (refuse
+lifecycle access while recovery is required) would stay on the consumer side, which plan rule 6 forbids. By the
+plan's own rule, a part that cannot be cut without a behaviour change is split differently.
+
+**Proposed split, for master's confirmation before implementation:**
+
+- **14b-1, state access.** Move the lock-and-load group, the completion-record readers and the generic recovery
+  checks verbatim. `state_recovery_required` splits along its own first line: the library keeps the snapshot check
+  (`invalid`, `state-missing`, `state-mismatch` → recovery required), and the incident and recovery-epoch part
+  becomes a **required consumer hook** `recovery_required(feature_dir, snapshot_status) -> bool`. It is called
+  exactly where the source calls `state_recovery_required`, and **it can only refuse**: `True` blocks access, `False`
+  leaves the library's own checks in force. It can never mark state as recovered or skip a library check.
+  Same order of validation, locking and writing, same errors; `save_state` stays the single writer.
+- **14b-2, transitions.** Then claim, heartbeat, release, fail, complete, replan, reconcile, ready and reopen, with
+  their CAS and generation guards, on top of 14b-1. They also need packets and worktrees (`write_packet`,
+  `resolve_active_packet`, `prepare_task_worktree`, …), mapped in 14b-2's own boundaries.
+- **Not moved:** recovery operations (`cmd_recover_state`, `cmd_restore_state`, `cmd_discard_prepared_snapshot`,
+  claim recovery) stay for 14d; admission (`admit_verification_execution`, `consume_verification_launch`,
+  `terminalize_verification_execution`, the resume validators) for 14c, which stays blocked until F1 is resolved.
+
+Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at the time of writing).
