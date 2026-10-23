@@ -239,3 +239,27 @@ Ported tests:
   `is_active_feature_dir`, `prompt`, `provider_args`, `generate` and `main` are unchanged. Mode 100755, as the source.
 - Ported tests: `test_verification_contract`, the source's 4 plus 12 added (5 seam and staleness, 7 rule tests).
   Showcase's own 4 pass through the shim. No removals.
+
+## AH5-14a — feature documents and state paths, identity and writer (Showcase `fd96eeb`, 2026-10-23)
+
+`harness.py` is unchanged at Showcase `3649784` (the 0.15.0 adoption), so the source is the same at both commits.
+
+| Library file | Source (`harness.py`) | Changes |
+|---|---|---|
+| `agent_harness/feature.py` | `die`, `load_json`, `feature_files`, `task_index`, `repo_root`, `sha256_bytes`, `feature_fingerprint`, `protocol_fingerprint`, `protocol_version`, `safe_relative_pattern`, `builder_pattern_has_concrete_root`, `pattern_static_prefix`, `patterns_may_overlap`, `transitive_dependencies`, `design_gate_errors`, `master_implementation_closure_errors`, `validate`, `load_validated`; the constants `VALID_ROLES`, `FEATURE_ID_RE`, `TASK_ID_RE`, `PROFILE_RE`, `AC_RE`, `DEFAULT_LEASE_TTL_SECONDS`, `DEFAULT_HEARTBEAT_INTERVAL_SECONDS`, `VALID_TEST_POLICIES`, `VALID_TEST_MODES`, `STATE_SCHEMA_VERSION` | **[seam]** a required `FeaturePolicy` (frozen dataclass, no defaults). Hunks: `protocol_fingerprint(..., policy=)` uses `policy.repo_base` and `policy.protocol_files` for `feature_repo_base`/`protocol_files`; `design_gate_errors(..., policy=)` uses `policy.is_active` for `is_active_feature_dir`; `validate(..., policy=)` uses `policy.validate_contract`/`policy.criterion_ids` for `vc.*`, `policy.reviewers` for `reviewers`, and `policy.profile_path(policy.repo_base(...), profile)` for `feature_repo_base(...) / 'docs' / 'agentic-sdd' / 'agents' / f'{profile}.md'`; the inner `design_gate_errors(...)` call passes the policy; `load_validated(..., policy=)`. |
+| `agent_harness/feature_state.py` | `state_key`, `git_common_dir`, `runtime_state_dir`, `state_path`, `lock_path`, `legacy_state_name`, `main_legacy_state_path`, `validate_state_identity`, `validate_loaded_state`, `save_state` | **[seam]** `policy=` on every function: `policy.repo_base` for `feature_repo_base`, `policy.state_dir` for `STATE_DIR`, `policy.legacy_feature_path(root, name)` for `root / 'docs' / 'specs' / name`. **[binding]** parameters through which the consumer passes the module names its tests patch: `common_dir=` (its `git_common_dir`; `state_key`, `runtime_state_dir`, `state_path`, `legacy_state_name`, `main_legacy_state_path`, `save_state`), `locking=` (its `fcntl`; `lock_path`), `fingerprint=` (its `feature_fingerprint`; the two identity checks), `fault_injector=` (its `_state_snapshot_fault_injector`; `save_state`). |
+
+- **Kept verbatim on purpose (Showcase-origin literals, recorded rather than bound):** `main_legacy_state_path` reads
+  the historical location `<root>/.agent-state` (the old main-checkout file, independent of `state_dir`);
+  `safe_relative_pattern` refuses the roots `.git`, `.agent-state`, `.agent-runs`; a `design_gate_errors` message
+  names `tooling/agent-harness/design.py`. Binding them is a behaviour decision for a later packet.
+- **Binding parameters with defaults:** `common_dir=None` (the library's own `git_common_dir`), `locking=fcntl`,
+  `fingerprint=feature_fingerprint`, `fault_injector=None`. They are platform defaults, not policy; a consumer whose
+  tests patch its own names must pass them, as Showcase's shim does (the rehearsal found the missing `locking=`).
+- The unused `expected` in `validate_loaded_state` and its second task-set check (already enforced by
+  `validate_state_identity`) are the source's, kept verbatim.
+- Showcase's shim is its own `harness.py`: the moved definitions are replaced by aliases and wrappers with the
+  original signatures; `_policy()` is built per call from its module names. Everything else is byte-identical. Mode
+  100755, as the source.
+- Ported tests: `test_feature`, 11 `HarnessTest` validation tests unchanged apart from the policy, plus 20 seam,
+  guard and state-equivalence tests. Showcase's suites run through the shim. No removals.

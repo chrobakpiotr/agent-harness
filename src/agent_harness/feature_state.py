@@ -28,8 +28,8 @@ except ImportError:  # pragma: no cover - lifecycle authority requires cross-pro
     fcntl = None
 
 
-def state_key(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> str:
-    return sha256_bytes(f'{git_common_dir(feature_dir, policy=policy)}\0{feature_dir.name}'.encode())[:20]
+def state_key(feature_dir: pathlib.Path, *, policy: FeaturePolicy, common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> str:
+    return sha256_bytes(f'{_common(feature_dir, policy, common_dir)}\0{feature_dir.name}'.encode())[:20]
 
 
 def git_common_dir(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.Path:
@@ -46,17 +46,24 @@ def git_common_dir(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathl
     return common
 
 
-def runtime_state_dir(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.Path:
+def runtime_state_dir(feature_dir: pathlib.Path, *, policy: FeaturePolicy, common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> pathlib.Path:
     if policy.state_dir.is_absolute():
         return policy.state_dir
     # Store lifecycle state next to the common Git directory so all linked worktrees
     # resolve the same location while preserving <main-checkout>/.agent-state.
-    common = git_common_dir(feature_dir, policy=policy)
+    common = _common(feature_dir, policy, common_dir)
     return common.parent / policy.state_dir
 
 
-def state_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.Path:
-    return runtime_state_dir(feature_dir, policy=policy) / f'{feature_dir.name}-{state_key(feature_dir, policy=policy)}.json'
+def state_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy, common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> pathlib.Path:
+    return (runtime_state_dir(feature_dir, policy=policy, common_dir=common_dir)
+            / f'{feature_dir.name}-{state_key(feature_dir, policy=policy, common_dir=common_dir)}.json')
+
+
+def _common(feature_dir: pathlib.Path, policy: FeaturePolicy,
+            common_dir: Callable[[pathlib.Path], pathlib.Path] | None) -> pathlib.Path:
+    """The common Git directory through the consumer's binding when it passes one (its tests patch it)."""
+    return common_dir(feature_dir) if common_dir is not None else git_common_dir(feature_dir, policy=policy)
 
 
 def lock_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy, locking: Any = fcntl) -> pathlib.Path:
@@ -67,18 +74,18 @@ def lock_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy, locking: Any 
     return state_snapshots.lifecycle_lock_path(policy.repo_base(feature_dir))
 
 
-def legacy_state_name(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> str:
+def legacy_state_name(feature_dir: pathlib.Path, *, policy: FeaturePolicy, common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> str:
     # Historical key: SHA-256 of the main checkout's resolved feature path.
-    repo_root = git_common_dir(feature_dir, policy=policy).parent
+    repo_root = _common(feature_dir, policy, common_dir).parent
     main_feature = policy.legacy_feature_path(repo_root, feature_dir.name)
     name = f'{feature_dir.name}-{sha256_bytes(str(main_feature.resolve()).encode())[:20]}.json'
     return name
 
 
-def main_legacy_state_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy) -> pathlib.Path:
+def main_legacy_state_path(feature_dir: pathlib.Path, *, policy: FeaturePolicy, common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> pathlib.Path:
     """Old main-checkout file; the only legacy snapshot safe to adopt automatically."""
-    root = git_common_dir(feature_dir, policy=policy).parent
-    return root / '.agent-state' / legacy_state_name(feature_dir, policy=policy)
+    root = _common(feature_dir, policy, common_dir).parent
+    return root / '.agent-state' / legacy_state_name(feature_dir, policy=policy, common_dir=common_dir)
 
 
 def validate_state_identity(feature_dir: pathlib.Path, doc: dict[str, Any], state: dict[str, Any], *,
@@ -120,13 +127,14 @@ def validate_loaded_state(feature_dir: pathlib.Path, doc: dict[str, Any], state:
 def save_state(feature_dir: pathlib.Path, state: dict[str, Any], *,
                additional_files: dict[str, tuple[bytes, int]] | None = None,
                remove_files: set[str] | None = None, policy: FeaturePolicy,
-               fault_injector: Callable[..., Any] | None = None) -> None:
+               fault_injector: Callable[..., Any] | None = None,
+               common_dir: Callable[[pathlib.Path], pathlib.Path] | None = None) -> None:
     """Write a complete authority snapshot before atomically replacing state.
 
     Lifecycle callers hold the shared repository lock for the whole mutation.
     """
-    state_dir = runtime_state_dir(feature_dir, policy=policy)
-    path = state_path(feature_dir, policy=policy)
+    state_dir = runtime_state_dir(feature_dir, policy=policy, common_dir=common_dir)
+    path = state_path(feature_dir, policy=policy, common_dir=common_dir)
     try:
         payload = json.dumps(state, indent=2, sort_keys=True, allow_nan=False).encode('utf-8') + b'\n'
         state_snapshots.commit_state_snapshot(

@@ -280,7 +280,7 @@ def validate(feature_dir: pathlib.Path) -> list[str]:
 
 
 def state_key(feature_dir: pathlib.Path) -> str:
-    return _state.state_key(feature_dir, policy=_policy())
+    return _state.state_key(feature_dir, policy=_policy(), common_dir=lambda path: git_common_dir(path))
 
 
 def git_common_dir(feature_dir: pathlib.Path) -> pathlib.Path:
@@ -289,11 +289,11 @@ def git_common_dir(feature_dir: pathlib.Path) -> pathlib.Path:
 
 
 def runtime_state_dir(feature_dir: pathlib.Path) -> pathlib.Path:
-    return _state.runtime_state_dir(feature_dir, policy=_policy())
+    return _state.runtime_state_dir(feature_dir, policy=_policy(), common_dir=lambda path: git_common_dir(path))
 
 
 def state_path(feature_dir: pathlib.Path) -> pathlib.Path:
-    return _state.state_path(feature_dir, policy=_policy())
+    return _state.state_path(feature_dir, policy=_policy(), common_dir=lambda path: git_common_dir(path))
 
 
 def lock_path(feature_dir: pathlib.Path) -> pathlib.Path:
@@ -1427,12 +1427,12 @@ def terminalize_verification_execution(repository: pathlib.Path, terminal: dict,
 
 
 def legacy_state_name(feature_dir: pathlib.Path) -> str:
-    return _state.legacy_state_name(feature_dir, policy=_policy())
+    return _state.legacy_state_name(feature_dir, policy=_policy(), common_dir=lambda path: git_common_dir(path))
 
 
 def main_legacy_state_path(feature_dir: pathlib.Path) -> pathlib.Path:
     """Old main-checkout file; the only legacy snapshot safe to adopt automatically."""
-    return _state.main_legacy_state_path(feature_dir, policy=_policy())
+    return _state.main_legacy_state_path(feature_dir, policy=_policy(), common_dir=lambda path: git_common_dir(path))
 
 
 def save_state(feature_dir: pathlib.Path, state: dict[str, Any], *,
@@ -1443,7 +1443,8 @@ def save_state(feature_dir: pathlib.Path, state: dict[str, Any], *,
     Lifecycle callers hold the shared repository lock for the whole mutation.
     """
     _state.save_state(feature_dir, state, additional_files=additional_files, remove_files=remove_files,
-                      policy=_policy(), fault_injector=_state_snapshot_fault_injector)
+                      policy=_policy(), fault_injector=_state_snapshot_fault_injector,
+                      common_dir=lambda path: git_common_dir(path))
 
 
 def completion_authority_dir(feature_dir: pathlib.Path, kind: str, task_id: str) -> pathlib.Path:

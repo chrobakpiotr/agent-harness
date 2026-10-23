@@ -289,6 +289,96 @@ class FeaturePolicySeamTest(FeatureCase):
         self.assertNotEqual(first, f.feature_fingerprint(feature))
 
 
+class FeatureGuardTest(FeatureCase):
+    """Each refusal the moved validation makes, tested in the library (evaluation amendment)."""
+
+    def tasks_doc(self, feature):
+        return json.loads((feature / 'tasks.json').read_text())
+
+    def write_tasks(self, feature, doc):
+        (feature / 'tasks.json').write_text(json.dumps(doc))
+
+    def design(self, feature, **gate):
+        (feature / 'design.json').write_text(json.dumps({'required_for_orchestration': True}))
+        (feature / 'design').mkdir(exist_ok=True)
+        sha = lambda name: f.sha256_bytes((feature / name).read_bytes())
+        record = {'schema_version': 1, 'feature': 'TST-001', 'decision': 'pass', 'spec_sha256': sha('spec.md'),
+                  'plan_sha256': sha('plan.md'), 'design_config_sha256': sha('design.json'),
+                  'stages': {s: {'status': 'pass'} for s in ('spec_grill', 'prototype', 'architecture_grill')}}
+        (feature / 'design' / 'gate.json').write_text(json.dumps({**record, **gate}))
+
+    def test_the_design_gate_decision_must_be_pass(self):
+        feature = self.feature()
+        self.design(feature)
+        self.assertEqual([], self.validate(feature))
+        self.design(feature, decision='fail')
+        self.assertIn('design/gate.json decision must be pass', self.validate(feature))
+
+    def test_a_valid_master_closure_replaces_a_non_passing_gate(self):
+        feature = self.feature()
+        self.design(feature, decision='fail')
+        sha = lambda name: f.sha256_bytes((feature / name).read_bytes())
+        closure = {'schema_version': 1, 'feature': 'TST-001', 'authority': 'master-closure',
+                   'status': 'implementation-authorized', 'canonical_design_gate': 'not-pass', 'authority_runs': 16,
+                   'inputs': {'spec_sha256': sha('spec.md'), 'plan_sha256': sha('plan.md'),
+                              'design_config_sha256': sha('design.json')},
+                   'verification_contract_authorized': True, 'commit_authorized': True}
+        (feature / 'design' / 'master-closure.json').write_text(json.dumps(closure))
+        self.assertEqual([], self.validate(feature))
+        (feature / 'design' / 'master-closure.json').write_text(json.dumps({**closure, 'commit_authorized': False}))
+        errors = self.validate(feature)
+        self.assertIn('design/gate.json decision must be pass', errors)
+        self.assertIn('master implementation closure must authorize coherent implementation commits', errors)
+
+    def test_builders_need_an_evaluator_and_integrations_depend_on_one(self):
+        feature = self.feature()
+        doc = self.tasks_doc(feature)
+        doc['tasks'] = doc['tasks'][:1]
+        self.write_tasks(feature, doc)
+        self.assertIn('at least one evaluator task is required when builder tasks exist', self.validate(feature))
+        doc = self.tasks_doc(self.feature(root=self.root / 'second'))
+        feature = self.root / 'second' / 'docs' / 'specs' / 'TST-001'
+        doc['tasks'].append({'id': 'T-950', 'title': 'Integrate', 'objective': 'Merge it', 'role': 'integration',
+                             'depends_on': ['T-001'], 'allowed_paths': ['docs/**'], 'risk_tags': [],
+                             'acceptance_criteria': ['AC-001'], 'verification': ['true']})
+        self.write_tasks(feature, doc)
+        self.assertIn('integration task T-950 must depend on an evaluator', self.validate(feature))
+
+    def test_the_heartbeat_must_be_under_half_the_lease(self):
+        feature = self.feature()
+        doc = self.tasks_doc(feature)
+        doc['lease_ttl_seconds'] = 120
+        doc['heartbeat_interval_seconds'] = 59
+        self.write_tasks(feature, doc)
+        self.assertEqual([], self.validate(feature))
+        doc['heartbeat_interval_seconds'] = 60
+        self.write_tasks(feature, doc)
+        self.assertTrue(any('less than half' in e for e in self.validate(feature)))
+
+    def test_an_exact_path_inside_another_builders_glob_collides(self):
+        self.assertTrue(f.patterns_may_overlap('modules/domain/Order.java', 'modules/domain/**'))
+        self.assertTrue(f.patterns_may_overlap('modules/domain/**', 'modules/domain/Order.java'))
+        self.assertFalse(f.patterns_may_overlap('modules/web/App.java', 'modules/domain/**'))
+
+    def test_state_and_run_directories_are_never_allowed_paths(self):
+        for root in ('.git', '.agent-state', '.agent-runs'):
+            self.assertFalse(f.safe_relative_pattern(f'{root}/x/**'), root)
+        self.assertTrue(f.safe_relative_pattern('docs/x/**'))
+
+    def test_the_agent_profile_name_is_checked(self):
+        feature = self.feature()
+        doc = self.tasks_doc(feature)
+        doc['tasks'][0]['agent_profile'] = 'Not A Profile'
+        self.write_tasks(feature, doc)
+        self.assertTrue(any('agent_profile' in e for e in self.validate(feature)))
+
+    def test_the_handoff_record_is_part_of_the_feature_fingerprint(self):
+        feature = self.feature()
+        first = f.feature_fingerprint(feature)
+        (feature / 'wayfinder-handoff.json').write_text('{}')
+        self.assertNotEqual(first, f.feature_fingerprint(feature))
+
+
 class FeatureStateTest(FeatureCase):
     def test_state_lives_beside_the_common_git_directory_under_its_key(self):
         feature = self.feature()
@@ -324,6 +414,27 @@ class FeatureStateTest(FeatureCase):
                         capture_output=True)
         other = linked / 'docs' / 'specs' / 'TST-001'
         self.assertEqual(fs.state_path(feature, policy=self.policy), fs.state_path(other, policy=self.policy))
+
+    def test_a_missing_common_directory_is_refused(self):
+        feature = self.feature()
+        outside = self.root.parent / f'{self.root.name}-not-a-repo'
+        outside.mkdir()
+        self.addCleanup(outside.rmdir)
+        elsewhere = dataclasses.replace(self.policy, repo_base=lambda path: outside)
+        code, err = refused(lambda: fs.git_common_dir(feature, policy=elsewhere))
+        self.assertEqual(2, code)
+        self.assertIn('cannot resolve the common Git directory for lifecycle state', err)
+
+    def test_the_consumer_common_directory_binding_reaches_every_state_path(self):
+        """Showcase's tests patch its `git_common_dir`; the bound callable is what the state functions use."""
+        feature = self.feature()
+        other = self.root / 'other'
+        other.mkdir()
+        bound = {'policy': self.policy, 'common_dir': lambda path: other / '.git'}
+        self.assertEqual(other / '.agent-state', fs.runtime_state_dir(feature, **bound))
+        self.assertTrue(fs.state_path(feature, **bound).is_relative_to(other / '.agent-state'))
+        self.assertNotEqual(fs.state_key(feature, policy=self.policy), fs.state_key(feature, **bound))
+        self.assertTrue(fs.main_legacy_state_path(feature, **bound).is_relative_to(other))
 
     def test_identity_and_version_refusals(self):
         feature = self.feature()

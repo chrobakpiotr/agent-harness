@@ -1,7 +1,7 @@
 # AH5-14 — Move `harness.py` in parts; AH5-14a: document and state I/O
 
-- Status: **AH5-14a design** (authorised by master, 2026-10-20); implementation follows on branch
-  `ah5-14a-document-state-io`. 14b–e are later packets.
+- Status: **AH5-14a implemented** on branch `ah5-14a-document-state-io`; rehearsed against Showcase's 0.15.0
+  adoption and evaluated (pass with amendments, applied). Release on the owner's order. 14b–e are later packets.
 - Source: Showcase `tooling/agent-harness/harness.py` at `fd96eeb` (7,314 lines, 222 functions). The rehearsal runs
   on Showcase's confirmed state after its 0.15.0 adoption; until that commit is reported, no claim is made about
   compatibility with the new consumer state.
@@ -59,11 +59,12 @@ directories), `reviewers` with `RISK_TO_REVIEWERS`, the agent-profile location `
 | `legacy_feature_path(root, name)` | where the historical state key's feature lived | `root / 'docs' / 'specs' / name` |
 
 The shim builds the policy **per call** from its module names, so a Showcase test that patches `harness.STATE_DIR`
-(15 sites), `harness.feature_fingerprint`, `harness.protocol_fingerprint`, `harness.git_common_dir`,
-`harness.save_state`, `harness.load_validated` or `harness._state_snapshot_fault_injector` still reaches the code it
-patches. Moved functions that a Showcase test patches and that another moved function calls get that callee from the
-policy or a parameter, never from a frozen import: `save_state(..., fault_injector=)` takes the injector per call;
-`validate_state_identity`/`validate_loaded_state` call the fingerprint through the shim's binding.
+(15 sites), `harness.protocol_fingerprint`, `harness.save_state` or `harness.load_validated` still reaches the code it
+patches. Where a moved function calls another moved name that a Showcase test patches, the shim passes its own name
+as a parameter, looked up per call: `common_dir=` (`harness.git_common_dir`, for every state path), `locking=`
+(`harness.fcntl`, for the lock guard), `fingerprint=` (`harness.feature_fingerprint`, for the identity checks) and
+`fault_injector=` (`harness._state_snapshot_fault_injector`, for the writer). The first two were found by the
+rehearsal and the evaluation (below); each has a library test.
 
 ## Equivalence criteria (acceptance)
 
@@ -80,10 +81,44 @@ policy or a parameter, never from a frozen import: `save_state(..., fault_inject
 6. **Consumer suites:** Showcase's `test_harness`, `test_verification_lifecycle`, `test_verification_authority`,
    `test_orchestrate`, `test_wayfinder` and the rest pass through the shim; the rehearsal shows no difference beyond the
    expected version-pin tests; rollback restores the previous set.
-7. **Guards kept:** every `die` and refusal in the moved functions is present and tested in the library; nothing that
-   was refused is accepted.
+7. **Guards kept:** every `die` and refusal in the moved functions is present; nothing that was refused is accepted.
+   The library tests the refusals listed in the evaluation record below (a selection checked by mutation, not a
+   claim of full mutation coverage); Showcase's suites cover the rest through the shim.
 
 ## Not in AH5-14a
 
 - No change to the AH5-13 findings (`docs/specs/AH5-13/findings-2026-10-20.md`); F1 is to be decided before 14c.
 - `generate`'s migration onto `AgentCliBackend` is a separate behaviour-change packet.
+
+## AH5-14a evidence (2026-10-20 to 2026-10-23)
+
+- **Equivalence (criteria 3–5), measured:** in one checkout, Showcase's original `harness.py` and the shim give
+  identical `validate()` errors, feature fingerprints, state paths and keys, legacy names and lock paths on all 43
+  features under `docs/specs` (the evaluator re-measured 50 directories, protocol fingerprints and `git_common_dir`
+  included: no difference). Re-checked after the amendments: identical.
+- **Preliminary rehearsal** (library `8518f75`, Showcase `fd96eeb`): CI identical; differences were the expected
+  version-pin tests, the shim's new wrapper test, and **one regression**:
+  `test_lifecycle_state_fails_closed_when_cross_process_lock_is_unavailable`. The lock guard had moved into the
+  library and read its own `fcntl`, so Showcase's test, which removes `harness.fcntl`, no longer reached it. Fixed in
+  `4a3219a` (`locking=`), with a library test.
+- **Final rehearsal** (`rehearsal-14a`, library `4a3219a`, Showcase `36497846b0e23121ff1d094412b23be5eb19c998`, the
+  0.15.0 adoption; `BASE_PINNED=1`, base on Showcase's pin `717f4ba`): **test results identical** (base and
+  wrapped: 921 ok, 2 FAIL, 1 ERROR, the baseline failures); CI 21 commands, exit codes identical, output identical
+  after masking; rollback wrapped → base, base → wrapped and base → base all ok. Host window
+  2026-10-20T11:46:28Z to 2026-10-21T17:32:07Z: the host was suspended for most of it; load 3–8 at the start,
+  about 21 at the end.
+- **Independent evaluation:** pass with amendments at `4a3219a`. Confirmed: verbatim apart from the seams (AST
+  comparison per function), `FeaturePolicy` without defaults, the shim byte-identical otherwise, one writer and the
+  unchanged state format, the `fcntl` fix. Amendments, applied:
+  1. A patched `harness.git_common_dir` did not reach the moved state functions (one Showcase test still refused,
+     for a different reason). Fixed with `common_dir=`; the test refuses with `STATE_RECOVERY_REQUIRED` again, as with
+     the original; a library test covers the binding.
+  2. The provenance entry was missing: added (`docs/migration/provenance.md`).
+  3. 10 refusals survived mutation in the library suite: the design-gate decision, the master-closure fallback, the
+     evaluator requirement, integration depending on an evaluator, the heartbeat bound, an exact path inside a glob,
+     the forbidden roots, the `agent_profile` format, the missing common directory, the handoff record in the
+     fingerprint. Each now has a library test, and each mutation is caught.
+  4. The Showcase-origin literals and 5. the binding defaults are recorded in provenance.
+- **Non-docs difference from the rehearsed `4a3219a`:** `common_dir=` in `feature_state` and the shim, and the
+  added tests. Checked directly: equivalence identical; `test_verification_authority`, `test_replan`,
+  `test_packet_identity_bridge` and `test_cutover_wrapper` pass through the shim; `test_harness` per test (below).
