@@ -183,7 +183,7 @@ class StateAccessTest(AccessCase):
         self.assertEqual(('completed', 1, record['record_id']),
                          tuple(state['tasks']['T-001'][k] for k in ('status', 'attempts', 'completion_record_id')))
         path.write_text(json.dumps({**record, 'task': 'T-900'}))
-        code, err = refused(lambda: fa.completion_records(feature, 'T-001', access=self.access))
+        _code, err = refused(lambda: fa.completion_records(feature, 'T-001', access=self.access))
         self.assertIn('COMPLETION_AUTHORITY_INVALID', err)
         _code, err = refused(lambda: fa.completion_authority_dir(feature, 'elsewhere', 'T-001', access=self.access))
         self.assertIn('unsafe authority path', err)
