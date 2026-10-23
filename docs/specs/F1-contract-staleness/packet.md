@@ -1,6 +1,7 @@
 # F1 — fail-closed verification-contract staleness (behaviour change, for review)
 
-- Status: **design for review**; no implementation before review (master, 2026-10-23). Separate from the verbatim
+- Status: **design for review**, refined after master's points 3–6 (2026-10-23); no implementation before the
+  consistency question below is decided. Separate from the verbatim
   extraction. AH5-14c stays blocked until F1 is decided and verified.
 - Decision (master, 2026-10-23): **fail-closed.** A stale required contract, or one whose currency cannot be
   confirmed, blocks `start` and `complete`. Missing proof of currency is never treated as current.
@@ -25,9 +26,11 @@ For a contract file that exists (`verification-contract.json`), each of these be
 | C4 | the contract records no hash for an input that exists (unchanged: already reported by C1 as a mismatch) | as C1 |
 
 A missing required contract is already refused (`missing required verification-contract.json`, unchanged).
-**Review point R1:** the new errors apply to every existing contract, required or optional, because a present
-contract is already checked for staleness today whatever its requirement. The alternative is to limit C2/C3 to
-required contracts; harness recommends all present contracts (a present but unverifiable contract is not evidence).
+**R1, decided (master, 2026-10-23): every present contract** must be valid, readable and current; a missing required
+contract blocks; a missing optional contract keeps today's policy. **Not being able to establish whether a contract
+is present or current is never treated as an absent optional contract:** an error from the presence check itself
+(for example `verification-contract.json` that exists but cannot be stat'ed or read) is reported as C3, not as
+"absent".
 
 Error text names the input and the error class only, never file content.
 
@@ -74,3 +77,58 @@ because they do not go through `load_validated` (to be confirmed per command in 
    behaviour change.
 4. The measured impact on Showcase's features is recorded and reviewed.
 5. A library release on the owner's order, with a semantic-change note; Showcase adopts it with its usual cutover.
+
+## Consistency between the check and the state change (master point 4)
+
+**What the lifecycle lock protects.** `locked_state` holds the repository verification lock and the lifecycle-state
+lock (`flock` on `lock_path`) across load, the transition and `save_state`. It serialises the harness's own state
+writers: every lifecycle command and the authority publishers inside the transaction.
+
+**It does not cover the writers of the contract or its inputs.** `verification-contract.json` is written by
+Showcase's `verification_contract.py generate` (plain write, then validation, no lock); `design/gate.json` by
+`design.py`; `spec.md`, `plan.md`, the constitution and `design/master-closure.json` by people and agents through Git.
+None of them takes the lifecycle lock. So moving the staleness check under the lock **would not by itself** close the
+window between the check and the state change.
+
+**What already holds today.** Once a feature has state, `validate_loaded_state` (under the lock, before the transition)
+compares the stored feature fingerprint with the current one. It covers `spec.md`, `plan.md`, `tasks.json`,
+`design.json`, `design/gate.json`, `verification-contract.json` and `wayfinder-handoff.json`: a change to any of these
+after the early check refuses the operation under the lock. Not covered: the constitution and
+`design/master-closure.json`, and the very first state (`initial_state` records the fingerprint of whatever it reads
+under the lock, with nothing to compare against).
+
+**Proposed smallest mechanism: bind the transition to the validated inputs.** The early check (`load_validated`)
+records a digest of exactly what it validated: the contract bytes and every input hash it compared (spec, plan,
+constitution, gate, closure). Under the lock, at lock entry and before the transition runs any side effect, the
+library recomputes that digest; a difference refuses with `verification contract inputs changed during the
+operation; retry` and nothing is written. Retrying is an ordinary call.
+
+**Guarantee boundary, stated explicitly.** The state change is based on inputs that were re-observed under the lock
+immediately before the transition. Because the writers do not take the lock, a write landing after that
+re-observation is **not prevented**; it is detected by the next operation (the fingerprint or the staleness check).
+This packet does not claim the race is removed. Making the writers take the lock (generate, design, and human Git
+edits) is outside the harness's control and not proposed.
+
+The refusals stay before any state change: a refused `start` uses no attempt, a refused `complete` keeps state and
+evidence.
+
+## R2 — constitution and `master-closure.json` (analysis only; separate decision)
+
+| Input | Affects contract validity | Written by `complete`? | Effect of adding it to the feature fingerprint |
+|---|---|---|---|
+| Constitution (`docs/agentic-sdd/constitution.md`) | Yes: its hash is a contract input (`inputs.constitution_sha256`), so a change makes every present contract stale | Only if a task's `allowed_paths` include it and its commit changes it; then the next operation finds the contract stale, as today | Every feature's state would be refused after any constitution change (a repository-wide protocol change). It is already part of the protocol fingerprint, which state records but `validate_loaded_state` does not compare. |
+| `design/master-closure.json` | Yes, when present: its hash is a contract input, and the closure replaces a non-passing gate | No: a human authority record, not task output | A changed closure would refuse the feature's state until it is reconciled; closures are rare and deliberate. |
+
+Neither is added automatically; the binding mechanism above already re-checks both under the lock for the operation
+in progress. Adding them to the feature fingerprint is a separate change for a separate decision.
+
+## R3 — recovery and diagnostics (call paths, master point 6)
+
+| Command | Goes through the contract check | With F1 |
+|---|---|---|
+| `restore-state`, `discard-prepared-snapshot`, `recover-verification`, `doctor` | no | unaffected |
+| `validate`, `validate-all` | yes, reports errors | **stay available** and list the C1–C3 errors (diagnosis) |
+| `recover-state`, `recover-claim`, `status`, `reset`, `migrate-state`, `reconcile-feature`, `human-resolve`, `resume-verification` | yes, through `load_validated` (refuses an invalid feature) | refused as today for a stale contract (C1), and now also for C2/C3 |
+
+No general F1 bypass is added under the name of recovery. If a recovery command must run while a contract cannot be
+verified, that is a recovery-specific decision with its own checks (for 14d), not an exception in F1.
