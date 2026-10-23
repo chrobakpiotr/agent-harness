@@ -177,3 +177,24 @@ Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at
   with an incident; `... is not False` makes any value but an exact `False` refuse; exceptions propagate; every
   `StateAccess` field is required (`StateAccess()` and calls without `access=` raise `TypeError`); Showcase's hook is
   its own verbatim read-only code. Each has a library test.
+
+### AH5-14b-1 independent evaluation (2026-10-24)
+
+- **Verdict: pass with amendments** at `c3a563035a1f4cc9b909a27ee70dfa359fca721d`. Confirmed: all 26 moved
+  functions AST-identical to the source apart from the declared seams; the order of checks, locks and writes
+  unchanged; error strings and exit codes unchanged; every write through `access.save_state` (no second writer); the
+  hook split behaviour-identical for every input (the source tail always returns a literal bool), with no way found for
+  the hook to lift a library refusal; every patched name reaches the moved code; one shared `_authority_transaction`.
+  Library 45 tests; 107 targeted Showcase tests through the shim.
+- **Applied:** library tests for four refusals that only Showcase's suites (or neither) pinned: the read-only
+  projection's recovery refusal, prepared-snapshot recovery before the recovery check, repository admission before the
+  lock, and the pending transaction authority. Each mutation is now caught. The provenance claim is corrected.
+- **The incident lookup is a second consumer hook, documented as it is:** `recovery_incident(feature_dir)` returns the
+  incident record, or a falsy value for "no incident" (the source's `if not incident`); it may refuse by `die`. A falsy
+  result skips only the epoch check; the library's snapshot check still runs. It cannot lift a library refusal.
+  **Open for master:** whether to also refuse a result that is neither `None` nor a non-empty dict. That is a behaviour
+  change from the source (verbatim today) and is not made without a decision.
+- **Condition (d)** (no state writes, no recovery) is a contract the library cannot enforce; Showcase's hook is its own
+  verbatim read-only code (file reads and Git reads in `state_recovery`).
+- **Informational:** the shim's `lifecycle_state_lock`/`locked_state` wrappers build the binding at call, not at
+  `__enter__`; no test patches `fcntl` or `STATE_DIR` between the two.

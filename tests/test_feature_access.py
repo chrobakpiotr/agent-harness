@@ -3,6 +3,7 @@
 Showcase's own suites exercise the moved code end to end through its shim; these tests pin the library's contract:
 the hook rules master set (2026-10-23), the lock-and-load order, and the binding having no defaults.
 """
+import contextlib
 import dataclasses
 import json
 import types
@@ -101,6 +102,22 @@ class RecoveryHookTest(AccessCase):
         self.assertIn('STATE_RECOVERY_REQUIRED', err)
         self.assertEqual([], self.saved)
 
+    def test_a_required_recovery_blocks_the_read_only_projection(self):
+        feature = self.feature()
+        self.incident = {'incident_id': 'i-1'}
+        self.epoch = lambda path, incident, status: True
+        code, err = refused(lambda: fa._read_state_unlocked_pure(feature, self.doc(feature), access=self.access))
+        self.assertEqual(2, code)
+        self.assertIn('read-only projection is not lifecycle authority', err)
+
+    def test_prepared_snapshots_are_recovered_before_the_recovery_check(self):
+        feature = self.feature()
+        order = []
+        with mock.patch.object(fa, 'recover_prepared_state_locked', side_effect=lambda *a, **k: order.append('prepared')), \
+                mock.patch.object(fa, 'state_recovery_required', side_effect=lambda *a, **k: order.append('check')):
+            fa._load_state_unlocked(feature, self.doc(feature), access=self.access)
+        self.assertEqual(['prepared', 'check'], order)
+
     def test_the_binding_has_no_defaults(self):
         with self.assertRaises(TypeError):
             fa.StateAccess()
@@ -151,6 +168,27 @@ class StateAccessTest(AccessCase):
         self.assertEqual(6, code)
         self.assertIn('VERIFICATION_OWNERSHIP_BLOCKED: verification-owned', err)
 
+    def test_the_lock_admits_repository_verification_first(self):
+        feature = self.feature()
+        calls = []
+
+        class Store:
+            def __init__(self, feature_dir):
+                calls.append('store')
+
+            def admit_repository_verification(self, **kwargs):
+                calls.append(('admit', kwargs))
+
+            root = feature
+        fake = types.SimpleNamespace(StoreError=library_store.StoreError,
+                                     repository_lock=lambda root: contextlib.nullcontext(),
+                                     repository_lock_held=lambda root: False, VerificationStore=Store)
+        access = dataclasses.replace(self.access, verification_store=lambda: fake)
+        with mock.patch.object(fa, 'recover_prepared_state_locked', side_effect=lambda *a, **k: calls.append('prepared')), \
+                fa.lifecycle_state_lock(feature, access=access):
+            calls.append('inside')
+        self.assertEqual(['store', ('admit', {'allow_execution_id': None}), 'prepared', 'inside'], calls)
+
     def test_the_lock_refuses_without_cross_process_locking(self):
         feature = self.feature()
         access = dataclasses.replace(self.access, locking=None)
@@ -164,6 +202,25 @@ class StateAccessTest(AccessCase):
         (feature / 'plan.md').write_text('# changed plan\n')
         _code, err = refused(lambda: fa.load_state(feature, self.doc(feature), access=self.access))
         self.assertIn('fingerprint differs', err)
+
+    def test_pending_authority_of_the_current_transaction_is_read_and_checked(self):
+        feature = self.feature()
+        common = self.access.common_dir(feature)
+        record = {'schema_version': 1, 'record_type': 'completion', 'repository_id': str(common),
+                  'feature': 'TST-001', 'task': 'T-001', 'attempt': 1, 'checkpoint': 'c' * 40,
+                  'packet_revision': 'sha256:' + 'a' * 64, 'contract_fingerprint': 'b' * 64,
+                  'evidence_reference_sha256': 'd' * 64, 'correction_id': None, 'repair_authorization_id': None,
+                  'created_at': '2026-10-23T00:00:00Z'}
+        record['record_id'] = fa.completion_record_id('completion', record)
+        state_dir = fs.runtime_state_dir(feature, policy=self.policy).resolve()
+        relative = f"completion-records/TST-001/T-001/{record['record_id'].rsplit(':', 1)[-1]}.json"
+        fa._authority_transaction.current = {'feature': 'TST-001', 'state_dir': state_dir,
+                                             'files': {relative: (json.dumps(record).encode(), 0o644)}}
+        self.addCleanup(setattr, fa._authority_transaction, 'current', None)
+        self.assertEqual([record], fa.completion_records(feature, 'T-001', access=self.access))
+        fa._authority_transaction.current['files'] = {relative: (b'{not json', 0o644)}
+        _code, err = refused(lambda: fa.completion_records(feature, 'T-001', access=self.access))
+        self.assertIn('malformed pending completion record', err)
 
     def test_completion_records_are_read_and_checked(self):
         feature = self.feature()

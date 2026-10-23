@@ -275,6 +275,8 @@ Ported tests:
 - Showcase's shim keeps `state_recovery_incident` and the recovery-epoch lines verbatim as
   `state_recovery_epoch_required`: read-only, no state write, no recovery. `_state_access()` is built per call from its
   module names. Everything else of `harness.py` is unchanged; wrappers keep the original signatures.
-- Ported tests: `test_feature_access` (14): the hook rules, lock-and-load order, the single writer through the
-  binding, the fault injector, the ownership refusal and its exit code, the lock guard, the fingerprint refusal and the
-  completion-record readers. Showcase's suites run through the shim.
+- Ported tests: `test_feature_access` (18): the hook rules; the order prepared-snapshot recovery → recovery check, and
+  repository admission → prepared recovery inside the lock; the read-only projection's recovery refusal; the single
+  writer through the binding and the fault injector; the ownership refusal and its exit code; the lock guard; the
+  fingerprint refusal; the completion-record readers, including the pending authority of the current transaction.
+  Showcase's suites cover the transitions through the shim.
