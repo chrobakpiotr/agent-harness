@@ -163,3 +163,17 @@ plan's own rule, a part that cannot be cut without a behaviour change is split d
   `terminalize_verification_execution`, the resume validators) for 14c, which stays blocked until F1 is resolved.
 
 Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at the time of writing).
+
+## AH5-14b-1 implementation (2026-10-23)
+
+- **Decided (master, 2026-10-23):** the 14b-1/14b-2 split; the refuse-only hook on four conditions (refuse only, never
+  bypass a library check or admit a refused state; a refusal, an error or a malformed result blocks; an explicit
+  binding, a missing one is not consent; no state writes, no recovery). The library keeps its own integrity checks.
+- **Implemented** in `agent_harness.feature_access` (`docs/migration/provenance.md`): verbatim apart from the
+  `StateAccess` seam and the hook split. The order of checks, locking and writing is the source's: repository
+  verification lock → lifecycle lock → prepared-snapshot recovery → recovery check → load and identity checks →
+  transition → `save_state` → post-commit fault points.
+- **How the hook conditions are met:** the epoch hook is consulted only after the library's snapshot check and only
+  with an incident; `... is not False` makes any value but an exact `False` refuse; exceptions propagate; every
+  `StateAccess` field is required (`StateAccess()` and calls without `access=` raise `TypeError`); Showcase's hook is
+  its own verbatim read-only code. Each has a library test.

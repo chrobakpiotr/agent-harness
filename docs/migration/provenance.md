@@ -263,3 +263,18 @@ Ported tests:
   100755, as the source.
 - Ported tests: `test_feature`, 11 `HarnessTest` validation tests unchanged apart from the policy, plus 20 seam,
   guard and state-equivalence tests. Showcase's suites run through the shim. No removals.
+
+## AH5-14b-1 — lifecycle state access (Showcase `3649784`, 2026-10-23)
+
+| Library file | Source (`harness.py`) | Changes |
+|---|---|---|
+| `agent_harness/feature_access.py` | `canonical_json_sha256`, `safe_task_id`, `completion_authority_dir`, `legacy_completion_binding_id`, `validate_legacy_binding_shape`, `legacy_completion_bindings`, `legacy_binding_as_completion`, `completion_record_id`, `_valid_completion_hash`/`_commit`/`_revision`, `validate_completion_authority_shape`, `read_completion_authority`, `completion_records`, `repaired_completion_records`, `recover_prepared_state_locked`, `lifecycle_state_lock`, `initial_state`, `load_state`, `_resolve_state_unlocked`, `state_snapshot_status`, `state_recovery_required` (its generic part), `_load_state_unlocked`, `_read_state_unlocked_pure`, `fail_on_verification_store_error`, `locked_state`, `remove_state_locked`; `COMPLETION_AUTHORITY_SCHEMA_VERSION`, `LEGACY_COMPLETION_BINDING_VERSION`, `COMPLETION_CORRECTION_REASON`, `_authority_transaction` | **[seam]** a required `StateAccess` (frozen dataclass, no defaults) on every function that needs the consumer: its `FeaturePolicy`, and the names the source used directly and Showcase's tests patch — `git_common_dir`, `fcntl`, `feature_fingerprint`, `protocol_fingerprint`, `save_state`, `load_validated`, `_read_state_unlocked_pure`, the `verification.store` module (looked up per call: `VerificationStore`, `repository_lock`, `repository_lock_held`, `StoreError`), `_completion_fault_injector`. **[hook]** `state_recovery_required` keeps the source's order: `recovery_incident(feature_dir)` (the source's `state_recovery_incident`) first, then the library's snapshot status check, then, only with an incident, `recovery_epoch_required(feature_dir, incident, snapshot_status)` (the source's remaining lines). Only an exact `False` from the epoch hook allows access; any other value refuses; an error propagates. |
+
+- `_authority_transaction` is the library's thread-local; the shim aliases the same object, so Showcase's completion
+  publishers (which stay until 14b-2) write into the transaction the library commits.
+- Showcase's shim keeps `state_recovery_incident` and the recovery-epoch lines verbatim as
+  `state_recovery_epoch_required`: read-only, no state write, no recovery. `_state_access()` is built per call from its
+  module names. Everything else of `harness.py` is unchanged; wrappers keep the original signatures.
+- Ported tests: `test_feature_access` (14): the hook rules, lock-and-load order, the single writer through the
+  binding, the fault injector, the ownership refusal and its exit code, the lock guard, the fingerprint refusal and the
+  completion-record readers. Showcase's suites run through the shim.
