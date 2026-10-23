@@ -51,5 +51,12 @@
 - Checked here: `harness.py` (mode 100755), `verification_contract.py`, `runner.py`, `verify.py`,
   `tests/test_cutover_wrapper.py` and `tests/test_runner_launch.py` are byte-identical to v0.16.0. The other changes
   are the version constant, the three version-pin tests (0.15.0 → 0.16.0), its handbook delta and handover.
-- CI when recorded: for `1b22802`, Agentic SDD CI, CodeQL, OpenSSF Scorecard and the dependency graph succeeded and
-  the main `CI` workflow was still running; `31bab53` had no runs yet. Showcase reports the final result.
+- CI (Showcase's report, 2026-10-23): the adoption commit's main `CI` run was superseded by the docs-only push. On
+  the descendant `31bab53`, main `CI` failed only on the **frontend audit**: five findings (one low, four high) in
+  unchanged frontend dependencies, with Angular major upgrades suggested; no frontend dependency file changed in the
+  cutover. Backend, Playwright, OWASP, Trivy, SBOM, infrastructure, PIT, repository guards and documentation links
+  passed; Agentic SDD CI, CodeQL and Scorecard passed; Dependency Review was skipped (recorded coverage gap).
+- Showcase's report: full local Agentic SDD suite 924 passed; `test_harness` 255 passed through the shim; rollback in a
+  disposable clone restored the parent tree exactly (`4afaea1b02a54dba2dea98de9f1a4088fb04c8c2`). Direct pushes
+  bypassed the PR requirement, two required checks and signatures; the bypasses are not counted as passed checks.
+- The frontend audit is pre-existing and outside the cutover; Showcase owns it.
