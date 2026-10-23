@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.0 — unreleased (prepared 2026-10-24)
+
+- New `agent_harness.feature_access` (AH5-14b-1): Showcase's lifecycle state access, verbatim: the repository and
+  lifecycle locks, state loading and resolution, the completion-record readers, prepared-snapshot recovery and the
+  recovery check on load. The consumer passes one required `StateAccess` binding. Its incident and recovery-epoch check
+  is a hook that can only refuse; the library's own integrity checks run first and cannot be overridden.
+- No behaviour change; contract and digests unchanged. Lifecycle transitions are AH5-14b-2.
+
 ## 0.16.0 — 2026-10-23
 
 - New `agent_harness.feature` and `agent_harness.feature_state` (AH5-14a): Showcase's feature documents and validation,
