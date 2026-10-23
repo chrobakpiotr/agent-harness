@@ -22,3 +22,4 @@
   suites pass through the shim with the candidate installed.
 - **Consumers:** Showcase adopts with the `harness.py` shim (a behaviour-identical cutover). agent-benchmark does not
   use these modules; a re-pin is optional.
+- **Wheel:** `scripts/check-wheel.sh` on `9c24492`: 576 tests OK, 2 skipped. Later commits change only `docs/`.
