@@ -43,3 +43,13 @@
 |---|---|---|---|
 | Showcase | v0.15.0 `717f4ba` (`68d22c7`) | pin `fc4ad64`; copy `harness.py` (mode 100755) from `migration/showcase-wrapper/`, plus the other shims at that SHA (unchanged since 0.15.0); move the three version-pin tests to 0.16.0; run CI | the whole 0.15.0 set: pin `717f4ba` and the previous `harness.py` |
 | agent-benchmark | v0.14.0 `cc9d33a` | not needed: it does not use `feature`/`feature_state`, and `contract`, `execution` and `qualification` are unchanged | — |
+
+### Showcase adoption (its commits, checked here 2026-10-23)
+
+- Adoption commit `1b22802d52f59c1629e20edbc7ec7aaf09761d79`, docs commit
+  `31bab531abd8dff3a147ce040c1b4a94016d99d9`; pin `fc4ad64`.
+- Checked here: `harness.py` (mode 100755), `verification_contract.py`, `runner.py`, `verify.py`,
+  `tests/test_cutover_wrapper.py` and `tests/test_runner_launch.py` are byte-identical to v0.16.0. The other changes
+  are the version constant, the three version-pin tests (0.15.0 → 0.16.0), its handbook delta and handover.
+- CI when recorded: for `1b22802`, Agentic SDD CI, CodeQL, OpenSSF Scorecard and the dependency graph succeeded and
+  the main `CI` workflow was still running; `31bab53` had no runs yet. Showcase reports the final result.
