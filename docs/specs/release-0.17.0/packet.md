@@ -32,3 +32,4 @@
   `None` nor a non-empty dict (a behaviour change from the source). F1 stays a separate package; AH5-14c stays blocked.
 - **Consumers:** Showcase adopts with the `harness.py` shim (behaviour-identical). agent-benchmark does not use this
   module.
+- **Wheel:** `scripts/check-wheel.sh` on `d2b76e6`: 594 tests OK, 2 skipped. Later commits change only `docs/`.
