@@ -154,7 +154,7 @@ class StateAccessTest(AccessCase):
     def test_the_lock_refuses_without_cross_process_locking(self):
         feature = self.feature()
         access = dataclasses.replace(self.access, locking=None)
-        code, err = refused(lambda: fa.load_state(feature, self.doc(feature), access=access))
+        _code, err = refused(lambda: fa.load_state(feature, self.doc(feature), access=access))
         self.assertIn('LIFECYCLE_LOCK_UNAVAILABLE', err)
 
     def test_a_changed_feature_refuses_the_stored_state(self):
@@ -162,7 +162,7 @@ class StateAccessTest(AccessCase):
         with fa.locked_state(feature, self.doc(feature), access=self.access) as state:
             state['tasks']['T-001']['status'] = 'ready'
         (feature / 'plan.md').write_text('# changed plan\n')
-        code, err = refused(lambda: fa.load_state(feature, self.doc(feature), access=self.access))
+        _code, err = refused(lambda: fa.load_state(feature, self.doc(feature), access=self.access))
         self.assertIn('fingerprint differs', err)
 
     def test_completion_records_are_read_and_checked(self):
@@ -185,7 +185,7 @@ class StateAccessTest(AccessCase):
         path.write_text(json.dumps({**record, 'task': 'T-900'}))
         code, err = refused(lambda: fa.completion_records(feature, 'T-001', access=self.access))
         self.assertIn('COMPLETION_AUTHORITY_INVALID', err)
-        code, err = refused(lambda: fa.completion_authority_dir(feature, 'elsewhere', 'T-001', access=self.access))
+        _code, err = refused(lambda: fa.completion_authority_dir(feature, 'elsewhere', 'T-001', access=self.access))
         self.assertIn('unsafe authority path', err)
 
 
