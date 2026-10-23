@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.16.0 — unreleased (prepared 2026-10-23)
+## 0.16.0 — 2026-10-23
 
 - New `agent_harness.feature` and `agent_harness.feature_state` (AH5-14a): Showcase's feature documents and validation,
   and the lifecycle-state paths, identity checks and its single writer `save_state`, verbatim. The consumer's policy is

@@ -1,7 +1,7 @@
 # AH5-14 — Move `harness.py` in parts; AH5-14a: document and state I/O
 
-- Status: **AH5-14a implemented** on branch `ah5-14a-document-state-io`; rehearsed against Showcase's 0.15.0
-  adoption and evaluated (pass with amendments, applied). Release on the owner's order. 14b–e are later packets.
+- Status: **AH5-14a released in 0.16.0** (2026-10-23); rehearsed against Showcase's 0.15.0 adoption and evaluated
+  (pass with amendments, applied). 14b–e are later packets.
 - Source: Showcase `tooling/agent-harness/harness.py` at `fd96eeb` (7,314 lines, 222 functions). The rehearsal runs
   on Showcase's confirmed state after its 0.15.0 adoption; until that commit is reported, no claim is made about
   compatibility with the new consumer state.

@@ -1,6 +1,6 @@
 # Version 0.16.0 — feature documents and state I/O (AH5-14a)
 
-- Status: prepared; release on the owner's order. Distribution: annotated Git tag `v0.16.0`; consumers pin the tag
+- Status: **released** 2026-10-23 on the owner's order. Distribution: annotated Git tag `v0.16.0`; consumers pin the tag
   SHA.
 - Scope: AH5-14a `agent_harness.feature` and `agent_harness.feature_state` (`docs/specs/AH5-14/packet.md`). The
   contract, `probe_digest`, the shipped reviewed reference and the supported API are unchanged. No behaviour change.
@@ -23,3 +23,23 @@
 - **Consumers:** Showcase adopts with the `harness.py` shim (a behaviour-identical cutover). agent-benchmark does not
   use these modules; a re-pin is optional.
 - **Wheel:** `scripts/check-wheel.sh` on `9c24492`: 576 tests OK, 2 skipped. Later commits change only `docs/`.
+
+## Evidence (2026-10-23)
+
+- AC1: `__version__` 0.16.0; CHANGELOG `## 0.16.0`; README pins `@v0.16.0`.
+- AC2: `scripts/check-wheel.sh` on the release code (`9c24492`; `fc4ad64` adds only docs): 576 tests OK, 2 skipped.
+  CI run 40025422532 for `fc4ad64`: success (Offline package checks, Python 3.13).
+- AC3: `refs/tags/v0.16.0` = `7aae296d` → commit `fc4ad6471b9dcec65a17e61ab0975c1de14f79dc`, pushed with `main`.
+  - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.16.0`; `feature` and `feature_state`
+    import, and `FeaturePolicy()` without its fields raises `TypeError`.
+  - The shipped reference carries the installed probe digest (`sha256:ee87222a…`).
+- **Branch protection:** the push of `fc4ad64` to `main` was accepted as an admin bypass (no pull request, unsigned
+  commits, required checks not run before the push), under the owner's direct-push decision. CI ran after the push
+  and passed. The bypass does not mean those protections were satisfied.
+
+## Consumer handoff
+
+| Consumer | Pin now | Adoption of 0.16.0 | Rollback |
+|---|---|---|---|
+| Showcase | v0.15.0 `717f4ba` (`68d22c7`) | pin `fc4ad64`; copy `harness.py` (mode 100755) from `migration/showcase-wrapper/`, plus the other shims at that SHA (unchanged since 0.15.0); move the three version-pin tests to 0.16.0; run CI | the whole 0.15.0 set: pin `717f4ba` and the previous `harness.py` |
+| agent-benchmark | v0.14.0 `cc9d33a` | not needed: it does not use `feature`/`feature_state`, and `contract`, `execution` and `qualification` are unchanged | — |
