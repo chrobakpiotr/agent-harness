@@ -27,6 +27,7 @@ the shim, and every change goes to the library first.
 | `runner.py`, **partial**: the provider-neutral checks only (packet integrity, task-result schema projection and validation, git/path postconditions, `run_verification`) | `agent_harness.task_runner` | AH5-12a freeze notice (2026-10-18) | 0.13.0 |
 | `runner.py`: the agent launch (provider argv, sandbox and isolation check, stdin prompt, timeout and cancel, evidence) | `agent_harness.execution.AgentCliBackend`, through the runner shim | AH5-12 freeze notice (2026-10-18) | 0.14.0 |
 | `verification_contract.py`, **partial**: the validation (`requirement`, `input_hashes`, `validate_contract`, `criterion_ids`) | `agent_harness.verification_contract` | AH5-13 freeze notice (2026-10-20) | 0.15.0 |
+| `harness.py`, **partial**: the feature documents and validation (`validate`, `load_validated`, fingerprints, design gate and closure checks), the state paths, identity checks and `save_state` | `agent_harness.feature`, `agent_harness.feature_state` | AH5-14a freeze notice (2026-10-23) | 0.16.0 |
 
 Showcase policy stays Showcase-owned and is never frozen. The shims bind it, or it stays beside them:
 - the Gradle environment, the `./gradlew` wrapper and the authority roots;

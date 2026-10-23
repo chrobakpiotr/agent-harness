@@ -121,4 +121,6 @@ rehearsal and the evaluation (below); each has a library test.
   4. The Showcase-origin literals and 5. the binding defaults are recorded in provenance.
 - **Non-docs difference from the rehearsed `4a3219a`:** `common_dir=` in `feature_state` and the shim, and the
   added tests. Checked directly: equivalence identical; `test_verification_authority`, `test_replan`,
-  `test_packet_identity_bridge` and `test_cutover_wrapper` pass through the shim; `test_harness` per test (below).
+  `test_packet_identity_bridge` and `test_cutover_wrapper` pass through the shim. `test_harness`, one test per
+  process through the shim at `b086960`: 255/255 pass. Three needed the candidate installed (they start `harness.py`
+  in a subprocess, which loads the installed library, not the source tree): with `b086960` installed they pass too.

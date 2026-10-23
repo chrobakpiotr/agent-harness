@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.0 — unreleased (prepared 2026-10-23)
+
+- New `agent_harness.feature` and `agent_harness.feature_state` (AH5-14a): Showcase's feature documents and validation,
+  and the lifecycle-state paths, identity checks and its single writer `save_state`, verbatim. The consumer's policy is
+  one required `FeaturePolicy` (layout, protocol files, profile location, reviewer routing, contract checks, state
+  directory); none is built in. State loading, lifecycle transitions, admission, recovery and the CLI are later parts.
+- No behaviour change; contract and digests unchanged.
+
 ## 0.15.0 — 2026-10-20
 
 - New `agent_harness.verification_contract`: the verification-contract validation (AH5-13). The repository root,
