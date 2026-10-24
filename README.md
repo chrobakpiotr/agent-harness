@@ -28,6 +28,7 @@ Supported API (ADR 0001, amendment 2026-10-18):
   qualified, ADR 0004); `AgentCliBackend`; `QualifiedDockerBackend` and `QUALIFIED_LIMITS` for qualified grading;
 - `agent_harness.qualification`: `qualify`, `probe_digest`, `DEFAULT_IMAGE` and `DEFAULT_TARGET`;
 - `agent_harness.qualification.reference.reviewed_reference`;
+- `agent_harness.retry_control.RetryControl` (a consumer's registered retry controls);
 - contract versions 1 and 2 (ADR 0005);
 - the `agent-harness` CLI (`agent-harness constitution --check PATH` checks a copy of the shared agent contract for
   drift).
