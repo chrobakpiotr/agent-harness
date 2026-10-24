@@ -139,6 +139,14 @@ class VerificationContractTest(unittest.TestCase):
         self.assertIn('verification contract currency cannot be established: plan_sha256 unreadable '
                       '(FileNotFoundError)', self.validate())
 
+    def test_an_unconfirmed_repository_is_its_own_error(self):
+        self.write(self.contract())
+
+        def unconfirmed():
+            raise vc.RepositoryUnconfirmed('feature is not in the repository')
+        self.assertEqual((['verification contract currency cannot be established: repository identity unconfirmed '
+                           '(feature is not in the repository)'], None), self.binding(repo_root=unconfirmed))
+
     def test_an_unreadable_contract_is_not_an_absent_one(self):
         (self.feature / 'verification-contract.json').mkdir()
         errors, binding = self.binding(require=False)

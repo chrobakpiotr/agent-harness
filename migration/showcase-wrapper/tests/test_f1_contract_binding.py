@@ -246,6 +246,32 @@ class ContractBindingTest(unittest.TestCase):
         self.assertEqual(0, int(self.entry().get('attempts', 0)))
         self.assertNotIn('contract_binding', self.entry())
 
+    def test_a_feature_outside_the_configured_repository_is_refused_without_fallback(self):
+        other = self.root.parent / f'{self.root.name}-other'
+        (other / 'docs/agentic-sdd').mkdir(parents=True)
+        shutil.copy2(self.root / 'docs/agentic-sdd/constitution.md', other / 'docs/agentic-sdd/constitution.md')
+        try:
+            git(other, 'init', '-q')
+            git(other, 'add', '.')
+            git(other, 'commit', '-q', '-m', 'other')  # validation passes there; only the identity differs
+            before = self.state_bytes()
+            with mock.patch.object(vc, 'REPO', other):  # the current directory is still the feature's repository
+                err = self.refused(self.start)
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+        self.assertIn('verification contract currency cannot be established: repository identity unconfirmed', err)
+        self.assertEqual(before, self.state_bytes())
+
+    def test_a_worktree_of_the_configured_repository_is_the_same_repository(self):
+        worktree = self.root.parent / f'{self.root.name}-wt'
+        git(self.root, 'worktree', 'add', '-q', '--detach', str(worktree))
+        try:
+            errors, binding = vc.contract_binding(worktree / 'docs/specs/TST-001')
+            self.assertEqual([], errors)
+            self.assertEqual(vc.contract_binding(self.feature)[1]['inputs'], binding['inputs'])
+        finally:
+            subprocess.run(['git', 'worktree', 'remove', '--force', str(worktree)], cwd=self.root, check=False)
+
     def test_unreadable_inputs_refuse_start_and_complete(self):
         constitution = self.root / 'docs/agentic-sdd/constitution.md'
         try:
@@ -322,6 +348,69 @@ class ContractBindingTest(unittest.TestCase):
         self.start('T-002')
         self.assertEqual(vc.contract_binding(self.feature)[1], self.entry('T-002')['contract_binding'])
         self.assertNotEqual(self.entry('T-001')['contract_binding'], self.entry('T-002')['contract_binding'])
+
+
+class CompleteRepairBindingTest(th.CanonicalCompletionRepairTests):
+    """F1 at `complete-repair`: a new repaired completion of an attempt needs that attempt's binding."""
+
+    def completion_fixture(self, **kwargs):
+        patch = mock.patch.object(vc, 'REPO', self.root)  # the fixture repository, as the identity check requires
+        patch.start()
+        self.addCleanup(patch.stop)
+        return super().completion_fixture(**kwargs)
+
+    def set_binding(self, feature, doc, binding):
+        state = harness.load_state(feature, doc)
+        entry = state['tasks']['T-A']
+        if binding is None:
+            entry.pop('contract_binding', None)
+        else:
+            entry['contract_binding'] = binding
+        harness.save_state(feature, state)
+
+    def repair_refused(self, feature, path):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            self._complete(feature, path)
+        return err.getvalue()
+
+    def test_f1_a_repair_of_an_attempt_without_a_binding_is_refused(self):
+        feature, doc, _, _, _, path = self._setup_repair()
+        self.set_binding(feature, doc, None)
+        before = harness.load_state(feature, doc)['tasks']['T-A']
+        err = self.repair_refused(feature, path)
+        self.assertIn('VERIFICATION_CONTRACT_BINDING_MISSING: attempt 5 of T-A', err)
+        self.assertEqual(before, harness.load_state(feature, doc)['tasks']['T-A'])
+        self.assertEqual([], harness.repaired_completion_records(feature, 'T-A'))
+
+    def test_f1_a_repair_against_a_different_binding_is_refused(self):
+        feature, doc, _, _, _, path = self._setup_repair()
+        binding = json.loads(json.dumps(vc.contract_binding(feature)[1]))
+        binding['inputs']['constitution_sha256'] = {'present': True, 'sha256': '0' * 64}  # started under another
+        self.set_binding(feature, doc, binding)
+        err = self.repair_refused(feature, path)
+        self.assertIn('VERIFICATION_CONTRACT_CHANGED_SINCE_START: attempt 5 of T-A: constitution_sha256 differs', err)
+        self.assertEqual([], harness.repaired_completion_records(feature, 'T-A'))
+
+    def test_f1_a_repair_with_the_attempt_binding_completes_and_keeps_it(self):
+        feature, doc, _, _, _, path = self._setup_repair()
+        binding = vc.contract_binding(feature)[1]
+        self.set_binding(feature, doc, binding)
+        self._complete(feature, path)
+        entry = harness.load_state(feature, doc)['tasks']['T-A']
+        self.assertEqual('completed', entry['status'])
+        self.assertEqual(binding, entry['contract_binding'])
+        self.assertEqual(1, len(harness.repaired_completion_records(feature, 'T-A')))
+
+
+def load_tests(loader, tests, pattern):
+    """Only this module's own tests; the inherited repair tests run in `test_harness`."""
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromTestCase(ContractBindingTest))
+    suite.addTests(loader.loadTestsFromNames(
+        [f'{__name__}.CompleteRepairBindingTest.{name}' for name in loader.getTestCaseNames(CompleteRepairBindingTest)
+         if name.startswith('test_f1_')]))
+    return suite
 
 
 if __name__ == '__main__':

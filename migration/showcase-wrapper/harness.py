@@ -2907,7 +2907,11 @@ def cmd_complete_repair(args: argparse.Namespace) -> None:
         evidence_doc = json.loads(evidence_path.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError) as exc:
         die(f'COMPLETION_EVIDENCE_INVALID: {exc}')
+    # F1: a new repaired completion needs the attempt's contract binding, as `complete` does; a replay of an already
+    # published repair (below) creates no new completion and is resolved from its immutable record.
+    observed_contract = _transitions.observed_contract_binding(args.feature_dir, ns=_NS)
     with locked_state(args.feature_dir, doc) as state:
+        contract_binding = _transitions.require_unchanged_contract(args.feature_dir, observed_contract, ns=_NS)
         entry = state['tasks'].get(args.task_id)
         if not entry:
             die(f'unknown task {args.task_id}')
@@ -2956,6 +2960,7 @@ def cmd_complete_repair(args: argparse.Namespace) -> None:
         attempt = entry.get('attempts')
         if type(attempt) is not int or attempt < 1:
             die('COMPLETION_REPAIR_ATTEMPT_INVALID: existing attempt is absent')
+        _transitions.require_attempt_contract(args.feature_dir, args.task_id, entry, contract_binding, ns=_NS)
         active = resolve_active_packet(args.feature_dir, doc, args.task_id, state=state)
         task = active_task_contract(args.feature_dir, doc, args.task_id, state=state)
         binding_errors = validate_completion_binding(evidence_doc, args.feature_dir, args.task_id, entry, active)

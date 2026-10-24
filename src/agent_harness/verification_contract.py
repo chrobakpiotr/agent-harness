@@ -32,6 +32,10 @@ BINDING_VERSION = 1
 VALID_SOURCE_TYPES = {'spec', 'adr', 'architecture-invariant', 'existing-behavior', 'security', 'performance', 'external-standard', 'human'}
 
 
+class RepositoryUnconfirmed(OSError):
+    """F1: raised by a consumer's ``repo_root`` when the repository cannot be confirmed as the feature's."""
+
+
 def die(message: str) -> None:
     print(f'ERROR: {message}', file=sys.stderr)
     raise SystemExit(2)
@@ -151,6 +155,9 @@ def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None,
         errors.append('verification-contract.json status must be accepted')
     try:
         root = repo_root()
+    except RepositoryUnconfirmed as exc:
+        return errors + [f'verification contract currency cannot be established: repository identity unconfirmed '
+                         f'({exc})'], None
     except (OSError, SystemExit):
         return errors + ['verification contract currency cannot be established: repository root unavailable'], None
     # The same set as `input_hashes`; the first three are required, the design files only when present.
