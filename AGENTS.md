@@ -18,8 +18,9 @@ A small fix does not need Wayfinder ceremony.
 
 - `src/agent_harness/` — the installable package. Importing it must have no side effects.
 - `src/agent_harness/contract.py` — public execution contract v1 (owner of the shared schema; ADR 0002).
-- `src/agent_harness/execution.py` — public offline launch/cancel API (ADR 0004). These two and the CLI are the
-  only public API; every other module is internal (no compatibility promise).
+- `src/agent_harness/execution.py` — public offline launch/cancel API (ADR 0004).
+- Supported API (ADR 0001, amendment 2026-10-18; pinned by `tests/test_supported_api.py`): `agent_harness.contract`; `agent_harness.execution`; from `agent_harness.qualification` only `qualify`, `probe_digest`, `DEFAULT_IMAGE` and `DEFAULT_TARGET`; `agent_harness.qualification.reference.reviewed_reference`; and the `agent-harness` CLI. Every
+  other module or name is internal (no compatibility promise), including `qualification`'s probe and report modules.
 - `src/agent_harness/{trust,telemetry,machine_outcomes}.py`, `verification/` — modules extracted from Showcase;
   provenance and allowed deviations in `docs/migration/provenance.md`.
 - `tests/` — stdlib `unittest` suites; they run against the **installed wheel**, not the checkout.

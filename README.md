@@ -32,8 +32,9 @@ Supported API (ADR 0001, amendment 2026-10-18):
 - the `agent-harness` CLI (`agent-harness constitution --check PATH` checks a copy of the shared agent contract for
   drift).
 
-Every other module is internal: the verification runtime, sandbox, state snapshots and eval engine that Showcase
-uses through its cutover shims. Internal modules may change in any release.
+Every other module or name is internal, including the rest of `agent_harness.qualification` (its probe and report
+modules) and the verification runtime, sandbox, state snapshots, eval engine and lifecycle modules that Showcase uses
+through its cutover shims. Internal modules may change in any release.
 
 ## Use
 
