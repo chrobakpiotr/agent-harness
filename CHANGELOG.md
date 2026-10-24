@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.18.0 — unreleased (prepared 2026-10-24)
+
+Three separate changes, each with its own evidence (`docs/specs/release-0.18.0/packet.md`):
+
+- **AH5-14b-2, verbatim move (no behaviour change):** new `agent_harness.lifecycle_checks` (the read-only resume
+  validators, accepted-plan resolver, partial-claim check and recovery-identity readers) and
+  `agent_harness.feature_transitions` (claim, heartbeat, release, fail, complete, start and its rollback, replan,
+  reopen, reconcile, ready, with their packet, worktree, completion-publishing, human-resolution and retry functions).
+  The transitions read the consumer's module names through one explicit namespace binding (`bind`), checked before
+  any operation; the three mutating recovery steps stay the consumer's until AH5-14d.
+- **AH5-API-1, additive supported API:** `agent_harness.retry_control.RetryControl`, the library's existing type with
+  its documented fields, callbacks, `inputs_digest()` and callback error mapping (`retry-policy-violation`).
+- **Behaviour change in the Showcase adapter (shim), not in the library:** the state-access binding uses a fail-closed
+  incident lookup: `None` is "no incident", a valid incident record goes on to the recovery-epoch check, anything else
+  refuses with `STATE_RECOVERY_INCIDENT_INVALID`. Showcase adopts it with its own commit.
+- Documentation: one exact supported-API scope across the README, `AGENTS.md` and the package docstring (the
+  qualification sources are unchanged, as `probe_digest` covers them).
+- Contract and digests unchanged.
+
 ## 0.17.0 — 2026-10-24
 
 - New `agent_harness.feature_access` (AH5-14b-1): Showcase's lifecycle state access, verbatim: the repository and

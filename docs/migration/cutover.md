@@ -29,6 +29,7 @@ the shim, and every change goes to the library first.
 | `verification_contract.py`, **partial**: the validation (`requirement`, `input_hashes`, `validate_contract`, `criterion_ids`) | `agent_harness.verification_contract` | AH5-13 freeze notice (2026-10-20) | 0.15.0 |
 | `harness.py`, **partial**: the feature documents and validation (`validate`, `load_validated`, fingerprints, design gate and closure checks), the state paths, identity checks and `save_state` | `agent_harness.feature`, `agent_harness.feature_state` | AH5-14a freeze notice (2026-10-23) | 0.16.0 |
 | `harness.py`, **partial**: the lifecycle lock and state loading (`locked_state`, `lifecycle_state_lock`, `load_state`, …), the completion-record readers and the recovery checks on load | `agent_harness.feature_access`, with Showcase's recovery-epoch check as a refuse-only hook | AH5-14b-1 freeze notice (2026-10-24) | 0.17.0 |
+| `harness.py`, **partial**: the lifecycle transitions (claim, heartbeat, release, fail, complete, start and its rollback, replan, reopen, reconcile, ready) with their packet, worktree, completion-publishing, human-resolution and retry functions, and the read-only checks they use | `agent_harness.lifecycle_checks`, `agent_harness.feature_transitions` (through the consumer namespace; three recovery steps stay Showcase bindings until 14d) | AH5-14b-2 (2026-10-24) | 0.18.0 |
 
 Showcase policy stays Showcase-owned and is never frozen. The shims bind it, or it stays beside them:
 - the Gradle environment, the `./gradlew` wrapper and the authority roots;

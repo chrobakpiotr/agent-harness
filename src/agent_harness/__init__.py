@@ -7,4 +7,4 @@ module or name, including qualification's probe and report modules, is internal.
 side effects.
 """
 
-__version__ = "0.17.0"
+__version__ = "0.18.0"
