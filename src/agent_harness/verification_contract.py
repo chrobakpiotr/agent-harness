@@ -123,8 +123,8 @@ def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None,
     try:  # one read decides both requiredness and validity
         policy = _requirement(feature_dir / 'design.json', _read(feature_dir / 'design.json'))
     except OSError as exc:
-        return [f'verification contract requirement cannot be established: design.json unreadable '
-                f'({type(exc).__name__})'], None
+        reason = type(exc).__name__
+        return [f'verification contract requirement cannot be established: design.json unreadable ({reason})'], None
     required = (policy == 'required' and is_active(feature_dir)) if require is None else require
     if policy == 'invalid':
         errors.append('design.json.verification_contract must be required/optional/off')
