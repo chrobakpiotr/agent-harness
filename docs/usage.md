@@ -89,6 +89,13 @@ assert session["qualified"]  # else retry with a new job_id on a quiet machine
   grade (B10).
 - `target_kind` is `docker-desktop` (default), `github-runner` or `linux-docker`. A tuple without a shipped reference
   needs a new qualification run and an independent review first.
+- **Limitation of the current mechanism:** `probe_digest` hashes the source files of the qualification package
+  (`qualification/__init__.py`, `b_probes.py`, `q_lifecycle.py`, `q_probes.py`, `report.py`) byte for byte, so *any*
+  edit to them, a docstring or comment included, changes the digest and makes the shipped reviewed reference stop
+  matching (`test_qualify.ShippedReferenceTest` fails). Those files are therefore not edited for documentation; the
+  supported-API scope is stated in the README, `AGENTS.md`, ADR 0001 and the package docstring instead. Changing the
+  digest algorithm, or refreshing the reviewed reference for a non-functional edit, is out of scope until a separate
+  decision.
 
 ## 4. Grading: `QualifiedDockerBackend`
 
