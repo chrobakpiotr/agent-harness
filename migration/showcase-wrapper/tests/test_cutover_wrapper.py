@@ -238,6 +238,27 @@ class WrapperBindingTest(unittest.TestCase):
         root.assert_called_once_with()
         self.assertIs(library_vc.criterion_ids, vc.criterion_ids)
 
+    def test_the_incident_lookup_is_fail_closed(self):
+        """None means no incident; a valid record goes on; anything else refuses (master, 2026-10-24)."""
+        import contextlib
+        import io
+        feature = HARNESS.parents[1] / 'docs' / 'specs' / 'SDD-OBS-001'
+        valid = {'schema_version': 1, 'feature': 'SDD-OBS-001', 'status': 'observed', 'state_present': False,
+                 'state_mutations_during_investigation': False, 'cause': 'unknown'}
+        with mock.patch.object(harness, 'state_recovery_incident', return_value=None):
+            self.assertIsNone(harness.checked_state_recovery_incident(feature))
+        with mock.patch.object(harness, 'state_recovery_incident', return_value=valid):
+            self.assertIs(valid, harness.checked_state_recovery_incident(feature))
+        for result in (False, {}, '', 0, [], 'incident', {**valid, 'status': 'closed'}, {'incident_id': 'x'},
+                       {**valid, 'feature': 'OTHER-001'}):
+            with self.subTest(result=result), mock.patch.object(harness, 'state_recovery_incident', return_value=result), \
+                    contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit):
+                harness.checked_state_recovery_incident(feature)
+            self.assertIn('STATE_RECOVERY_INCIDENT_INVALID', err.getvalue())
+        with mock.patch.object(harness, 'checked_state_recovery_incident', return_value=None) as checked:
+            self.assertIsNone(harness._state_access().recovery_incident(feature))  # the library gets the checked lookup
+        checked.assert_called_once_with(feature)
+
     def test_trust_cli_runs_the_library_cli(self):
         out = subprocess.run([sys.executable, str(HARNESS / 'trust.py'), 'classify', '.agent-runs/x.log'],
                              capture_output=True, text=True, check=True).stdout

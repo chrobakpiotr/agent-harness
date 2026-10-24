@@ -132,3 +132,149 @@ in progress. Adding them to the feature fingerprint is a separate change for a s
 
 No general F1 bypass is added under the name of recovery. If a recovery command must run while a contract cannot be
 verified, that is a recovery-specific decision with its own checks (for 14d), not an exception in F1.
+
+## Concrete mechanism for evaluation (master point 4, 2026-10-24)
+
+The fingerprint and a re-read are not presented as atomicity. The mechanism is an explicit identity recorded with the
+transition and compared under the lock; its limits are stated below.
+
+**1. What is validated, and its identity.** For a feature with a present contract, `contract_binding` is the SHA-256 of
+the canonical JSON `{"contract_sha256": sha256(verification-contract.json bytes), "inputs": input_hashes(...)}`, where
+`input_hashes` covers `spec.md`, `plan.md`, the constitution, and `design/gate.json` and `design/master-closure.json`
+when present: exactly what `validate_contract` compares. Computing it fails closed (C2/C3) if any of those cannot be
+read. For a feature without a contract (optional): `contract_binding` is `null`, as today's policy.
+
+**2. Where reading, validation, locking and writing happen** (after 14b-2 moves `cmd_start`/`cmd_complete` verbatim
+into the library; F1 then changes them there):
+
+| Step | `start` | `complete` |
+|---|---|---|
+| a. pre-check, unlocked | `load_validated` (all of C1–C3), computes `binding_pre` | same |
+| b. lock | `locked_state`: repository verification lock, then the lifecycle `flock` | same |
+| c. under the lock, before any side effect | recompute `binding_now`; if `binding_now != binding_pre` → refuse `VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION` | recompute `binding_now`; refuse if `binding_now != binding_pre`, **or** if `binding_now != entry['contract_binding']` (the value recorded at this attempt's start) → `VERIFICATION_CONTRACT_CHANGED_SINCE_START` |
+| d. transition | record `entry['contract_binding'] = binding_now` with the attempt | as today |
+| e. write | the one `save_state` commit of the transaction | same |
+
+A refusal at (a) or (c) raises before (d)–(e): `start` uses no attempt, `complete` changes no status and keeps all
+evidence. Tasks started before F1 have no recorded binding; `complete` for them compares (a) and (c) only and does not
+invent a historical value (no rewriting of history).
+
+**3. Writers that respect the lock:** only the harness's own state writers: every lifecycle command through
+`locked_state`, and the authority publishers inside its transaction. **Not under the lock:** contract authoring
+(`verification_contract.py generate`), `design.py` (`design/gate.json`), wayfinder handoffs, and any person, agent or
+Git operation editing `spec.md`, `plan.md`, the constitution or `master-closure.json`.
+
+**4. If the inputs change between validation and the write:**
+- between (a) and (c): detected at (c), refused, nothing written; the operator retries;
+- between this attempt's `start` and its `complete`: detected at `complete` (c), refused; the operator re-authors the
+  contract and restarts the task under the new one (a new attempt by the existing rules), or reverts the input;
+- between (c) and (e), a window of the transition's own duration: **not detected by this operation**. The commit
+  records `binding_now` as read at (c). The next `start` or `complete` detects the change.
+
+**5. The guarantee, and what stays outside it.**
+- *Guaranteed:* every committed `start` records the identity of the contract inputs as read under the lock in the same
+  transaction; every committed `complete` was checked, under the lock, against the identity recorded at its attempt's
+  start. A completion is never accepted against a contract whose inputs, as observed under the lock, changed since the
+  attempt started.
+- *Not guaranteed:* the files are not snapshotted atomically. An unlocked write that lands after (c) and before (e) is
+  not seen by that operation (only by the next). An edit that changes and then restores the same bytes is invisible
+  (equal digest, equal content). The harness cannot make the contract's writers take its lock, and F1 does not try.
+
+**Not in F1:** adding the constitution or `master-closure.json` to the feature fingerprint (R2, separate decision); any
+recovery exception (R3).
+
+## Decision and conditions (master, 2026-10-24)
+
+- **Accepted**, with a limited guarantee, for implementation **after** the verbatim 14b-2 extraction, as a separate
+  behaviour change. The guarantee, in master's wording: *`complete` admits a completion only if the correctly read
+  and validated inputs observed during the check under the lock match the binding recorded at `start`.* It does not
+  guarantee an atomic snapshot of the files or their immutability until `save_state`; a change after the check may go
+  undetected, and the next operation detects it only if it is still observable and that operation re-checks these
+  inputs.
+- **Binding rules:** a versioned, unambiguously encoded set of input names, their presence and their digests; the
+  validation and the binding use the **same bytes read once** (never validate one read and hash another); under the
+  lock the required validation and the binding are recomputed; `start` records the binding with the attempt through the
+  existing `save_state`; `complete` requires a match with both its own pre-check and the attempt's recorded binding;
+  a read error, an invalid contract or a mismatch refuses with no change to the task's state and no loss of evidence;
+  `complete` never overwrites the attempt's binding.
+- **Attempts started before F1:** no recorded binding blocks a normal `complete`; nothing is back-filled. The path is
+  the existing recovery and a new `start` after validation, which keeps the previous attempt and its evidence;
+  historical completions stay readable and are not rewritten. (Spelled out command by command with the
+  implementation, R3.)
+- **Verification required:** refusal for a change before the under-lock check, a change between `start` and
+  `complete`, unreadable inputs, a missing historical binding, and an unchanged attempt that completes; plus
+  (master, 2026-10-24) `complete` on unchanged inputs passes, a later integration changes the inputs, and the next
+  `start` is refused until the contract is refreshed; the remaining race after the check documented, not claimed
+  removed.
+- AH5-14c stays blocked until F1 is implemented, independently evaluated and its adoption confirmed.
+
+## The input set (master point 3): analysis before implementation
+
+**Which set.** F1 uses the set the contract's existing staleness check already compares (`validate_contract` →
+`input_hashes`, verbatim since AH5-13): `spec.md`, `plan.md`, the constitution, and `design/gate.json` and
+`design/master-closure.json` **when present**, plus the contract file itself. This is not the R2 question: R2 is
+about adding the constitution and the closure to the **feature fingerprint** that guards stored state, and stays a
+separate decision. **For confirmation:** that "the existing accepted set" for F1 means exactly this `input_hashes`
+set (the constitution, gate and closure are in it today).
+
+| Input | Why it affects the contract's validity | Changed by normal `start`/`complete`? | Changed by other tasks? | Self-invalidation risk |
+|---|---|---|---|---|
+| `spec.md`, `plan.md` | the contract's criteria are derived from them (`inputs.spec_sha256`, `plan_sha256`) | no: no lifecycle command writes them | **yes, for some features:** 151 task `allowed_paths` across Showcase's 43 features cover a contract input; most are blanket `docs/specs/<F>/**`, some name `spec.md`/`plan.md` outright (e.g. `APP-ORCH-001` T-001, `DOMAIN-INDEP-001` T-001) | see below |
+| constitution | the contract's independent criteria cite it; `inputs.constitution_sha256` | no | only a task allowed to edit `docs/agentic-sdd/constitution.md` | as below |
+| `design/gate.json` | the design decision the contract follows; written by `design.py` | no | covered by blanket `docs/specs/<F>/**` paths | as below |
+| `design/master-closure.json` | the human authority that replaces a non-passing gate | no | covered by blanket paths; in practice a human record | as below |
+
+**No self-invalidation within one attempt in the orchestrated flow.** `orchestrate.py` calls `start` and `complete` with
+the feature directory of the **primary checkout** (`orchestrate.py:677`, `:700`); the task edits its own worktree. A
+task's own edits to `spec.md`/`plan.md` reach the primary checkout only when its work is integrated, so they do not
+change the inputs its own `complete` checks.
+
+**Concrete conflicts, reported before implementation (no exception, no automatic rebind):**
+1. **A task whose purpose is to change the spec or plan** (allowed paths naming `spec.md`/`plan.md`). Once its work
+   is integrated, the contract is stale (C1). That already holds today, and every later operation refuses until the
+   contract is re-authored. F1 adds nothing here, but it is a real workflow cost for such features.
+2. **New with F1:** a parallel attempt whose inputs change because *another* task's work is integrated while it runs
+   is refused at `complete` (`VERIFICATION_CONTRACT_CHANGED_SINCE_START`), and has to be restarted after the contract
+   is re-authored. That is the intended guarantee, but it changes how features with spec-editing tasks run.
+3. **A manual `complete` run from inside the task worktree** (feature directory under the worktree) would read the
+   worktree's own, possibly edited, `spec.md`/`plan.md` and refuse its own completion. The orchestrator does not do
+   this; manual use might.
+
+These go to master for a decision before that part of F1 is implemented.
+
+## Decisions on the conflicts (master, 2026-10-24)
+
+- **Input set confirmed:** F1 uses the existing `input_hashes` (spec, plan, constitution, and gate/closure when
+  present); none is removed, none added. R2 stays separate.
+- **(a) and (b) accepted as the deliberate cost of F1:** a changed input refuses `complete`, including when the change
+  is another task's correctly integrated work. No exception for spec- or plan-editing tasks, no automatic rebind. After
+  such a change: keep the attempt and its evidence; refresh the contract through the existing authoring and
+  acceptance; use the existing recovery and a new `start`. Earlier work may be reused only after it is assessed
+  against the new contract, never by counting the previous attempt as passed. The model's work need not be redone
+  where the existing process can verify the kept result in the new attempt.
+- **(c) accepted:** a manual `complete` from a worktree whose inputs differ from the attempt's binding is refused, with
+  a message naming the mismatch and the right place to drive the attempt from. No automatic directory switch and no
+  fallback to the primary checkout. A call from the primary checkout checks the right attempt and its required
+  evidence just the same; it is not a way around the worktree refusal.
+
+## The order of `complete` and integration (master point 3)
+
+Measured in Showcase at `3649784` (`harness.py` unchanged since):
+
+- A task works in its own worktree and commits there; `complete` records that commit as the attempt's
+  `checkpoint_commit` (`cmd_complete`).
+- A dependent task's worktree is built from its dependencies' checkpoint commits (`prepare_task_worktree`,
+  `harness.py:6225` ff., merging them at `:6278`); `integration` tasks are built the same way.
+- **No harness or orchestrator command merges task work into the primary checkout's branch.** `orchestrate.py` runs
+  `start` and `complete` with the primary checkout's feature directory (`:677`, `:700`), whose `spec.md`, `plan.md`,
+  gate, closure and constitution therefore stay as they were throughout the feature's attempts. Integration into the
+  primary branch happens outside the lifecycle, after completion.
+
+**So the first case applies:** the current flow lets `complete` run before integration, on the inputs as they were;
+the later integration makes the contract stale (C1) for every subsequent operation, until the contract is
+re-authored. No process conflict: `complete` never requires an earlier integration that changes the inputs. F1 keeps
+this order and does not change it.
+
+**Planning (operational recommendation):** integrating changes to a feature's contract inputs (its spec, plan, gate,
+closure, or the constitution) can invalidate parallel attempts of the same feature that depend on those inputs. Plan
+such integrations outside active attempts that depend on them. F1 builds no scheduler for this.
