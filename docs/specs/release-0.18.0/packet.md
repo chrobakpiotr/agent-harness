@@ -32,3 +32,5 @@
   shipped-reference test passes. The qualification sources are identical to 0.17.0.
 - **Consumers:** Showcase adopts the `harness.py` shim (pin, shim, three version-pin tests) and separately the retry
   API; agent-benchmark uses none of this and stays on 0.14.0.
+- **Release candidate** `a204a3b66190b7bb60590d3cb19cd1e643a55dea` (version 0.18.0): `scripts/check-wheel.sh` 617
+  tests OK, 2 skipped; Harness CI run 40096074883 (dispatch) success. Later commits change only `docs/`.
