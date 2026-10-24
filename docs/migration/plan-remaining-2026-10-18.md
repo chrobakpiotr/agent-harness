@@ -58,11 +58,49 @@
 | AH5-14e | `harness.py`: CLI and `doctor` | rest | 14a–d | the consumer's command set and doctor checks | the library CLI dispatcher, with a thin Showcase entry point |
 | AH5-15 | `orchestrate.py` | 845 | `harness` (14), runner | the consumer's worker/provider config | after 14 |
 | AH5-16 | `design.py`, `wayfinder.py` | 689 / 1,110 | `harness`, `runner`, `verification_contract` | REPO/layout seams | after 12–14 |
+| AH5-17 | final consumer cleanup and migration closure | inventory only in this plan; implementation follows the listed cutovers | AH5-14 through AH5-16 and the separate `generate` package | supported consumer adapters and exact release pins | final inventory across Showcase and Benchmark; no broad cleanup before the corresponding cutover |
 | stays | `control_plane.py`, `spec_inventory.py`, `run_test_harness_sharded.py`, `state_recovery.py`, `evals/*.json`, profiles, registries, `retry_controls.py` | — | — | — | consumer policy, intake or CI glue (owners 2026-10-07). `spec_inventory.py` is re-checked when 14a defines the layout seam |
 
 Each `harness.py` part (14a–e) is cut along existing function boundaries, with its tests ported and a rehearsal. A
 part that cannot be cut without a behaviour change is split differently; a guard is never dropped to make a cut
 possible.
+
+## AH5-17 — final consumer cleanup and migration closure
+
+- **Status:** scope preparation authorized by the owner on 2026-10-24; execution is deferred until the relevant
+  cutovers are complete. This packet does not pause AH5-14b-2 or authorize broad cleanup now.
+- **Inventory basis:** Showcase `d0679550c478aac01d2bec541d7fee77a05eb1e`; Benchmark
+  `cd4e14192bc2e74dec5eb8f9eb7d0c2942ea4ee4`; current migration plan and ownership records. Recheck both trees at
+  AH5-17 start because these are moving branches.
+- **Rule:** every cutover removes the replaced shared implementation in that same cutover. AH5-17 handles only the
+  final cross-consumer audit and leftovers; it is not a reason to keep executable duplicate runtime code around.
+
+| Consumer module or artifact | Classification now | Target stage | Condition for removal or closure |
+|---|---|---|---|
+| Showcase `tooling/agent-harness/harness.py` | Frozen partial copy; shared state access is in 14b-1, lifecycle transitions remain | AH5-14b-2 step 2, then 14c, 14d and 14e | Replace each moved implementation at its cutover; retain only explicit policy/bindings and the CLI entry point until 14e. Keep the shared `_authority_transaction` binding until all completion publishers use the same supported object. |
+| Showcase `runner.py` | Consumer runner with remaining CLI/prompt policy and a Harness `AgentCliBackend` launch adapter; inspect each function at 12b/15 cutovers | AH5-15 plus callers in `generate`, `design` and `wayfinder` | Remove a local launch/command path only after every caller has moved and parity/refusal tests pass; retain consumer prompts, profiles and provider configuration as explicit adapter inputs. |
+| Showcase `orchestrate.py` | Consumer worker/provider orchestration around lifecycle and runner commands | AH5-15, after AH5-14 | Remove the old subprocess/command-builder path only when its launch, heartbeat, result and refusal behavior is provided by the library and all callers use it. |
+| Showcase `verification_contract.py` validation | Shared validation already moved in AH5-13; remaining module is not all duplicate runtime | AH5-13 cutover record; final audit in AH5-17 | Keep only the authoring adapter described below; remove validation copies as soon as their cutover lands. |
+| Showcase `design.py` and `wayfinder.py` | Generic SDD process tools with Showcase repository/layout bindings | AH5-16, after AH5-14 and runner prerequisites | Remove old launch and command-builder paths only after all direct and indirect callers are migrated, including subprocess entry points; retain consumer-specific paths, prompts and accepted feature data as bindings. |
+| Showcase `verification_command.py`, `verification/retry_controls.py`, `verification-profiles/showcase.json`, `human-issuer-registry.json`, and compatibility shims | Required consumer policy, trust data and adapters; shims currently bind internal library modules at exact SHAs | Per consuming cutover; audit at AH5-17 | Do not delete policy. Replace private Harness imports only when a supported adapter API covers the binding and its tests; verify the exact pinned release and consumer integration before removing an old shim. |
+| Showcase `telemetry.py` manual-evidence part and `state_recovery.py` | Consumer-specific evidence/incident policy and recovery hook | Remain Showcase-owned unless a later accepted packet moves them | Keep producer/history readers and recovery policy; remove only a separately identified shared implementation after a reviewed cutover, preserving old-format readers and evidence. |
+| Showcase `control_plane.py`, `spec_inventory.py`, `run_test_harness_sharded.py`, `evals/*.json`, schemas, profiles, docs and registries | Project intake, inventory, CI glue, consumer data and historical contracts | Remain Showcase-owned; AH5-17 inventory check | No blanket deletion. Remove an artifact only when its consumer-specific use is retired and its historical evidence/readers remain available. |
+| Benchmark `src/agent_benchmark/{schema,report,compare,pricing,cli,grader,zero_spend,runner,__main__,__init__}.py` | Benchmark-specific schema projection, reporting, grading, pricing, policy and orchestration; not Harness runtime | Remain Benchmark-owned; final audit in AH5-17 | Keep while AB5 behavior uses it. Shared contract/execution rules stay imported from the pinned Harness package, never copied here. |
+| Benchmark `src/agent_benchmark/harness_port.py` and `tests/test_harness_port.py` | Necessary adapter and its consumer-binding tests; imports the supported contract, execution and qualification APIs | Remain on v0.14.0; re-audit at AH5-17 and when a relevant public API changes | Keep the adapter; require its public-import guard and exact pin/version/fingerprint tests. Re-pin only when the supported API it uses changes. |
+| Benchmark `tasks/*/base/**`, manifests, fixtures, reports and evidence | Frozen benchmark corpus and historical evidence, including snapshots containing Harness source | Remain Benchmark data | Never deduplicate as runtime or edit in place. A changed task snapshot requires a new task version and digest; retain historical results and readers. |
+| Both consumers: test suites and docs | Consumer policy, binding, integration, pin and migration evidence | Every cutover; closure evidence in AH5-17 | Shared logic tests live in Harness; consumer tests remain for policy, bindings and end-to-end integration. Keep historical evidence and older-format readers. |
+
+**Separate remaining package — `verification_contract.py` authoring (`generate`):** this is not the AH5-13
+validation move and must not disappear between AH5-13 and AH5-16. Inventory its CLI, command builder, runner/telemetry
+dependencies, prompts, artifacts and all callers as a distinct package. Assign it a reviewed packet after its
+prerequisites are known; remove the old implementation only after every caller—including `design.py` and
+`wayfinder.py` if they invoke it—uses the replacement and the consumer integration tests pass.
+
+**Closure checks:** no executable copies of shared runtime remain; no consumer imports private Harness APIs; no
+parallel legacy launch path remains in migrated tools; each remaining adapter has a documented supported contract and
+exact pin; Showcase and Benchmark adoption/integration evidence is current; ownership and migration documentation
+match both repositories. All shared behavior tests belong in Harness; consumer policy/binding/integration tests stay
+with their consumer. Preserve snapshots, historical results, evidence, schemas and any readers needed for old formats.
 
 ## Adapter scope (what Showcase passes in)
 

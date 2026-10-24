@@ -300,10 +300,13 @@ Ported tests:
   `PYTHON=python3.13 scripts/check-wheel.sh` completed against the candidate wheel: 604 tests passed, two skipped.
   On the exact Showcase `792dfad` export with this wrapper and library source, five focused Showcase tests passed for
   resume start/refusals, stranded-claim refusal and packet identity; `test_verification_authority` passed. The
-  combined local `test_verification_lifecycle`/authority run had one unrelated macOS fixture-path error before the
-  assertion: a `/private/var/...` temporary path was compared with its `/var/...` symlink spelling using
-  `Path.relative_to`. Showcase's exact-checkpoint CI on Linux passed; record the local host limitation rather than
-  counting that combined run as green.
+  combined local `test_verification_lifecycle`/authority run first exposed a fixture-only macOS alias mismatch: a
+  `/private/var/...` report path was compared with `/var/...` from `TemporaryDirectory` using `Path.relative_to`.
+  Showcase corrected only the test's relative-path base to `fixture['root'].resolve()` in commit
+  `d0679550c478aac01d2bec541d7fee77a05eb1e`; production containment and identity checks were unchanged. The affected
+  test then passed alone against the exact `d7db118` candidate wrapper/library export under Python 3.13 with
+  `cryptography 48.0.1`. This is targeted consumer evidence, not Harness CI. No Harness workflow run exists for
+  `d7db118` or the current documentation commits, so Step 1 is not reported closed.
 - Incident lookup behavior is unchanged. The fail-closed incident adapter fix remains a separate diff and evidence
   item; F1 remains separate and is not closed by these checks.
 
