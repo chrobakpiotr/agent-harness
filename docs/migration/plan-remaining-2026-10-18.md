@@ -131,3 +131,23 @@ them at the pinned release, v0.12.0 = `1c569f20aa30a680c025b7a305cf50ccb1735cd0`
   - AH5-04a-2 origin admission;
   - AH5-04b qualified verification backend;
   - AH5-04c source/output path.
+
+### Public-API dependencies of the consumers: proposal (AH5-API-1, separate from the verbatim extraction, 2026-10-24)
+
+The declared supported surface (ADR 0001, amendment 2026-10-18, point 3) is: `agent_harness.contract` and
+`agent_harness.execution` as modules; `qualification.qualify`, `probe_digest`, `DEFAULT_IMAGE`, `DEFAULT_TARGET`;
+`qualification.reference.reviewed_reference`; the CLI. `tests/test_supported_api.py` pins only a subset of it.
+
+| Consumer | Import (symbol, need) | Within the declared contract? | Proposed supported interface |
+|---|---|---|---|
+| agent-benchmark | `qualification.qualify`, `qualification.DEFAULT_IMAGE` (grading qualification); `qualification.reference.reviewed_reference` (the shipped reviewed reference) | **yes**, each name is declared | none needed; pin the names it uses in `test_supported_api` |
+| agent-benchmark | `contract.validate_request`, `validate_result`, `ContractError`, `ERROR_CODES`, `FIRED_LIMITS`, `LIMIT_EXCEEDED`, `OUTCOMES`; in tests `request_digest`, `CONTRACT_VERSION` (request/result schema and its enumerations) | **yes**, `contract` is declared as a module, but only `validate_request`/`validate_result` are pinned | pin these names in `test_supported_api`, so removing one needs a CHANGELOG-noted release |
+| agent-benchmark | `execution.launch`, `ScriptedBackend`, `ProcessBackend`, `AgentCliBackend`, `QualifiedDockerBackend`, `QUALIFIED_LIMITS` | **yes**, all pinned | none |
+| Showcase `verification/retry_controls.py` (its Gradle retry-evidence policy) | `verification.retry.RetryControl` (registering a retry control), `verification.serialization.canonical` (canonical JSON for the control's digest), `verification.supervisor.SupervisorError` (signalling a policy violation) | **no**: internal modules | declare exactly these three names as supported (not the modules) in ADR 0001 point 3 and pin them; no code change, no rename |
+| Showcase compatibility shims (`verification/*`, `state_snapshots`, `trust`, `telemetry`, `eval`, `harness`, `runner`, `verify`, `verification_contract`, …) | whole internal modules or their private names | no, by design: safe only at the exact pinned SHA (ADR decision 8) | retired by AH5-17 as each consumer calls the library's supported entry points directly; not made public to close a checklist |
+
+Benchmark's import guard (`tests/test_harness_port.py`) checks its own list of import lines; that list is consistent with
+the declaration above, but the library's pin test is narrower than the declaration. Proposal: one small change, its own
+release on the owner's order, that (1) pins in `test_supported_api` every name either consumer uses from the declared
+modules, and (2) declares and pins the three retry-policy names. Benchmark's pin and its qualification checks stay as
+they are until then; historical benchmark results are unaffected.
