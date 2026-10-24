@@ -3,7 +3,10 @@ import importlib
 import unittest
 
 SUPPORTED = {
-    'agent_harness.contract': ('validate_request', 'validate_result'),
+    # contract: every name a consumer uses (agent-benchmark's harness_port, schema and tests), so removing one needs a
+    # CHANGELOG-noted release; the module as a whole is declared supported (ADR 0001, amendment 2026-10-18).
+    'agent_harness.contract': ('validate_request', 'validate_result', 'ContractError', 'ERROR_CODES', 'FIRED_LIMITS',
+                               'LIMIT_EXCEEDED', 'OUTCOMES', 'request_digest', 'CONTRACT_VERSION'),
     'agent_harness.execution': ('launch', 'ScriptedBackend', 'ProcessBackend', 'AgentCliBackend',
                                 'QualifiedDockerBackend', 'QUALIFIED_LIMITS'),
     'agent_harness.qualification': ('qualify', 'probe_digest', 'DEFAULT_IMAGE', 'DEFAULT_TARGET'),
