@@ -201,3 +201,55 @@ Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at
 
 **AH5-14b-1 released in 0.17.0** (2026-10-24, `137b0ba`). 14b-2 (transitions) follows after its review; 14c stays
 blocked by F1.
+
+## AH5-14b-2 — boundaries (recorded before any code, 2026-10-24): a concrete blocker
+
+Source: Showcase `harness.py` at `792dfad` (its 0.17.0 adoption checkpoint; identical to `87e4ad6`). Method: the
+transitions' call graph beyond what 0.15–0.17 already moved.
+
+**Size.** The transitions (claim, heartbeat, release, fail, complete, start, replan, reopen, reconcile, ready and the
+lease helpers) and what they call add **98 functions, about 2,750 lines**: packets (20 functions, ~550 lines),
+worktrees (10, ~270), completion publishing and repair records (17, ~430), human resolution, retry and replan (9,
+~610), and the commands themselves with small helpers (26, ~640).
+
+**The blocker.** Several transitions call functions that the recorded boundary assigns to later parts:
+
+| Transition | Calls, assigned to 14c (admission) | Calls, assigned to 14d (recovery) |
+|---|---|---|
+| `claim` | — | — |
+| `release`, `fail` | `validate_verification_resume`, `validate_active_verification_resume` | — |
+| `complete` | the two above | — |
+| `start` | `validate_pending_verification_resume`, `validate_verification_resume`, `resolve_accepted_verification_plan` | `is_unrecovered_partial_claim`, `task_worktree_snapshot` |
+| `heartbeat` | — | `is_unrecovered_partial_claim` |
+| `replan` | — | `packet_identity_from_recovery`, `recovery_proves_packet_binding`, `recovery_record_identity` |
+| `reopen` | — | `task_workspace_snapshot`, `restore_task_workspace` |
+| rollback of an unexecuted `start` | — | `restore_attempt_authorization` |
+
+(`consume_attempt_authorization` and `completion_verification_artifact`, first matched as admission, belong to the
+transitions: a human retry grant consumed by `claim`/`start`, and the completion evidence check of `complete`.)
+
+**What they are.** The 14c functions here are **read-only checks**: the resume validators check a task's state
+entry against its durable resume history and refuse an inconsistent one; `resolve_accepted_verification_plan` reads
+the plan record and the state and raises unless the acceptance is current. The admission operations that change state
+(`admit_verification_execution`, `consume_verification_launch`, `terminalize_verification_execution`) are **not** in
+the transitions' closure. Of the 14d functions, `is_unrecovered_partial_claim` and the three recovery-identity
+functions are read-only; `task_workspace_snapshot`, `restore_task_workspace` and `restore_attempt_authorization`
+change the workspace or state inside `reopen` and the start rollback.
+
+**Why it blocks the order.** The transitions cannot move verbatim without these functions; 14c is blocked by F1; F1
+needs `start`/`complete` moved (14b-2). As recorded, the three parts wait on each other.
+
+**Proposal, for master's decision (no code before it):**
+- **Option A (recommended):** 14b-2 moves the transitions with their own groups (packets, worktrees, completion
+  publishing, human/retry/replan) and the **read-only** checks they call from the 14c/14d groups: the three resume
+  validators, `resolve_accepted_verification_plan`, `is_unrecovered_partial_claim` and the three recovery-identity
+  readers. They are lifecycle integrity rules, which plan rule 6 wants in one library implementation. The **mutating**
+  recovery steps (`task_workspace_snapshot`, `restore_task_workspace`, `restore_attempt_authorization`) stay Showcase's
+  and are passed in as required bindings, called exactly where the source calls them, until 14d. The admission state
+  changes stay for 14c.
+- **Option B:** all nine stay Showcase's and are passed in as required bindings until 14c/14d. Fewer lines move now, but
+  shared integrity checks stay on the consumer side for longer.
+- In both, 14b-2 is large (~2,750 lines): it can ship in two steps (claim/heartbeat/release/fail/ready/reconcile and
+  their groups; then start/complete/replan/reopen), each rehearsed on its own.
+
+Until a decision, only the dependent part stops; nothing has been implemented for 14b-2.
