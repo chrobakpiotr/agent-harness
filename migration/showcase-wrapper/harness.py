@@ -109,6 +109,27 @@ def _policy() -> _feature.FeaturePolicy:
 
 
 
+def _valid_incident_record(record: Any, feature: str) -> bool:
+    """The record shape `state_recovery.load_incident` accepts; non-emptiness alone is not validity."""
+    return (type(record) is dict and record.get('schema_version') == 1 and record.get('feature') == feature and
+            record.get('status') == 'observed' and record.get('state_present') is False and
+            record.get('state_mutations_during_investigation') is False and record.get('cause') == 'unknown')
+
+
+def checked_state_recovery_incident(feature_dir: pathlib.Path) -> dict[str, Any] | None:
+    """The incident lookup the library's recovery check uses, fail-closed (master, 2026-10-24).
+
+    `None` means no incident; a valid incident record goes on to the recovery-epoch check. Any other result (False,
+    an empty or partial record, a string, another type) refuses, and the lookup's own refusals stay as they are.
+    """
+    incident = state_recovery_incident(feature_dir)
+    if incident is None:
+        return None
+    if not _valid_incident_record(incident, feature_dir.name):
+        die('STATE_RECOVERY_INCIDENT_INVALID: the incident lookup returned neither None nor a valid incident record')
+    return incident
+
+
 def _state_access() -> _access.StateAccess:
     """AH5-14b-1: Showcase's bindings for the library's state access, built per call from this module's names, so
     tests that patch them (fcntl, save_state, load_validated, _completion_fault_injector, ...) reach the library."""
@@ -124,7 +145,7 @@ def _state_access() -> _access.StateAccess:
         read_state_pure=lambda path, doc: _read_state_unlocked_pure(path, doc),
         verification_store=lambda: verification_store,
         completion_fault_injector=lambda: _completion_fault_injector,
-        recovery_incident=lambda path: state_recovery_incident(path),
+        recovery_incident=lambda path: checked_state_recovery_incident(path),
         recovery_epoch_required=lambda path, incident, status: state_recovery_epoch_required(path, incident, status),
     )
 

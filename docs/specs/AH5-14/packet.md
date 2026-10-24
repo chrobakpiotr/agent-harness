@@ -201,3 +201,24 @@ Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at
 
 **AH5-14b-1 released in 0.17.0** (2026-10-24, `137b0ba`). 14b-2 (transitions) follows after its review; 14c stays
 blocked by F1.
+
+### Incident lookup: fail-closed (master decision, 2026-10-24)
+
+- **Producer contract, checked first:** Showcase's `state_recovery_incident` returns `None` for "no incident" (another
+  feature, or no incident file that is not tracked either); otherwise the record from `state_recovery.load_incident`,
+  which raises (→ `STATE_RECOVERY_INCIDENT_INVALID`) unless the record is a dict with `schema_version` 1, the feature,
+  `status` `observed`, `state_present` and `state_mutations_during_investigation` `False` and `cause` `unknown`. An
+  empty value is not a documented "none" result, so the producer's contract does not change.
+- **Adapter change** (shim `harness.py`, branch `incident-lookup-fail-closed`, not in 0.17.0): the `StateAccess`
+  binding uses `checked_state_recovery_incident`: `None` → no incident; a record passing the same checks as
+  `load_incident` → the recovery-epoch check; anything else (`False`, `{}`, `''`, `0`, a list, a partial record or one
+  for another feature) refuses with `STATE_RECOVERY_INCIDENT_INVALID`. No truthiness test, no conversion to `None`.
+- **Verification:** `test_cutover_wrapper.test_the_incident_lookup_is_fail_closed` (every case above; removing the
+  check is caught); Showcase's incident and recovery tests through the shim pass
+  (`test_missing_state_with_recovery_incident_is_read_only_and_mutations_fail_closed`,
+  `test_uncommitted_incident_rebinding_cannot_bypass_missing_state_guard`,
+  `test_recovery_incident_does_not_block_an_unrelated_feature`,
+  `test_recover_state_starts_empty_new_epoch_and_is_idempotent`,
+  `test_recovery_epoch_enters_sticky_read_only_mode_if_baseline_later_changes`, `test_state_recovery`).
+- The library's `if not incident` stays verbatim in 0.17.0; with the adapter it only ever sees `None` or a valid
+  record. Ships with the next release; the 14b-2 rehearsal accounts for it separately.

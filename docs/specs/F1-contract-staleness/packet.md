@@ -132,3 +132,53 @@ in progress. Adding them to the feature fingerprint is a separate change for a s
 
 No general F1 bypass is added under the name of recovery. If a recovery command must run while a contract cannot be
 verified, that is a recovery-specific decision with its own checks (for 14d), not an exception in F1.
+
+## Concrete mechanism for evaluation (master point 4, 2026-10-24)
+
+The fingerprint and a re-read are not presented as atomicity. The mechanism is an explicit identity recorded with the
+transition and compared under the lock; its limits are stated below.
+
+**1. What is validated, and its identity.** For a feature with a present contract, `contract_binding` is the SHA-256 of
+the canonical JSON `{"contract_sha256": sha256(verification-contract.json bytes), "inputs": input_hashes(...)}`, where
+`input_hashes` covers `spec.md`, `plan.md`, the constitution, and `design/gate.json` and `design/master-closure.json`
+when present: exactly what `validate_contract` compares. Computing it fails closed (C2/C3) if any of those cannot be
+read. For a feature without a contract (optional): `contract_binding` is `null`, as today's policy.
+
+**2. Where reading, validation, locking and writing happen** (after 14b-2 moves `cmd_start`/`cmd_complete` verbatim
+into the library; F1 then changes them there):
+
+| Step | `start` | `complete` |
+|---|---|---|
+| a. pre-check, unlocked | `load_validated` (all of C1–C3), computes `binding_pre` | same |
+| b. lock | `locked_state`: repository verification lock, then the lifecycle `flock` | same |
+| c. under the lock, before any side effect | recompute `binding_now`; if `binding_now != binding_pre` → refuse `VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION` | recompute `binding_now`; refuse if `binding_now != binding_pre`, **or** if `binding_now != entry['contract_binding']` (the value recorded at this attempt's start) → `VERIFICATION_CONTRACT_CHANGED_SINCE_START` |
+| d. transition | record `entry['contract_binding'] = binding_now` with the attempt | as today |
+| e. write | the one `save_state` commit of the transaction | same |
+
+A refusal at (a) or (c) raises before (d)–(e): `start` uses no attempt, `complete` changes no status and keeps all
+evidence. Tasks started before F1 have no recorded binding; `complete` for them compares (a) and (c) only and does not
+invent a historical value (no rewriting of history).
+
+**3. Writers that respect the lock:** only the harness's own state writers: every lifecycle command through
+`locked_state`, and the authority publishers inside its transaction. **Not under the lock:** contract authoring
+(`verification_contract.py generate`), `design.py` (`design/gate.json`), wayfinder handoffs, and any person, agent or
+Git operation editing `spec.md`, `plan.md`, the constitution or `master-closure.json`.
+
+**4. If the inputs change between validation and the write:**
+- between (a) and (c): detected at (c), refused, nothing written; the operator retries;
+- between this attempt's `start` and its `complete`: detected at `complete` (c), refused; the operator re-authors the
+  contract and restarts the task under the new one (a new attempt by the existing rules), or reverts the input;
+- between (c) and (e), a window of the transition's own duration: **not detected by this operation**. The commit
+  records `binding_now` as read at (c). The next `start` or `complete` detects the change.
+
+**5. The guarantee, and what stays outside it.**
+- *Guaranteed:* every committed `start` records the identity of the contract inputs as read under the lock in the same
+  transaction; every committed `complete` was checked, under the lock, against the identity recorded at its attempt's
+  start. A completion is never accepted against a contract whose inputs, as observed under the lock, changed since the
+  attempt started.
+- *Not guaranteed:* the files are not snapshotted atomically. An unlocked write that lands after (c) and before (e) is
+  not seen by that operation (only by the next). An edit that changes and then restores the same bytes is invisible
+  (equal digest, equal content). The harness cannot make the contract's writers take its lock, and F1 does not try.
+
+**Not in F1:** adding the constitution or `master-closure.json` to the feature fingerprint (R2, separate decision); any
+recovery exception (R3).
