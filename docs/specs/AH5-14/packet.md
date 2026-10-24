@@ -309,3 +309,21 @@ is committed as `d7db118`; step 2 is the remaining implementation.
 - Each step leaves a working set, one writer (`save_state`) and the shared `_authority_transaction`. Two steps do not
   imply two releases.
 - The incident-lookup fix (`incident-lookup-fail-closed`) and F1 stay separate in diffs and evidence.
+
+### AH5-14b-2 step 1 closed (2026-10-24)
+
+- **Code:** `d7db1185747aeba578ea7cd966c01d40a529bd1f`. Later commits on the branch (`8e3de4a`, `149b3f7`, `e7686ec`,
+  `197a98d`, `8fee4cb`) change only `docs/`.
+- **Harness CI:** the workflow runs only on pushes and pull requests to `main`, so branch pushes started none; run
+  [40082420228](https://github.com/chrobakpiotr/agent-harness/actions/runs/40082420228) (manual `workflow_dispatch`
+  on the branch) for `8fee4cb` (code identical to `d7db118`): **success**. No empty commit was made.
+- **Library:** wheel check 604 tests OK, 2 skipped (Showcase's run); `test_lifecycle_checks`, `test_lifecycle_refusals`,
+  6 mutations caught.
+- **Showcase through the shim at `792dfad`:** 294/299 in a full local run; the other five are the two baseline
+  failures, `test_verification_workspace` and `test_verification_sandbox_doctor` (environment in this macOS copy,
+  identical with the released shim), and `test_verification_lifecycle`'s `/private/var` vs `/var` fixture comparison,
+  test-side only and fixed by Showcase in `d067955` (CI green); with that fix, `test_verification_lifecycle` and
+  `test_verification_authority` pass (26 tests) against `d7db118`.
+- **Count reconciliation:** 98 = 13 + 80 + 5 (ownership table, `feature_transitions` row).
+- **AH5-13 validation copies:** none remain. Showcase's `verification_contract.py` at `d067955` is byte-identical to the
+  released shim; what is local is its repository/layout bindings and the separate `generate` package.
