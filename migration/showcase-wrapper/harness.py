@@ -1606,6 +1606,10 @@ def cmd_resume_verification(args: argparse.Namespace) -> None:
     print(f'VERIFICATION_RESUME_READY {args.task_id} attempt={plan["task_attempt"]} plan={plan_id}')
 
 
+def cmd_invalidate_verification_resume(args: argparse.Namespace) -> None:
+    return _transitions.cmd_invalidate_verification_resume(args, ns=_NS)
+
+
 def cmd_recover_verification(args: argparse.Namespace) -> None:
     """Recover verifier journals and clear only proven-dead unstarted admissions."""
     from verification.store import StoreError, VerificationStore, repository_lock
@@ -4045,6 +4049,15 @@ def parser() -> argparse.ArgumentParser:
                    help='Recovery evidence or operator note that the blocked precondition is repaired')
     s.add_argument('--by', required=True, help='Operator attribution for the auditable verification resume')
     s.set_defaults(func=cmd_resume_verification)
+
+    s = sub.add_parser('invalidate-verification-resume',
+                       help='End a pending verification resume (F1 recovery); a new attempt is an ordinary start')
+    s.add_argument('feature_dir', type=pathlib.Path)
+    s.add_argument('task_id')
+    s.add_argument('--resume', required=True, help='Identity of the pending resume (sha256:...), as refusals print it')
+    s.add_argument('--reason', required=True, help='Why the pending resume no longer applies')
+    s.add_argument('--by', required=True, help='Operator attribution')
+    s.set_defaults(func=cmd_invalidate_verification_resume)
 
     s = sub.add_parser('human-resolve')
     s.add_argument('feature_dir', type=pathlib.Path)

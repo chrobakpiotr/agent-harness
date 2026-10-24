@@ -2805,6 +2805,10 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
              f'{task_id} from the checkout whose feature directory started it (an orchestrated attempt: the primary '
              f'checkout); otherwise refresh the contract through authoring, then recover {task_id} and start a new '
              f'attempt (this run read {feature_dir})')
+    resume = entry.get('verification_resume_pending')
+    if isinstance(resume, dict):  # a resume continues this attempt; its way out is the explicit invalidation
+        where += (f'; this attempt has a pending verification resume: invalidate it first with '
+                  f'invalidate-verification-resume --resume {verification_resume_identity(resume, ns=ns)}')
     if 'contract_binding' not in entry:
         if current['contract']['present']:
             ns.die(f'VERIFICATION_CONTRACT_BINDING_MISSING: attempt {entry.get("attempts")} of {task_id} was started '
@@ -2814,6 +2818,46 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
         ns.die(f'VERIFICATION_CONTRACT_CHANGED_SINCE_START: attempt {entry.get("attempts")} of {task_id}: '
                f'{contract_binding_difference(entry["contract_binding"], current)} differs from the binding recorded '
                f'at start; {where}')
+
+
+def verification_resume_identity(resume: dict[str, Any], *, ns: Any) -> str:
+    return f'sha256:{ns.canonical_json_sha256(resume)}'
+
+
+def cmd_invalidate_verification_resume(args: argparse.Namespace, *, ns: Any) -> None:
+    """Explicitly invalidate the pending verification resume of a stopped attempt (F1 recovery).
+
+    The resume named by its identity is ended in its history as ``invalidated``, with the operator and reason; the
+    attempt, its evidence and contract binding are kept, nothing is completed, and nothing starts. The task returns
+    to ``escalated``, a human's decision: the existing ``human-resolve``, ``replan-task`` (the packet records the
+    contract) and an ordinary ``start`` follow, under the current contract and full validation.
+    """
+    doc = ns.load_validated(args.feature_dir)
+    reason = args.reason if isinstance(args.reason, str) else ''
+    operator = str(getattr(args, 'by', '') or '').strip()
+    if (args.task_id not in ns.task_index(doc) or not reason.strip() or len(reason.encode('utf-8')) > 1024 or
+            any(ord(char) < 32 and char not in '\t\n' for char in reason) or
+            not operator or len(operator.encode('utf-8')) > 256 or any(ord(char) < 32 for char in operator)):
+        ns.die('VERIFICATION_RESUME_INVALIDATION_REFUSED: task, reason, and operator are required')
+    with ns.locked_state(args.feature_dir, doc) as state:
+        entry = state['tasks'].get(args.task_id)
+        resume = entry.get('verification_resume_pending') if isinstance(entry, dict) else None
+        if (not isinstance(resume, dict) or entry.get('status') != 'failed' or
+                entry.get('verification_resume_active') is not None):
+            ns.die(f'VERIFICATION_RESUME_INVALIDATION_REFUSED: {args.task_id} has no pending verification resume')
+        ns.validate_pending_verification_resume(entry)  # this attempt's, and its latest history item
+        if verification_resume_identity(resume, ns=ns) != args.resume:
+            ns.die('VERIFICATION_RESUME_INVALIDATION_REFUSED: the pending resume differs from the one named; '
+                   'nothing was changed')
+        now = ns.utc_now().isoformat()
+        entry['verification_resume_history'][-1].update({
+            'result': 'invalidated', 'ended_at': now,
+            'invalidation': {'operator': operator, 'reason': reason,
+                             'reason_sha256': hashlib.sha256(reason.encode('utf-8')).hexdigest(), 'at': now,
+                             'prior_status': entry['status']}})
+        entry.pop('verification_resume_pending')
+        entry['status'] = 'escalated'
+    print(f'VERIFICATION_RESUME_INVALIDATED {args.task_id} attempt={resume["task_attempt"]}')
 
 
 def cmd_start(args: argparse.Namespace, *, ns: Any) -> None:

@@ -1,0 +1,163 @@
+"""F1 recovery: the way out for an attempt whose pending verification resume can no longer start under F1.
+
+Runs inside Showcase through its shim, on the F1 fixtures (`test_f1_contract_binding`).
+"""
+import argparse
+import contextlib
+import io
+import json
+import subprocess
+import unittest
+
+import test_f1_contract_binding as f1
+
+harness = f1.harness
+vc = f1.vc
+
+
+class ResumeRecoveryTest(f1.ContractBindingTest):
+    passing_builder_result = f1.th.HarnessTest.passing_builder_result
+
+    def feature_fixture(self, tasks):
+        """As Showcase's replan tests: tasks with a test mode and seam (a task without them gets a legacy packet that
+        a later replan cannot reconstruct, independently of F1)."""
+        return f1.th.HarnessTest.feature(self, [dict(task, test_mode='existing-suite', test_seam=f'{task["id"]} seam')
+                                                for task in tasks])
+
+    def pending_resume(self):
+        """Attempt 1 started under the contract, stopped, and scheduled for verification resume."""
+        self.start()
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_release(argparse.Namespace(feature_dir=self.feature, task_id='T-001', owner='worker-a',
+                                                   reason='stopped for verification'))
+        state = harness.load_state(self.feature, self.doc)
+        entry = state['tasks']['T-001']
+        result = self.passing_builder_result('T-001')
+        entry['last_failure_evidence'] = str(result)
+        resume = {'plan_id': 'plan-1', 'task_attempt': 1, 'lifecycle_generation': state.get('feature_generation', 1),
+                  'reason_sha256': 'a' * 64, 'requested_at': '2026-10-24T10:00:00+00:00',
+                  'operator': 'operator@example.invalid',
+                  'prior_result_sha256': harness.sha256_bytes(result.read_bytes()),
+                  'prior_result_path': str(result)}
+        entry['verification_resume_pending'] = resume
+        entry.setdefault('verification_resume_history', []).append(dict(resume))
+        harness.save_state(self.feature, state)
+        return resume
+
+    def human_resolve_and_replan(self):
+        """The existing human path; the replan gives the task a packet under the refreshed contract."""
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_human_resolve(argparse.Namespace(
+                feature_dir=self.feature, task_id='T-001', decision='Retry under the refreshed contract.',
+                decision_file=None, by='human:operator'))
+        state = harness.load_state(self.feature, self.doc)
+        active = harness.resolve_active_packet(self.feature, self.doc, 'T-001', state=state)
+        proposal = self.feature / 'proposal.json'
+        proposal.write_text(json.dumps(dict(harness.task_index(self.doc)['T-001'], objective='A, under the new contract')))
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_replan_task(argparse.Namespace(
+                feature_dir=self.feature, task_id='T-001', expected_status='failed',
+                expected_attempts=state['tasks']['T-001']['attempts'],
+                expected_active_revision=active['revision_id'], expected_contract_sha256=active['contract_sha256'],
+                expected_feature_generation=state.get('feature_generation', 1), proposed_task_file=str(proposal),
+                reason='contract refreshed', by='human:operator', checkpoint=None))
+        f1.git(self.root, 'add', '.')
+        f1.git(self.root, 'commit', '-q', '-m', 'replan T-001 under the refreshed contract')
+
+    def invalidate(self, resume_identity):
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_invalidate_verification_resume(argparse.Namespace(
+                feature_dir=self.feature, task_id='T-001', resume=resume_identity,
+                reason='the contract changed; the resume no longer applies', by='human:operator'))
+
+    def identity(self, resume):
+        return f'sha256:{harness.canonical_json_sha256(resume)}'
+
+    def test_r_a_stuck_resume_is_refused_with_its_way_out(self):
+        resume = self.pending_resume()
+        self.amend_constitution_and_refresh()
+        before = self.state_bytes()
+        err = self.refused(self.start)
+        self.assertIn('VERIFICATION_CONTRACT_CHANGED_SINCE_START: attempt 1 of T-001', err)
+        self.assertIn(f'invalidate-verification-resume --resume {self.identity(resume)}', err)
+        self.assertEqual(before, self.state_bytes())
+
+    def test_r_invalidation_ends_the_resume_and_a_new_start_runs_under_the_current_contract(self):
+        resume = self.pending_resume()
+        old_binding = self.entry()['contract_binding']
+        evidence = self.entry()['last_failure_evidence']
+        self.amend_constitution_and_refresh()
+        self.invalidate(self.identity(resume))
+        entry = self.entry()
+        self.assertNotIn('verification_resume_pending', entry)
+        self.assertEqual('escalated', entry['status'])
+        self.assertEqual(1, entry['attempts'])
+        self.assertEqual(old_binding, entry['contract_binding'])  # never rewritten
+        self.assertEqual(evidence, entry['last_failure_evidence'])
+        ended = entry['verification_resume_history'][-1]
+        self.assertEqual({**resume, 'result': 'invalidated'}, {k: ended[k] for k in (*resume, 'result')})
+        self.assertEqual('human:operator', ended['invalidation']['operator'])
+        self.assertEqual('the contract changed; the resume no longer applies', ended['invalidation']['reason'])
+        self.assertEqual([], harness.completion_records(self.feature, 'T-001'))
+        self.assertNotIn('T-001', harness.ready_ids(self.doc, harness.load_state(self.feature, self.doc), self.feature))
+        self.human_resolve_and_replan()
+        # The stopped attempt's worktree still holds the old contract, and a new worktree needs its branch removed
+        # deliberately (existing guards). The attempt's commits stay reachable under an archive ref, as evidence.
+        branch_head = subprocess.check_output(['git', 'rev-parse', 'refs/heads/agent/TST-001/T-001'], cwd=self.root,
+                                              text=True).strip()
+        f1.git(self.root, 'update-ref', 'refs/attempts/TST-001/T-001/1', branch_head)
+        f1.git(self.root, 'worktree', 'remove', '--force', str(harness.worktree_path('TST-001', 'T-001')))
+        f1.git(self.root, 'branch', '-D', 'agent/TST-001/T-001')
+        self.start()
+        self.assertEqual(branch_head, subprocess.check_output(
+            ['git', 'rev-parse', 'refs/attempts/TST-001/T-001/1'], cwd=self.root, text=True).strip())
+        entry = self.entry()
+        self.assertEqual(('running', 2), (entry['status'], entry['attempts']))
+        self.assertEqual(vc.contract_binding(self.feature)[1], entry['contract_binding'])
+        self.assertNotEqual(old_binding, entry['contract_binding'])
+
+    def test_r_a_resume_other_than_the_one_named_is_refused_without_change(self):
+        resume = self.pending_resume()
+        before = self.state_bytes()
+        for named in (self.identity({**resume, 'requested_at': '2026-10-24T11:00:00+00:00'}), 'sha256:' + '0' * 64):
+            with self.subTest(named=named):
+                err = self.refused(lambda named=named: self.invalidate(named))
+                self.assertIn('VERIFICATION_RESUME_INVALIDATION_REFUSED: the pending resume differs', err)
+                self.assertEqual(before, self.state_bytes())
+
+    def test_r_without_a_pending_resume_nothing_is_invalidated(self):
+        self.start()
+        before = self.state_bytes()
+        err = self.refused(lambda: self.invalidate('sha256:' + '0' * 64))  # running, no pending resume
+        self.assertIn('VERIFICATION_RESUME_INVALIDATION_REFUSED: T-001 has no pending verification resume', err)
+        self.assertEqual(before, self.state_bytes())
+
+    def test_r_an_inconsistent_pending_resume_is_refused(self):
+        resume = self.pending_resume()
+        state = harness.load_state(self.feature, self.doc)
+        state['tasks']['T-001']['verification_resume_history'][-1]['operator'] = 'someone else'
+        harness.save_state(self.feature, state)
+        before = self.state_bytes()
+        err = self.refused(lambda: self.invalidate(self.identity(resume)))
+        self.assertIn('VERIFICATION_RESUME_STATE_INVALID', err)
+        self.assertEqual(before, self.state_bytes())
+
+    def test_r_reason_and_operator_are_required(self):
+        resume = self.pending_resume()
+        with contextlib.redirect_stdout(io.StringIO()):
+            err = self.refused(lambda: harness.cmd_invalidate_verification_resume(argparse.Namespace(
+                feature_dir=self.feature, task_id='T-001', resume=self.identity(resume), reason=' ', by='x')))
+        self.assertIn('task, reason, and operator are required', err)
+        self.assertIn('verification_resume_pending', json.loads(harness.state_path(self.feature).read_text())
+                      ['tasks']['T-001'])
+
+
+def load_tests(loader, tests, pattern):
+    """Only this module's own tests; the F1 tests run in `test_f1_contract_binding`."""
+    return loader.loadTestsFromNames([f'{__name__}.ResumeRecoveryTest.{name}'
+                                      for name in loader.getTestCaseNames(ResumeRecoveryTest)
+                                      if name.startswith('test_r_')])
+
+
+if __name__ == '__main__':
+    unittest.main()
