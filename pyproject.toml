@@ -45,6 +45,8 @@ agent_harness = ["contract_fixtures/*.json", "schemas/*.json", "constitution.md"
 "src/agent_harness/feature_access.py" = ["UP017"]
 # Verbatim from harness.py (AH5-14b-2 step 1): `parse_aware_timestamp` as the source writes it.
 "src/agent_harness/lifecycle_checks.py" = ["FURB162", "UP017"]
+# Verbatim from harness.py (AH5-14b-2 step 2): the source's style, kept until a separate restyle.
+"src/agent_harness/feature_transitions.py" = ["BLE001", "C401", "F841", "FURB162", "PLW1510", "SIM102", "UP017"]
 # Verbatim executor: its per-gate callbacks run synchronously inside their own loop iteration.
 "src/agent_harness/verification/executor.py" = ["B023"]
 "src/agent_harness/sandbox.py" = ["BLE001", "SIM102", "TRY004", "UP037"]

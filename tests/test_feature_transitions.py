@@ -1,0 +1,76 @@
+"""AH5-14b-2 step 2: the transitions' consumer namespace.
+
+The transitions themselves are verbatim and exercised end to end by Showcase's suites through its shim; these tests
+pin the binding: what `bind` refuses, that the namespace is read at the moment of use, and that the three recovery
+steps come only from the consumer.
+"""
+import unittest
+
+from agent_harness import feature_transitions as ft
+
+
+def complete_namespace(**overrides):
+    names = {name: (lambda *a, **k: None) for name in ft.NAMESPACE_NAMES}
+    names.update(overrides)
+    return names
+
+
+class BindTest(unittest.TestCase):
+    def test_a_complete_namespace_binds(self):
+        ns = ft.ModuleNamespace(complete_namespace())
+        self.assertIs(ns, ft.bind(ns))
+
+    def test_a_missing_name_refuses_before_any_operation(self):
+        for name in ('write_packet', 'locked_state', '_authority_transaction', 'task_workspace_snapshot'):
+            with self.subTest(name):
+                names = complete_namespace()
+                del names[name]
+                with self.assertRaisesRegex(TypeError, f"lacks required names: \\['{name}'\\]"):
+                    ft.bind(ft.ModuleNamespace(names))
+
+    def test_the_recovery_bindings_must_be_callable(self):
+        for name in ft.RECOVERY_BINDINGS:
+            with self.subTest(name), self.assertRaisesRegex(TypeError, f"not callable: \\['{name}'\\]"):
+                ft.bind(ft.ModuleNamespace(complete_namespace(**{name: None})))
+
+    def test_the_recovery_bindings_are_exactly_the_three_mutating_steps(self):
+        self.assertEqual(('task_workspace_snapshot', 'restore_task_workspace', 'restore_attempt_authorization'),
+                         ft.RECOVERY_BINDINGS)
+        for name in ft.RECOVERY_BINDINGS:
+            self.assertIn(name, ft.NAMESPACE_NAMES)
+            self.assertFalse(hasattr(ft, name), f'{name} has no library implementation (it stays the consumer\'s)')
+
+
+class NamespaceTest(unittest.TestCase):
+    def test_the_view_reads_each_name_at_the_moment_of_use(self):
+        module_globals = {'value': 1}
+        ns = ft.ModuleNamespace(module_globals)
+        self.assertEqual(1, ns.value)
+        module_globals['value'] = 2  # a later definition or a test's patch
+        self.assertEqual(2, ns.value)
+        with self.assertRaises(AttributeError):
+            _ = ns.missing
+        self.assertFalse(hasattr(ns, 'missing'))
+
+    def test_a_transition_calls_the_consumer_recovery_binding(self):
+        calls = []
+        names = complete_namespace(restore_task_workspace=lambda *a, **k: calls.append((a, k)))
+        ns = ft.bind(ft.ModuleNamespace(names))
+        snapshot = {'head': 'h', 'files': {}}
+        ns.restore_task_workspace('worktree', snapshot)
+        self.assertEqual([(('worktree', snapshot), {})], calls)
+
+    def test_moved_functions_take_the_namespace(self):
+        import inspect
+        moved = [name for name, value in vars(ft).items() if inspect.isfunction(value)
+                 and value.__module__ == ft.__name__ and name != 'bind']
+        self.assertEqual(80, len(moved))
+        for name in moved:
+            with self.subTest(name):
+                parameter = inspect.signature(getattr(ft, name)).parameters.get('ns')
+                self.assertIsNotNone(parameter)
+                self.assertIs(inspect.Parameter.empty, parameter.default)  # required, never defaulted
+
+
+if __name__ == '__main__':
+    unittest.main()
