@@ -20,7 +20,8 @@ adoption in Showcase.
 `harness.py invalidate-verification-resume <feature_dir> <task_id> --resume <identity> --reason <text> --by <operator>`
 (library `feature_transitions.cmd_invalidate_verification_resume`; the shim adds the wrapper and the parser entry).
 
-- `load_validated` first (full validation, as every lifecycle command).
+- `load_validated` first (full validation, as every lifecycle command), then the repository identity (F1), again
+  under the lock.
 - Under `locked_state` (the repository verification lock, then the lifecycle lock): the task must be `failed` with a
   `verification_resume_pending` and no active resume; `validate_pending_verification_resume` checks it is this
   attempt's (`task_attempt == attempts`) and equals the latest history item; its identity must equal `--resume`:
@@ -48,11 +49,13 @@ current contract and records its binding.
 2. `invalidate-verification-resume … --resume <identity from the refusal> --reason … --by …`.
 3. `human-resolve … --decision … --by …`.
 4. `replan-task … --expected-status failed …` with the task's planning input; commit it.
-5. The stopped attempt's worktree still holds the old contract (`existing task worktree contains stale
-   spec/plan/tasks`), and a new worktree needs its branch removed deliberately (`local task branch already exists
-   without a worktree`). Keep the attempt's commits reachable first, e.g. `git update-ref
-   refs/attempts/<feature>/<task>/<attempt> refs/heads/agent/<feature>/<task>`, then remove the worktree and the
-   branch. (`worktree-remove` deletes the branch without keeping its commits: see *Observations*.)
+5. `worktree-remove <feature_dir> <task>`: the stopped attempt's worktree still holds the old contract (`existing task
+   worktree contains stale spec/plan/tasks`). The command refuses a worktree with uncommitted changes; otherwise it
+   keeps the branch's commits under `refs/attempts/<feature>/<task>/<attempt>/<sha>` (created only if absent, never
+   overwritten, verified to point at the tip), records `{ref, commit, attempt, branch, archived_at}` in the attempt's
+   `archived_attempt_refs`, removes the worktree, and deletes the branch only with that tip as the expected old value.
+   (Master's decision c, 2026-10-24; no automatic expiry of archives. It now runs under `locked_state`, so it needs a
+   valid feature with a matching fingerprint, which the recovery path has after step 1.)
 6. `start`: attempt N+1, under the current contract, with its binding.
 
 ## Verification (Showcase `ac552f0` with F1 and this package installed)
@@ -66,7 +69,10 @@ current contract and records its binding.
 - `test_r_without_a_pending_resume_nothing_is_invalidated`;
 - `test_r_an_inconsistent_pending_resume_is_refused` (history differs from the pending resume);
 - `test_r_reason_and_operator_are_required`;
-- `test_r_a_pending_resume_on_a_task_that_is_not_stopped_is_refused` (`running`, or an active resume).
+- `test_r_a_pending_resume_on_a_task_that_is_not_stopped_is_refused` (`running`, or an active resume);
+- `test_r_worktree_remove_refuses_uncommitted_changes` (worktree, branch and state unchanged, no archive ref);
+- `test_r_worktree_remove_never_overwrites_an_archive_ref` (an existing ref of that name elsewhere: refused, nothing
+  removed). The way-out test checks the archive ref and its record.
 
 With F1's `test_f1_contract_binding`: 27 OK (Showcase `ac552f0`, F1 `0ddfb83` merged in).
 
@@ -85,10 +91,7 @@ declared).
 
 ## Observations (not changed here)
 
-- A task without `test_mode`/`test_seam` gets a legacy packet that stores both as `null` while its semantic hash was
-  computed without them; a later `replan-task` then fails with `ACTIVE_PACKET_AMBIGUOUS: packet semantic contract
-  fingerprint is inconsistent`. Independent of F1 (also without any contract change); the tests use tasks with both
-  fields, as Showcase's replan tests do.
-- `worktree-remove` deletes the task branch with the attempt's checkpoint commits. The state keeps the commit ids
-  (`last_attempt_commit`), but unreferenced commits can be garbage-collected. For decision: keep an archive ref in
-  `worktree-remove`, or document the manual step (as above).
+- (Resolved by decision b, `docs/specs/fix-legacy-replan/packet.md`) a task without `test_mode`/`test_seam` got a
+  packet that its own `replan-task` could not take; this branch's tests use tasks with both fields, and the release
+  candidate also runs the way out on tasks without them.
+- (Resolved by decision c) `worktree-remove` deleted the task branch with the attempt's commits; it now archives them.

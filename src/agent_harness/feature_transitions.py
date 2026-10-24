@@ -2859,7 +2859,9 @@ def cmd_invalidate_verification_resume(args: argparse.Namespace, *, ns: Any) -> 
             any(ord(char) < 32 and char not in '\t\n' for char in reason) or
             not operator or len(operator.encode('utf-8')) > 256 or any(ord(char) < 32 for char in operator)):
         ns.die('VERIFICATION_RESUME_INVALIDATION_REFUSED: task, reason, and operator are required')
+    require_repository_identity(args.feature_dir, ns=ns)
     with ns.locked_state(args.feature_dir, doc) as state:
+        require_repository_identity(args.feature_dir, ns=ns)
         entry = state['tasks'].get(args.task_id)
         resume = entry.get('verification_resume_pending') if isinstance(entry, dict) else None
         if (not isinstance(resume, dict) or entry.get('status') != 'failed' or

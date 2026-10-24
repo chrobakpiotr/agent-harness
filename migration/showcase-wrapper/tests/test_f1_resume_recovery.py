@@ -66,6 +66,46 @@ class ResumeRecoveryTest(f1.ContractBindingTest):
         f1.git(self.root, 'add', '.')
         f1.git(self.root, 'commit', '-q', '-m', 'replan T-001 under the refreshed contract')
 
+    def rev(self, ref):
+        proc = subprocess.run(['git', 'rev-parse', '--verify', '--quiet', ref], cwd=self.root, capture_output=True,
+                              text=True, check=False)
+        return proc.stdout.strip() or None
+
+    def remove_worktree(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_worktree_remove(argparse.Namespace(feature_dir=self.feature, task_id='T-001'))
+
+    def stopped_attempt(self):
+        self.start()
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_release(argparse.Namespace(feature_dir=self.feature, task_id='T-001', owner='worker-a',
+                                                   reason='stopped'))
+        return self.rev('refs/heads/agent/TST-001/T-001')
+
+    def test_r_worktree_remove_refuses_uncommitted_changes(self):
+        tip = self.stopped_attempt()
+        worktree = harness.worktree_path('TST-001', 'T-001')
+        (worktree / 'a.txt').write_text('not committed\n')
+        before = self.state_bytes()
+        self.assertIn('WORKTREE_REMOVE_REFUSED', self.refused(self.remove_worktree))
+        self.assertTrue(worktree.exists())
+        self.assertEqual(tip, self.rev('refs/heads/agent/TST-001/T-001'))
+        self.assertIsNone(self.rev(f'refs/attempts/TST-001/T-001/1/{tip}'))
+        self.assertEqual(before, self.state_bytes())
+
+    def test_r_worktree_remove_never_overwrites_an_archive_ref(self):
+        tip = self.stopped_attempt()
+        archive = f'refs/attempts/TST-001/T-001/1/{tip}'
+        other = self.rev(f'{tip}^')
+        f1.git(self.root, 'update-ref', archive, other)  # an existing ref with the same name, elsewhere
+        before = self.state_bytes()
+        self.assertIn(f'archive ref {archive} does not point at {tip}; nothing removed',
+                      self.refused(self.remove_worktree))
+        self.assertEqual(other, self.rev(archive))
+        self.assertEqual(tip, self.rev('refs/heads/agent/TST-001/T-001'))
+        self.assertTrue(harness.worktree_path('TST-001', 'T-001').exists())
+        self.assertEqual(before, self.state_bytes())
+
     def invalidate(self, resume_identity):
         with contextlib.redirect_stdout(io.StringIO()):
             harness.cmd_invalidate_verification_resume(argparse.Namespace(
@@ -112,16 +152,16 @@ class ResumeRecoveryTest(f1.ContractBindingTest):
         self.assertEqual([], harness.completion_records(self.feature, 'T-001'))
         self.assertNotIn('T-001', harness.ready_ids(self.doc, harness.load_state(self.feature, self.doc), self.feature))
         self.human_resolve_and_replan()
-        # The stopped attempt's worktree still holds the old contract, and a new worktree needs its branch removed
-        # deliberately (existing guards). The attempt's commits stay reachable under an archive ref, as evidence.
-        branch_head = subprocess.check_output(['git', 'rev-parse', 'refs/heads/agent/TST-001/T-001'], cwd=self.root,
-                                              text=True).strip()
-        f1.git(self.root, 'update-ref', 'refs/attempts/TST-001/T-001/1', branch_head)
-        f1.git(self.root, 'worktree', 'remove', '--force', str(harness.worktree_path('TST-001', 'T-001')))
-        f1.git(self.root, 'branch', '-D', 'agent/TST-001/T-001')
+        # The stopped attempt's worktree still holds the old contract; `worktree-remove` takes it and its branch,
+        # keeping the attempt's commits under an archive ref recorded in the attempt's state.
+        branch_head = self.rev('refs/heads/agent/TST-001/T-001')
+        self.remove_worktree()
+        archive = f'refs/attempts/TST-001/T-001/1/{branch_head}'
+        self.assertEqual(branch_head, self.rev(archive))
+        self.assertEqual([(archive, branch_head, 1)], [(item['ref'], item['commit'], item['attempt'])
+                                                       for item in self.entry()['archived_attempt_refs']])
         self.start()
-        self.assertEqual(branch_head, subprocess.check_output(
-            ['git', 'rev-parse', 'refs/attempts/TST-001/T-001/1'], cwd=self.root, text=True).strip())
+        self.assertEqual(branch_head, self.rev(archive))
         entry = self.entry()
         self.assertEqual(('running', 2), (entry['status'], entry['attempts']))
         self.assertEqual(vc.contract_binding(self.feature)[1], entry['contract_binding'])

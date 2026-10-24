@@ -3755,24 +3755,59 @@ def rollback_unexecuted_start(feature_dir: pathlib.Path, doc: dict[str, Any], ta
     return _transitions.rollback_unexecuted_start(feature_dir, doc, task_id, owner, reason, ns=_NS)
 
 
+def _git_ref(repository: pathlib.Path, ref: str) -> str | None:
+    proc = subprocess.run(['git', 'rev-parse', '--verify', '--quiet', f'{ref}^{{commit}}'], cwd=repository,
+                          capture_output=True, text=True, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+
 def cmd_worktree_remove(args: argparse.Namespace) -> None:
+    """Remove a task worktree and its branch, keeping the branch's commits under an archive ref (F1 recovery).
+
+    The ref `refs/attempts/<feature>/<task>/<attempt>/<sha>` is created only if absent, never overwritten, and must
+    point at the exact tip before the branch is deleted (with that tip as the expected old value); the attempt's
+    lifecycle state records it. A worktree with uncommitted changes is refused: the ref keeps commits, not files.
+    """
     doc = load_validated(args.feature_dir)
     feature = str(doc.get('feature', args.feature_dir.name))
     target = worktree_path(feature, args.task_id)
     branch = f'agent/{feature}/{args.task_id}'
+    repository = feature_repo_base(args.feature_dir)
     if not target.exists():
         die(f'worktree path does not exist: {target}')
-    from verification.store import StoreError
-    try:
-        with lifecycle_state_lock(args.feature_dir):
-            if not target.exists():
-                die(f'worktree path does not exist: {target}')
-            subprocess.run(['git', 'worktree', 'remove', str(target)], check=True)
-            if subprocess.run(['git', 'show-ref', '--verify', '--quiet', f'refs/heads/{branch}']).returncode == 0:
-                subprocess.run(['git', 'branch', '-D', branch], check=True)
-    except StoreError as exc:
-        fail_on_verification_store_error(exc)
-    print(f'REMOVED {target} and local branch {branch}')
+    if changed_paths(target):
+        die(f'WORKTREE_REMOVE_REFUSED: {target} has uncommitted changes; checkpoint, fail or release the attempt first')
+    with locked_state(args.feature_dir, doc) as state:
+        entry = state['tasks'].get(args.task_id)
+        if not isinstance(entry, dict):
+            die(f'unknown task {args.task_id}')
+        if not target.exists():
+            die(f'worktree path does not exist: {target}')
+        if changed_paths(target):
+            die(f'WORKTREE_REMOVE_REFUSED: {target} has uncommitted changes')
+        tip = _git_ref(repository, f'refs/heads/{branch}')
+        archive = None
+        if tip is not None:
+            attempt = entry.get('attempts')
+            if type(attempt) is not int or attempt < 0:
+                die('WORKTREE_REMOVE_REFUSED: the attempt number is unavailable for the archive ref')
+            archive = f'refs/attempts/{feature}/{args.task_id}/{attempt}/{tip}'
+            existing = _git_ref(repository, archive)
+            if existing is None:
+                created = subprocess.run(['git', 'update-ref', '--no-deref', archive, tip, '0' * 40],
+                                         cwd=repository, capture_output=True, text=True, check=False)
+                if created.returncode != 0:
+                    die(f'WORKTREE_REMOVE_REFUSED: archive ref {archive} could not be created; nothing removed')
+            if _git_ref(repository, archive) != tip:
+                die(f'WORKTREE_REMOVE_REFUSED: archive ref {archive} does not point at {tip}; nothing removed')
+            records = entry.setdefault('archived_attempt_refs', [])
+            if not any(item.get('ref') == archive for item in records if isinstance(item, dict)):
+                records.append({'ref': archive, 'commit': tip, 'attempt': attempt, 'branch': branch,
+                                'archived_at': utc_now().isoformat()})
+        subprocess.run(['git', 'worktree', 'remove', str(target)], cwd=repository, check=True)
+        if tip is not None:
+            subprocess.run(['git', 'update-ref', '-d', f'refs/heads/{branch}', tip], cwd=repository, check=True)
+    print(f'REMOVED {target}' + (f' and local branch {branch}; commits kept at {archive}' if archive else ''))
 
 
 
