@@ -1,1 +1,2 @@
 *.patch -whitespace
+docs/specs/F1-contract-staleness/showcase-test_harness.diff -whitespace
