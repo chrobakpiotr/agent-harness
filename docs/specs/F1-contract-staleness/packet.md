@@ -202,8 +202,10 @@ recovery exception (R3).
   historical completions stay readable and are not rewritten. (Spelled out command by command with the
   implementation, R3.)
 - **Verification required:** refusal for a change before the under-lock check, a change between `start` and
-  `complete`, unreadable inputs, a missing historical binding, and an unchanged attempt that completes; the remaining
-  race after the check documented, not claimed removed.
+  `complete`, unreadable inputs, a missing historical binding, and an unchanged attempt that completes; plus
+  (master, 2026-10-24) `complete` on unchanged inputs passes, a later integration changes the inputs, and the next
+  `start` is refused until the contract is refreshed; the remaining race after the check documented, not claimed
+  removed.
 - AH5-14c stays blocked until F1 is implemented, independently evaluated and its adoption confirmed.
 
 ## The input set (master point 3): analysis before implementation
