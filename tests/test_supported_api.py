@@ -8,6 +8,7 @@ SUPPORTED = {
                                 'QualifiedDockerBackend', 'QUALIFIED_LIMITS'),
     'agent_harness.qualification': ('qualify', 'probe_digest', 'DEFAULT_IMAGE', 'DEFAULT_TARGET'),
     'agent_harness.qualification.reference': ('reviewed_reference',),
+    'agent_harness.retry_control': ('RetryControl',),
 }
 
 

@@ -140,6 +140,7 @@ Where the earlier text conflicts, this section applies.
    - `agent_harness.execution`, including `QualifiedDockerBackend`, `QUALIFIED_LIMITS` and `AgentCliBackend`;
    - `agent_harness.qualification`: `qualify`, `probe_digest`, `DEFAULT_IMAGE`, `DEFAULT_TARGET`;
    - `agent_harness.qualification.reference.reviewed_reference`;
+   - `agent_harness.retry_control.RetryControl`, the library's own type (added 2026-10-24, AH5-API-1);
    - the `agent-harness` CLI.
 
    These change only with a CHANGELOG entry, and incompatibly only in a minor release that says so. Every other
