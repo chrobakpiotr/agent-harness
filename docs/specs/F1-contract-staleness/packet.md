@@ -239,3 +239,40 @@ change the inputs its own `complete` checks.
    this; manual use might.
 
 These go to master for a decision before that part of F1 is implemented.
+
+## Decisions on the conflicts (master, 2026-10-24)
+
+- **Input set confirmed:** F1 uses the existing `input_hashes` (spec, plan, constitution, and gate/closure when
+  present); none is removed, none added. R2 stays separate.
+- **(a) and (b) accepted as the deliberate cost of F1:** a changed input refuses `complete`, including when the change
+  is another task's correctly integrated work. No exception for spec- or plan-editing tasks, no automatic rebind. After
+  such a change: keep the attempt and its evidence; refresh the contract through the existing authoring and
+  acceptance; use the existing recovery and a new `start`. Earlier work may be reused only after it is assessed
+  against the new contract, never by counting the previous attempt as passed. The model's work need not be redone
+  where the existing process can verify the kept result in the new attempt.
+- **(c) accepted:** a manual `complete` from a worktree whose inputs differ from the attempt's binding is refused, with
+  a message naming the mismatch and the right place to drive the attempt from. No automatic directory switch and no
+  fallback to the primary checkout. A call from the primary checkout checks the right attempt and its required
+  evidence just the same; it is not a way around the worktree refusal.
+
+## The order of `complete` and integration (master point 3)
+
+Measured in Showcase at `3649784` (`harness.py` unchanged since):
+
+- A task works in its own worktree and commits there; `complete` records that commit as the attempt's
+  `checkpoint_commit` (`cmd_complete`).
+- A dependent task's worktree is built from its dependencies' checkpoint commits (`prepare_task_worktree`,
+  `harness.py:6225` ff., merging them at `:6278`); `integration` tasks are built the same way.
+- **No harness or orchestrator command merges task work into the primary checkout's branch.** `orchestrate.py` runs
+  `start` and `complete` with the primary checkout's feature directory (`:677`, `:700`), whose `spec.md`, `plan.md`,
+  gate, closure and constitution therefore stay as they were throughout the feature's attempts. Integration into the
+  primary branch happens outside the lifecycle, after completion.
+
+**So the first case applies:** the current flow lets `complete` run before integration, on the inputs as they were;
+the later integration makes the contract stale (C1) for every subsequent operation, until the contract is
+re-authored. No process conflict: `complete` never requires an earlier integration that changes the inputs. F1 keeps
+this order and does not change it.
+
+**Planning (operational recommendation):** integrating changes to a feature's contract inputs (its spec, plan, gate,
+closure, or the constitution) can invalidate parallel attempts of the same feature that depend on those inputs. Plan
+such integrations outside active attempts that depend on them. F1 builds no scheduler for this.
