@@ -356,6 +356,16 @@ is committed as `d7db118`; step 2 is the remaining implementation.
   `test_verification_sandbox_doctor`. A first run had been invalid: Showcase's tests load `harness.py` as
   `sdd_harness` without registering it, so binding through `sys.modules` failed at import; the namespace now binds the
   module's own globals (`ModuleNamespace(globals())`), and that run was discarded.
+
+**Correction (2026-10-24, after the run):** `test_verification_sandbox_doctor` is not a failing test. At Showcase
+`ee17ef2` (cutover to agent-harness 0.11.0) its four test methods moved to the library (`tests/test_sandbox_doctor.py`,
+4 tests) and only a helper remained, so the module collects no tests: an undocumented leftover of that cutover, not an
+environment failure. The historical "295/299" above is kept as reported. What the counter can and cannot confirm: of
+the 299 units (one per `test_harness` test, one per other module), 295 passed; the other four units are
+`test_register_manual_observation_…` (FAIL), `test_real_plan_acceptance_…` (ERROR), the `test_verification_workspace`
+module (12 errors in 14 tests, method names not preserved and not reconstructed) and this test-less module. So three of
+the four are failures and one is not a test at all; the count of failing tests behind the workspace unit cannot be
+confirmed by name.
 - **Rehearsal** (`rehearsal-14b2`, library `2249598` = candidate code, Showcase `d0679550c478aac01d2bec541d7fee77a05eb1e1`,
   base on its pin `137b0ba`, `JOBS=4`): **test results identical** (921 ok, 2 FAIL, 2 ERROR on both sides); CI 21
   commands, exit codes identical, output identical after masking; **rollback** wrapped → base, base → wrapped and

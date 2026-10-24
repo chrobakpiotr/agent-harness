@@ -412,7 +412,9 @@ From the AH5-14b-2 step 2 run that reported 295/299 (`res17c`, one unit per line
 3. `test_verification_workspace`: in that run a single unit, `FAILED (errors=12)`; the run kept no per-method names.
    **Evidence gap: the 12 method names of that run are not preserved.** The `rehearsal-14b2` logs do not supply them
    either: there the module ran 14 tests, all OK, on both sides. Not reconstructed;
-4. `test_verification_sandbox_doctor`: `NO TESTS RAN` (0 tests collected), so it has no method identifiers.
+4. `test_verification_sandbox_doctor`: `NO TESTS RAN`. **Corrected:** not a failure; the module has no test methods
+   since Showcase `ee17ef2` (its four tests moved to the library at the 0.11.0 cutover); see the correction in
+   `docs/specs/AH5-14/packet.md`. It is not counted as a failing test here or in the later runs.
 
 `rehearsal-14b2` (same code, separate runner, both sides identical) had a different set: `test_concurrent_sequential_
 replans_have_one_winner` (FAIL and ERROR), `test_register_manual_observation_…` (FAIL) and
