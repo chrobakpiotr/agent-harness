@@ -327,3 +327,18 @@ is committed as `d7db118`; step 2 is the remaining implementation.
 - **Count reconciliation:** 98 = 13 + 80 + 5 (ownership table, `feature_transitions` row).
 - **AH5-13 validation copies:** none remain. Showcase's `verification_contract.py` at `d067955` is byte-identical to the
   released shim; what is local is its repository/layout bindings and the separate `generate` package.
+
+### AH5-14b-2 step 2 evidence (2026-10-24)
+
+- **Candidate code:** `0d6473316fd5110dd22029433a579e43cfc90a01`; later commits on the branch change only `docs/`.
+- **Showcase through the shim** (`792dfad` with Showcase's fixture fix `d067955`, the candidate installed): 295/299;
+  the other four are the two baseline failures and the environment-only `test_verification_workspace` and
+  `test_verification_sandbox_doctor`. A first run had been invalid: Showcase's tests load `harness.py` as
+  `sdd_harness` without registering it, so binding through `sys.modules` failed at import; the namespace now binds the
+  module's own globals (`ModuleNamespace(globals())`), and that run was discarded.
+- **Rehearsal** (`rehearsal-14b2`, library `2249598` = candidate code, Showcase `d0679550c478aac01d2bec541d7fee77a05eb1e1`,
+  base on its pin `137b0ba`, `JOBS=4`): **test results identical** (921 ok, 2 FAIL, 2 ERROR on both sides); CI 21
+  commands, exit codes identical, output identical after masking; **rollback** wrapped → base, base → wrapped and
+  base → base all ok. Host window 2026-10-24T10:08:23Z to 10:54:30Z, load about 4–13.
+- **Independent review:** attempt 1 stopped on an API session limit without a verdict (kept as an attempt, not a
+  result); attempt 2 started after the reset.
