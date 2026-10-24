@@ -2801,9 +2801,10 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
 
     An attempt started before F1 has none: with no contract now that is the old optional policy; with one it refuses.
     """
-    where = (f'state and evidence are kept; refresh the contract through authoring, then recover {task_id} and start '
-             f'a new attempt, driving it from the feature directory the attempt was started from (this run read '
-             f'{feature_dir})')
+    where = (f'state and evidence are kept; if this run used another checkout (for example the task worktree), drive '
+             f'{task_id} from the checkout whose feature directory started it (an orchestrated attempt: the primary '
+             f'checkout); otherwise refresh the contract through authoring, then recover {task_id} and start a new '
+             f'attempt (this run read {feature_dir})')
     if 'contract_binding' not in entry:
         if current['contract']['present']:
             ns.die(f'VERIFICATION_CONTRACT_BINDING_MISSING: attempt {entry.get("attempts")} of {task_id} was started '

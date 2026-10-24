@@ -227,6 +227,25 @@ class ContractBindingTest(unittest.TestCase):
         self.assertIn('VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION', err)
         self.assertEqual('running', self.entry()['status'])
 
+    def claim(self, task_id='T-001'):
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness.cmd_claim(argparse.Namespace(feature_dir=self.feature, task_id=task_id, owner='worker-a'))
+
+    def test_claim_records_the_binding_like_start(self):
+        self.claim()
+        self.assertEqual('running', self.entry()['status'])
+        self.assertEqual(vc.contract_binding(self.feature)[1], self.entry()['contract_binding'])
+
+    def test_a_change_before_the_locked_check_refuses_claim_without_using_an_attempt(self):
+        self.reconcile_ready()
+        patch, calls = self.changing_after_first_read()
+        with patch:
+            err = self.refused(self.claim)
+        self.assertEqual(2, len(calls))
+        self.assertIn('VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION', err)
+        self.assertEqual(0, int(self.entry().get('attempts', 0)))
+        self.assertNotIn('contract_binding', self.entry())
+
     def test_unreadable_inputs_refuse_start_and_complete(self):
         constitution = self.root / 'docs/agentic-sdd/constitution.md'
         try:

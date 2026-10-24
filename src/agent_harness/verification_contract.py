@@ -52,10 +52,18 @@ def load_json(path: pathlib.Path) -> dict[str, Any]:
 
 
 def requirement(feature_dir: pathlib.Path) -> str:
-    config = feature_dir / 'design.json'
-    if not config.exists():
+    """F1: only a design.json that does not exist means 'optional'; one that cannot be read raises."""
+    return _requirement(feature_dir / 'design.json', _read(feature_dir / 'design.json'))
+
+
+def _requirement(config: pathlib.Path, raw: bytes | None) -> str:
+    if raw is None:
         return 'optional'
-    value = load_json(config).get('verification_contract', 'optional')
+    try:
+        doc = json.loads(raw.decode('utf-8'))
+    except ValueError as exc:
+        die(f'{config}: {exc}')
+    value = doc.get('verification_contract', 'optional') if isinstance(doc, dict) else None
     return value if value in VALID_REQUIREMENT else 'invalid'
 
 
@@ -112,8 +120,13 @@ def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None,
     repository root that cannot be found, is an error and never counts as absent.
     """
     errors: list[str] = []
-    required = (requirement(feature_dir) == 'required' and is_active(feature_dir)) if require is None else require
-    if requirement(feature_dir) == 'invalid':
+    try:  # one read decides both requiredness and validity
+        policy = _requirement(feature_dir / 'design.json', _read(feature_dir / 'design.json'))
+    except OSError as exc:
+        return [f'verification contract requirement cannot be established: design.json unreadable '
+                f'({type(exc).__name__})'], None
+    required = (policy == 'required' and is_active(feature_dir)) if require is None else require
+    if policy == 'invalid':
         errors.append('design.json.verification_contract must be required/optional/off')
     path = feature_dir / 'verification-contract.json'
     try:

@@ -419,7 +419,45 @@ replans_have_one_winner` (FAIL and ERROR), `test_register_manual_observation_…
   the same refusal through `cmd_complete`, passes with the candidate.
 - 3 and 4 are environment-only modules (workspace sandboxing and sandbox doctor), outside the paths F1 changes.
 
-## Open point for master
+## Independent review (fresh context, 2026-10-24, on `0748b5c`): PASS WITH FINDINGS
+
+No blocker. Confirmed: same-read validation and binding; no side effect before the checks under the lock; refusals
+persist nothing; unambiguous, versioned binding; no scope beyond F1; the packet's fingerprint, reconcile and guarantee
+statements. Findings and their handling:
+
+1. **Resume dead end (medium, for decision):** a `verification_resume_pending` attempt whose contract changed is refused
+   by every resume `start` (`CHANGED_SINCE_START`), and `fail`/`release` need `running`; no existing command clears the
+   pending resume of a failed entry. See the open points below.
+2. **Fixed:** `requirement()` used `Path.exists()`, which reports False for a symlink loop (and, from Python 3.14, for
+   a permission error), so a required contract could be read as optional. Now only a missing `design.json` is
+   "optional"; an unreadable one is `verification contract requirement cannot be established: design.json unreadable
+   (<class>)`.
+3. **Fixed:** requiredness and validity of `design.json` came from two reads; now one.
+4. **Fixed (message):** the refusal said "the feature directory the attempt was started from", which the binding does
+   not record; it now says to drive the task from the checkout whose feature directory started it (an orchestrated
+   attempt: the primary checkout) and names the directory this run read.
+5. **Not changed (for decision):** Showcase's `repo_root()` in the shim falls back to the current directory's Git
+   repository when `git -C REPO` fails (pre-F1 code, also used by authoring).
+6. **Fixed (tests):** `claim` is now tested (binding recorded; a change before the locked check refuses with no
+   attempt used); the claim mutant now fails. Still untested end to end: resume `start` (depends on point 1).
+7. **Noted:** `rollback_unexecuted_start` leaves the rolled-back attempt's `contract_binding` on the pending entry; the
+   next `start` replaces it, and `complete` requires `running`.
+8. **Noted:** besides C2/C3, a design input that is not a regular file (for example a directory) and a non-UTF-8
+   contract are now errors too (both fail closed).
+
+Rechecked after the fixes (Showcase `ac552f0`, candidate installed): `test_f1_contract_binding` (14),
+`test_wayfinder`, `test_verification_contract`: 32 OK; library tests 30 OK.
+
+## Open points for master
+
+**Resume (review finding 1).** Options: (a) leave it: such an attempt stays blocked until a human-resolution path is
+decided (no bypass); (b) let `fail`/`release`-equivalent recovery clear a pending resume whose contract binding no
+longer matches, keeping its history and evidence, so a new `start` can run under the refreshed contract (a recovery
+change, outside F1 as agreed, so it would need its own decision); recommendation: (b), as a separate small package
+after F1, with F1 documenting the current block.
+
+**`repo_root` fallback (review finding 5):** keep it (authoring depends on it), or make the binding's root lookup
+fail closed without the fallback.
 
 `complete-repair` (`cmd_complete_repair`) is still Showcase's own code in the shim (it moves with a later packet). It
 runs `load_validated`, so C1–C3 block it, but it does not check the attempt's binding. It publishes a canonical

@@ -183,6 +183,18 @@ class VerificationContractTest(unittest.TestCase):
         changed = self.binding()[1]
         self.assertNotEqual(binding['inputs']['spec_sha256'], changed['inputs']['spec_sha256'])
 
+    def test_a_design_config_that_cannot_be_read_is_not_an_absent_one(self):
+        """F1: `Path.exists()` reports False for a symlink loop; requiredness must not fall back to 'optional'."""
+        config = self.feature / 'design.json'
+        config.unlink()
+        config.symlink_to(config)  # ELOOP on read
+        errors, binding = self.binding()
+        self.assertIsNone(binding)
+        self.assertRegex(errors[0], r'^verification contract requirement cannot be established: design.json '
+                                    r'unreadable \(OSError\)$')
+        with self.assertRaises(OSError):
+            vc.requirement(self.feature)
+
     def test_the_binding_records_an_absent_contract(self):
         self.assertEqual(([], {'version': 1, 'contract': {'present': False}}),
                          self.binding(require=False))
