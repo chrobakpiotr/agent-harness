@@ -144,8 +144,9 @@ class VerificationContractTest(unittest.TestCase):
 
         def unconfirmed():
             raise vc.RepositoryUnconfirmed('feature is not in the repository')
-        self.assertEqual((['verification contract currency cannot be established: repository identity unconfirmed '
-                           '(feature is not in the repository)'], None), self.binding(repo_root=unconfirmed))
+        expected = ('verification contract currency cannot be established: repository identity unconfirmed '
+                    '(feature is not in the repository)')
+        self.assertEqual(([expected], None), self.binding(repo_root=unconfirmed))
 
     def test_an_unreadable_contract_is_not_an_absent_one(self):
         (self.feature / 'verification-contract.json').mkdir()

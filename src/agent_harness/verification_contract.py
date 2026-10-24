@@ -156,8 +156,8 @@ def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None,
     try:
         root = repo_root()
     except RepositoryUnconfirmed as exc:
-        return errors + [f'verification contract currency cannot be established: repository identity unconfirmed '
-                         f'({exc})'], None
+        unconfirmed = f'verification contract currency cannot be established: repository identity unconfirmed ({exc})'
+        return [*errors, unconfirmed], None
     except (OSError, SystemExit):
         return errors + ['verification contract currency cannot be established: repository root unavailable'], None
     # The same set as `input_hashes`; the first three are required, the design files only when present.
