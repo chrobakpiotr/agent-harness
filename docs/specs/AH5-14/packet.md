@@ -253,3 +253,34 @@ needs `start`/`complete` moved (14b-2). As recorded, the three parts wait on eac
   their groups; then start/complete/replan/reopen), each rehearsed on its own.
 
 Until a decision, only the dependent part stops; nothing has been implemented for 14b-2.
+
+### AH5-14b-2 decision and step assignment (master: option A, 2026-10-24)
+
+- **Reassigned to 14b-2**, verbatim, from the 14c/14d groups: `validate_verification_resume`,
+  `validate_active_verification_resume`, `validate_pending_verification_resume`, `resolve_accepted_verification_plan`,
+  `is_unrecovered_partial_claim`, `packet_identity_from_recovery`, `recovery_proves_packet_binding`,
+  `recovery_record_identity`. They change no admission rule and do not close F1.
+- **Read-only, checked including the helpers they call:** the only helpers outside earlier releases are
+  `parse_aware_timestamp` (its `.replace` is `str.replace`), `packet_identity_from_embedded_checksum`,
+  `packet_identity_from_revision`, `canonical_packet_payload_sha256` and `packet_revision_id`: no write, no in-place
+  change of their arguments or of state, no Git command, no recovery. `resolve_accepted_verification_plan` constructs a
+  `VerificationStore` (paths only; `resolve_control_root` and the constructor create nothing) and reads through
+  `load_plan_record`, `load_validated` and `_read_state_unlocked_pure`, none of which writes.
+- **Step 1 (shared checks and reads; implemented, `d7db118`):** the eight functions above and those five helpers, in
+  `agent_harness.lifecycle_checks`, with `PacketIdentity` and the identity scheme constants.
+  `resolve_accepted_verification_plan` takes the released `StateAccess` plus two required bindings:
+  `feature_dir_for(root, feature_id)` (Showcase's `docs/specs/<id>`) and `verification_authority()` (its module, per
+  call); Showcase's patches of `load_validated`, `_read_state_unlocked_pure`, `feature_fingerprint` and its
+  `verification.store` reach it. Library tests: `test_lifecycle_checks` (4) and `test_lifecycle_refusals` (6, every
+  refusal; 6 mutations caught).
+- **Step 2 (transitions):** `cmd_claim`, `heartbeat`, `refresh_lease`, `lease_expired`, `cmd_heartbeat`,
+  `cmd_release`, `cmd_fail`, `cmd_complete`, `cmd_start`, `rollback_unexecuted_start`, `cmd_replan_task`,
+  `cmd_reopen`, `cmd_reconcile_feature`, `ready_ids`, `cmd_ready`, and their own groups (packets, worktrees, completion
+  publishing and repair records, human resolution, retry and replan). **Required Showcase bindings until 14d:**
+  `task_workspace_snapshot`, `restore_task_workspace`, `restore_attempt_authorization`, called exactly where the source
+  calls them, with their arguments, results and errors; no default, no no-op, no second implementation; a missing
+  binding is detected before an operation that can change state starts. Stale-lease recovery (`recover_stale_leases`,
+  `cmd_recover_stale`) stays for 14d.
+- Each step leaves a working set, one writer (`save_state`) and the shared `_authority_transaction`. Two steps do not
+  imply two releases.
+- The incident-lookup fix (`incident-lookup-fail-closed`) and F1 stay separate in diffs and evidence.
