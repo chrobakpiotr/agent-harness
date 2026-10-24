@@ -23,6 +23,15 @@ class SupportedApiTest(unittest.TestCase):
                 with self.subTest(name=f'{module}.{name}'):
                     self.assertTrue(hasattr(imported, name))
 
+    def test_the_package_declares_every_pinned_module(self):
+        """The declaration a consumer reads (the package docstring; README and AGENTS.md say the same) names every
+        pinned module, and pins nothing it does not declare."""
+        import agent_harness
+        declared = ' '.join(agent_harness.__doc__.split())
+        for module in SUPPORTED:
+            with self.subTest(module=module):
+                self.assertIn(module, declared)
+
 
 if __name__ == '__main__':
     unittest.main()
