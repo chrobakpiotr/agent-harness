@@ -1170,7 +1170,9 @@ def cmd_ready(args: argparse.Namespace, *, ns: Any) -> None:
 
 def cmd_claim(args: argparse.Namespace, *, ns: Any) -> None:
     doc = ns.load_validated(args.feature_dir)
+    observed = observed_contract_binding(args.feature_dir, ns=ns)
     with ns.locked_state(args.feature_dir, doc) as state:
+        contract_binding = require_unchanged_contract(args.feature_dir, observed, ns=ns)
         entry = state['tasks'].get(args.task_id)
         if (entry and entry.get('status') == 'failed' and
                 int(entry.get('attempts', 0)) >= 1 + int(doc.get('max_rework_attempts', 2)) and
@@ -1195,6 +1197,7 @@ def cmd_claim(args: argparse.Namespace, *, ns: Any) -> None:
             'owner': args.owner,
             'attempts': int(entry.get('attempts', 0)) + 1,
             'claimed_at': now.isoformat(),
+            'contract_binding': contract_binding,
         })
         ns.append_attempt_binding(entry, args.feature_dir, doc, args.task_id, active_packet)
         ns.refresh_lease(entry, doc, now=now)
@@ -2106,8 +2109,10 @@ def cmd_complete(args: argparse.Namespace, *, ns: Any) -> None:
     if evidence_errors:
         ns.die('; '.join(evidence_errors))
     evidence_doc = ns.load_json(evidence_path)
+    observed = observed_contract_binding(args.feature_dir, ns=ns)
 
     with ns.locked_state(args.feature_dir, doc) as state:
+        contract_binding = require_unchanged_contract(args.feature_dir, observed, ns=ns)
         entry = state['tasks'].get(args.task_id)
         if not entry:
             ns.die(f'unknown task {args.task_id}')
@@ -2136,6 +2141,7 @@ def cmd_complete(args: argparse.Namespace, *, ns: Any) -> None:
         if entry.get('status') != 'running':
             ns.die(f'{args.task_id} is not running')
         ns.validate_active_verification_resume(entry)
+        require_attempt_contract(args.feature_dir, args.task_id, entry, contract_binding, ns=ns)
         task = ns.active_task_contract(args.feature_dir, doc, args.task_id, state=state)
         active = ns.resolve_active_packet(args.feature_dir, doc, args.task_id, state=state)
         binding_errors = ns.validate_completion_binding(evidence_doc, args.feature_dir, args.task_id, entry, active)
@@ -2762,13 +2768,62 @@ def prepare_task_worktree(feature_dir: pathlib.Path, doc: dict[str, Any], state:
     return target
 
 
+def observed_contract_binding(feature_dir: pathlib.Path, *, ns: Any) -> dict[str, Any]:
+    """F1: the verification contract's binding, validated from the same read; any error refuses."""
+    errors, binding = ns.vc.contract_binding(feature_dir)
+    if errors or binding is None:
+        ns.die('VERIFICATION_CONTRACT_INVALID: ' + '; '.join(errors or ['no binding']))
+    return binding
+
+
+def require_unchanged_contract(feature_dir: pathlib.Path, observed: dict[str, Any], *, ns: Any) -> dict[str, Any]:
+    """F1, under the lock before any side effect: recompute, and refuse if it differs from the pre-check."""
+    current = observed_contract_binding(feature_dir, ns=ns)
+    if current != observed:
+        ns.die(f'VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION: {contract_binding_difference(observed, current)} '
+               'changed during the operation; nothing was written, retry')
+    return current
+
+
+def contract_binding_difference(recorded: Any, current: dict[str, Any]) -> str:
+    if not isinstance(recorded, dict) or recorded.get('version') != current.get('version'):
+        return 'the binding version'
+    names = ['verification-contract.json'] if recorded.get('contract') != current.get('contract') else []
+    recorded_inputs, current_inputs = recorded.get('inputs') or {}, current.get('inputs') or {}
+    names += [key for key in sorted(set(recorded_inputs) | set(current_inputs))
+              if recorded_inputs.get(key) != current_inputs.get(key)]
+    return ', '.join(names) or 'the binding'
+
+
+def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dict[str, Any],
+                             current: dict[str, Any], *, ns: Any) -> None:
+    """F1: the attempt's contract binding recorded at start must equal the one observed now; it is never rewritten.
+
+    An attempt started before F1 has none: with no contract now that is the old optional policy; with one it refuses.
+    """
+    where = (f'state and evidence are kept; refresh the contract through authoring, then recover {task_id} and start '
+             f'a new attempt, driving it from the feature directory the attempt was started from (this run read '
+             f'{feature_dir})')
+    if 'contract_binding' not in entry:
+        if current['contract']['present']:
+            ns.die(f'VERIFICATION_CONTRACT_BINDING_MISSING: attempt {entry.get("attempts")} of {task_id} was started '
+                   f'without a recorded contract binding; {where}')
+        return
+    if entry['contract_binding'] != current:
+        ns.die(f'VERIFICATION_CONTRACT_CHANGED_SINCE_START: attempt {entry.get("attempts")} of {task_id}: '
+               f'{contract_binding_difference(entry["contract_binding"], current)} differs from the binding recorded '
+               f'at start; {where}')
+
+
 def cmd_start(args: argparse.Namespace, *, ns: Any) -> None:
     doc = ns.load_validated(args.feature_dir)
+    observed = observed_contract_binding(args.feature_dir, ns=ns)
     idx = ns.task_index(doc)
     task = idx.get(args.task_id)
     if not task:
         ns.die(f'unknown task {args.task_id}')
     with ns.locked_state(args.feature_dir, doc) as state:
+        contract_binding = require_unchanged_contract(args.feature_dir, observed, ns=ns)
         if args.task_id not in ns.ready_ids(doc, state, args.feature_dir):
             ns.die(f'{args.task_id} is not ready')
         original = state['tasks'][args.task_id]
@@ -2776,6 +2831,7 @@ def cmd_start(args: argparse.Namespace, *, ns: Any) -> None:
         resume = original.get('verification_resume_pending')
         if isinstance(resume, dict):
             ns.validate_pending_verification_resume(original)
+            require_attempt_contract(args.feature_dir, args.task_id, original, contract_binding, ns=ns)  # same attempt
             if ns.is_unrecovered_partial_claim(original):
                 ns.die(f'CLAIM_RECOVERY_REQUIRED: {args.task_id} has an unrecovered exceptional claim')
             target = ns.worktree_path(str(doc.get('feature', args.feature_dir.name)), args.task_id)
@@ -2829,6 +2885,7 @@ def cmd_start(args: argparse.Namespace, *, ns: Any) -> None:
                 'claimed_at': now.isoformat(),
                 'worktree': str(target),
                 'start_origin_status': original.get('status'),
+                'contract_binding': contract_binding,
             })
             ns.append_attempt_binding(entry, args.feature_dir, doc, args.task_id, packet)
             ns.refresh_lease(entry, doc, now=now)

@@ -3,6 +3,7 @@
 The four source tests set the module's `REPO`; here the bindings are explicit. The other tests cover the seams and
 further validation rules; the packet lists the mutations they catch, a selection and not an exhaustive list.
 """
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -29,13 +30,16 @@ class VerificationContractTest(unittest.TestCase):
         (self.feature / 'design.json').write_text(json.dumps({'verification_contract': 'required'}))
         (self.feature / 'design').mkdir()
         (self.feature / 'design/gate.json').write_text('{}')
-        self.binding = {'repo_root': lambda: self.root, 'repository': self.root, 'constitution': CONSTITUTION}
+        self.binding_args = {'repo_root': lambda: self.root, 'repository': self.root, 'constitution': CONSTITUTION}
 
     def input_hashes(self):
-        return vc.input_hashes(self.feature, **self.binding)
+        return vc.input_hashes(self.feature, **self.binding_args)
 
     def validate(self, **kwargs):
-        return vc.validate_contract(self.feature, **{**self.binding, 'is_active': lambda p: True, **kwargs})
+        return vc.validate_contract(self.feature, **{**self.binding_args, 'is_active': lambda p: True, **kwargs})
+
+    def binding(self, **kwargs):
+        return vc.contract_binding(self.feature, **{**self.binding_args, 'is_active': lambda p: True, **kwargs})
 
     def contract(self):
         return {
@@ -116,10 +120,74 @@ class VerificationContractTest(unittest.TestCase):
                     self.assertIn(f'verification contract is stale: inputs.{key} does not match current artifact',
                                   errors)
 
-    def test_an_unreadable_input_skips_the_staleness_check_only(self):
-        """As the source: an input that cannot be hashed is not reported stale; the other rules still apply."""
+    def test_currency_that_cannot_be_established_fails_closed(self):
+        """F1 (replaces the source's fail-open skip): no repository root, or an input that cannot be read, is an error
+        and never a missing input; the binding is withheld."""
         self.write(self.contract())
-        self.assertEqual([], self.validate(repo_root=lambda: vc.die('no repository')))
+        unavailable = 'verification contract currency cannot be established: repository root unavailable'
+        for root in (lambda: vc.die('no repository'), lambda: (_ for _ in ()).throw(OSError('gone'))):
+            with self.subTest(root=root):
+                self.assertEqual(([unavailable], None), self.binding(repo_root=root))
+        (self.feature / 'plan.md').unlink()
+        (self.feature / 'plan.md').mkdir()  # exists, cannot be read as a file
+        errors, binding = self.binding()
+        self.assertIsNone(binding)
+        self.assertEqual(1, len(errors))
+        self.assertRegex(errors[0], r'^verification contract currency cannot be established: plan_sha256 unreadable '
+                                    r'\((IsADirectoryError|PermissionError)\)$')
+        (self.feature / 'plan.md').rmdir()
+        self.assertIn('verification contract currency cannot be established: plan_sha256 unreadable '
+                      '(FileNotFoundError)', self.validate())
+
+    def test_an_unreadable_contract_is_not_an_absent_one(self):
+        (self.feature / 'verification-contract.json').mkdir()
+        errors, binding = self.binding(require=False)
+        self.assertIsNone(binding)
+        self.assertRegex(errors[0], r'^verification-contract.json unreadable \(')
+
+    def test_a_removed_design_input_is_not_stale_but_changes_the_binding(self):
+        """As the source, validation does not compare a design input that is absent (Showcase validates scratch copies
+        without one); the binding records the absence, so a removal after `start` still refuses `complete`."""
+        self.write(self.contract())
+        before = self.binding()[1]
+        (self.feature / 'design/gate.json').unlink()
+        errors, after = self.binding()
+        self.assertEqual([], errors)
+        self.assertEqual({'present': False}, after['inputs']['design_gate_sha256'])
+        self.assertNotEqual(before, after)
+
+    def test_the_binding_comes_from_the_validated_bytes_and_names_every_input(self):
+        self.write(self.contract())
+        errors, binding = self.binding()
+        self.assertEqual([], errors)
+        digests = self.input_hashes()
+        contract_sha = hashlib.sha256((self.feature / 'verification-contract.json').read_bytes()).hexdigest()
+        self.assertEqual({'version': 1, 'contract': {'present': True, 'sha256': contract_sha}, 'inputs': {
+            'spec_sha256': {'present': True, 'sha256': digests['spec_sha256']},
+            'plan_sha256': {'present': True, 'sha256': digests['plan_sha256']},
+            'constitution_sha256': {'present': True, 'sha256': digests['constitution_sha256']},
+            'design_gate_sha256': {'present': True, 'sha256': digests['design_gate_sha256']},
+            'master_closure_sha256': {'present': False}}}, binding)
+        self.assertEqual(vc.INPUT_KEYS, tuple(binding['inputs']))
+        # Any change to the contract or an input, valid or not, changes the binding or withholds it.
+        doc = self.contract()
+        doc['summary'] = 'reworded'
+        self.write(doc)
+        self.assertNotEqual(binding, self.binding()[1])
+        self.write(self.contract())
+        self.assertEqual(binding, self.binding()[1])
+        (self.feature / 'spec.md').write_text('# spec\nRisk: high\n- AC-001: changed\n')
+        self.assertEqual((None,), self.binding()[1:])
+        doc = self.contract()  # re-authored for the new spec
+        self.write(doc)
+        changed = self.binding()[1]
+        self.assertNotEqual(binding['inputs']['spec_sha256'], changed['inputs']['spec_sha256'])
+
+    def test_the_binding_records_an_absent_contract(self):
+        self.assertEqual(([], {'version': 1, 'contract': {'present': False}}),
+                         self.binding(require=False))
+        self.assertEqual((['missing required verification-contract.json'], None), self.binding())
+        self.assertEqual([], self.validate(require=False))
 
     def test_requiredness_follows_the_bound_layout_and_the_explicit_override(self):
         """[seam] `is_active` decides whether `required` applies; `require=` overrides both ways."""

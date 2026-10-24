@@ -63,6 +63,11 @@ def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None)
                                    constitution=CONSTITUTION, is_active=lambda path: is_active_feature_dir(path))
 
 
+def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None) -> tuple[list[str], dict[str, Any] | None]:
+    return _impl.contract_binding(feature_dir, require=require, repo_root=lambda: repo_root(), repository=REPO,
+                                  constitution=CONSTITUTION, is_active=lambda path: is_active_feature_dir(path))
+
+
 def prompt(feature_dir: pathlib.Path, worktree: pathlib.Path) -> str:
     root = repo_root()
     rel = feature_dir.resolve().relative_to(root)

@@ -23,6 +23,9 @@ from typing import Any
 
 VALID_REQUIREMENT = {'required', 'optional', 'off'}
 VALID_ORIGINS = {'spec-derived', 'independent'}
+INPUT_KEYS = ('spec_sha256', 'plan_sha256', 'constitution_sha256', 'design_gate_sha256', 'master_closure_sha256')
+REQUIRED_INPUT_KEYS = frozenset(INPUT_KEYS[:3])
+BINDING_VERSION = 1
 VALID_SOURCE_TYPES = {'spec', 'adr', 'architecture-invariant', 'existing-behavior', 'security', 'performance', 'external-standard', 'human'}
 
 
@@ -72,22 +75,58 @@ def input_hashes(feature_dir: pathlib.Path, *, repo_root: Callable[[], pathlib.P
     return result
 
 
+def _read(path: pathlib.Path) -> bytes | None:
+    """The file's bytes, or None only when it does not exist; any other failure propagates."""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _binding(contract: bytes | None, inputs: dict[str, bytes | None]) -> dict[str, Any]:
+    def entry(data: bytes | None) -> dict[str, Any]:
+        return {'present': False} if data is None else {'present': True, 'sha256': hashlib.sha256(data).hexdigest()}
+    if contract is None:
+        return {'version': BINDING_VERSION, 'contract': entry(None)}
+    return {'version': BINDING_VERSION, 'contract': entry(contract),
+            'inputs': {key: entry(inputs.get(key)) for key in INPUT_KEYS}}
+
+
 def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None,
                       repo_root: Callable[[], pathlib.Path], repository: pathlib.Path, constitution: str,
                       is_active: Callable[[pathlib.Path], bool]) -> list[str]:
+    return contract_binding(feature_dir, require=require, repo_root=repo_root, repository=repository,
+                            constitution=constitution, is_active=is_active)[0]
+
+
+def contract_binding(feature_dir: pathlib.Path, *, require: bool | None = None,
+                     repo_root: Callable[[], pathlib.Path], repository: pathlib.Path, constitution: str,
+                     is_active: Callable[[pathlib.Path], bool]) -> tuple[list[str], dict[str, Any] | None]:
+    """F1: the contract's errors and its binding, both from one read of the contract and its inputs.
+
+    The binding (versioned) records whether the contract exists and, when it does, its digest and the presence and
+    digest of each input in ``INPUT_KEYS``; it is None whenever there are errors. A file that cannot be read, or a
+    repository root that cannot be found, is an error and never counts as absent.
+    """
     errors: list[str] = []
     required = (requirement(feature_dir) == 'required' and is_active(feature_dir)) if require is None else require
     if requirement(feature_dir) == 'invalid':
         errors.append('design.json.verification_contract must be required/optional/off')
     path = feature_dir / 'verification-contract.json'
-    if not path.exists():
-        return ['missing required verification-contract.json'] if required else errors
     try:
-        doc = json.loads(path.read_text(encoding='utf-8'))
-    except json.JSONDecodeError as exc:
-        return errors + [f'invalid JSON in verification-contract.json: {exc}']
+        raw = _read(path)
+    except OSError as exc:
+        return errors + [f'verification-contract.json unreadable ({type(exc).__name__})'], None
+    if raw is None:
+        if required:
+            return ['missing required verification-contract.json'], None
+        return errors, (None if errors else _binding(None, {}))
+    try:
+        doc = json.loads(raw.decode('utf-8'))
+    except ValueError as exc:
+        return errors + [f'invalid JSON in verification-contract.json: {exc}'], None
     if not isinstance(doc, dict):
-        return errors + ['verification-contract.json must contain an object']
+        return errors + ['verification-contract.json must contain an object'], None
     if doc.get('schema_version') != 1:
         errors.append('verification-contract.json schema_version must be 1')
     if doc.get('feature') != feature_dir.name:
@@ -95,11 +134,29 @@ def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None,
     if doc.get('status') != 'accepted':
         errors.append('verification-contract.json status must be accepted')
     try:
-        expected = input_hashes(feature_dir, repo_root=repo_root, repository=repository, constitution=constitution)
+        root = repo_root()
     except (OSError, SystemExit):
-        expected = {}
-    for key, digest in expected.items():
-        if doc.get('inputs', {}).get(key) != digest:
+        return errors + ['verification contract currency cannot be established: repository root unavailable'], None
+    # The same set as `input_hashes`; the first three are required, the design files only when present.
+    sources = {'spec_sha256': feature_dir / 'spec.md', 'plan_sha256': feature_dir / 'plan.md',
+               'constitution_sha256': root / constitution,
+               'design_gate_sha256': feature_dir / 'design' / 'gate.json',
+               'master_closure_sha256': feature_dir / 'design' / 'master-closure.json'}
+    inputs: dict[str, bytes | None] = {}
+    for key, source in sources.items():
+        try:
+            inputs[key] = _read(source)
+        except OSError as exc:
+            errors.append(f'verification contract currency cannot be established: {key} unreadable '
+                          f'({type(exc).__name__})')
+            continue
+        if inputs[key] is None and key in REQUIRED_INPUT_KEYS:
+            errors.append(f'verification contract currency cannot be established: {key} unreadable '
+                          f'(FileNotFoundError)')
+    recorded = doc.get('inputs', {})
+    recorded = recorded if isinstance(recorded, dict) else {}
+    for key, data in inputs.items():  # as the source: an absent design input is not compared; the binding records it
+        if data is not None and recorded.get(key) != hashlib.sha256(data).hexdigest():
             errors.append(f'verification contract is stale: inputs.{key} does not match current artifact')
     criteria = doc.get('criteria')
     if not isinstance(criteria, list) or not criteria:
@@ -156,7 +213,7 @@ def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None,
                 approver = item.get('approved_by')
                 if not isinstance(approver, str) or not (approver == 'human' or approver.startswith('human:')):
                     errors.append(f'{where} accepted exemption requires approved_by=human or human:<name>')
-    return errors
+    return errors, (None if errors else _binding(raw, inputs))
 
 
 def criterion_ids(feature_dir: pathlib.Path) -> set[str]:

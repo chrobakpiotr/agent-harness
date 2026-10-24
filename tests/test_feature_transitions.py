@@ -62,9 +62,12 @@ class NamespaceTest(unittest.TestCase):
 
     def test_moved_functions_take_the_namespace(self):
         import inspect
+        f1 = {'observed_contract_binding', 'require_unchanged_contract', 'require_attempt_contract',
+              'contract_binding_difference'}  # F1's own additions, not moved code
         moved = [name for name, value in vars(ft).items() if inspect.isfunction(value)
-                 and value.__module__ == ft.__name__ and name != 'bind']
+                 and value.__module__ == ft.__name__ and name != 'bind' and name not in f1]
         self.assertEqual(80, len(moved))
+        self.assertTrue(f1 <= set(vars(ft)))
         for name in moved:
             with self.subTest(name):
                 parameter = inspect.signature(getattr(ft, name)).parameters.get('ns')
