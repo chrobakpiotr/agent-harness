@@ -306,3 +306,9 @@ Ported tests:
   counting that combined run as green.
 - Incident lookup behavior is unchanged. The fail-closed incident adapter fix remains a separate diff and evidence
   item; F1 remains separate and is not closed by these checks.
+
+- **Handover delivery:** documentation commit `149b3f7739d27d34ea2c6792be95747821e61531` was pushed to
+  `ah5-14b2-transitions` with owner authorization. GitHub accepted the push while reporting these bypassed rules:
+  protected-ref update, pull request required, 2 of 2 required status checks expected, and verified commit signature
+  (the commit was unsigned). These are not passed controls. `gh run list` returned no workflow runs for this Harness
+  documentation SHA; no CI result is claimed for it.
