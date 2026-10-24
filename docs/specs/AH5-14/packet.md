@@ -347,3 +347,29 @@ is committed as `d7db118`; step 2 is the remaining implementation.
   `test_recovery_epoch_enters_sticky_read_only_mode_if_baseline_later_changes`, `test_state_recovery`).
 - The library's `if not incident` stays verbatim in 0.17.0; with the adapter it only ever sees `None` or a valid
   record. Ships with the next release; the 14b-2 rehearsal accounts for it separately.
+
+### AH5-14b-2 step 2 evidence (2026-10-24)
+
+- **Candidate code:** `0d6473316fd5110dd22029433a579e43cfc90a01`; later commits on the branch change only `docs/`.
+- **Showcase through the shim** (`792dfad` with Showcase's fixture fix `d067955`, the candidate installed): 295/299;
+  the other four are the two baseline failures and the environment-only `test_verification_workspace` and
+  `test_verification_sandbox_doctor`. A first run had been invalid: Showcase's tests load `harness.py` as
+  `sdd_harness` without registering it, so binding through `sys.modules` failed at import; the namespace now binds the
+  module's own globals (`ModuleNamespace(globals())`), and that run was discarded.
+- **Rehearsal** (`rehearsal-14b2`, library `2249598` = candidate code, Showcase `d0679550c478aac01d2bec541d7fee77a05eb1e1`,
+  base on its pin `137b0ba`, `JOBS=4`): **test results identical** (921 ok, 2 FAIL, 2 ERROR on both sides); CI 21
+  commands, exit codes identical, output identical after masking; **rollback** wrapped → base, base → wrapped and
+  base → base all ok. Host window 2026-10-24T10:08:23Z to 10:54:30Z, load about 4–13.
+- **Independent review:** attempt 1 stopped on an API session limit without a verdict (kept as an attempt, not a
+  result); attempt 2 started after the reset.
+- **Independent review, attempt 2: pass with amendments** at `0d6473316fd5110dd22029433a579e43cfc90a01`. Confirmed:
+  the 80 functions exactly the packet's list; 79 AST-identical to the source after removing `ns`, the 80th
+  (`require_available_completion_origin`) differing only by the declared replacement of its two function-local imports;
+  no free name bypasses `ns` and no local is wrongly prefixed (nested scopes included); the shim changed only the 80
+  wrappers plus four declared nodes, wrappers keep exact signatures; the three recovery bindings stay Showcase's and are
+  called once each, unchanged; `ModuleNamespace` reads the shim's globals at the moment of use (patches and later
+  definitions seen, nothing replaceable beyond the source); `bind()` refuses at import; one shared
+  `_authority_transaction`. **Applied (tests only):** a static check that `NAMESPACE_NAMES` equals the names the code
+  reads, and one that the three recovery bindings are called exactly where and as the source calls them; the
+  misleading test is renamed. The reviewer's surviving mutations (a name dropped from the list; each recovery call made
+  a no-op) are now caught.
