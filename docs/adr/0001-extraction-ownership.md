@@ -112,6 +112,8 @@ Where the earlier text conflicts, this section applies.
    | `verification_contract` | `verification_contract.py`, **partial**: the validation; authoring (`generate`) stays Showcase-owned | AH5-13 freeze notice | 0.15.0 |
    | `feature`, `feature_state` | `harness.py`, **partial** (AH5-14a): the feature documents and validation, the state paths, identity checks and the single writer; state loading, lifecycle, admission, recovery and the CLI stay until 14b–e | AH5-14a freeze notice | 0.16.0 |
    | `feature_access` | `harness.py`, **partial** (AH5-14b-1): the lifecycle lock, state loading, the completion-record readers and the integrity checks they need; Showcase's incident and recovery-epoch check stays as a refuse-only hook; transitions (14b-2), admission (14c), recovery operations (14d) and the CLI (14e) stay | AH5-14b-1 freeze notice | 0.17.0 |
+   | `lifecycle_checks` | `harness.py`, **partial** (AH5-14b-2 step 1): exact 13-function inventory in `docs/specs/AH5-14/packet.md`; read-only resume/plan/claim/recovery-identity checks and helpers | AH5-14b-2 step 1 | pending 14b-2 cutover |
+   | `feature_transitions` | `harness.py`, **partial** (AH5-14b-2 step 2): exact 80-function transition closure in `docs/specs/AH5-14/packet.md`; three mutating recovery helpers remain required Showcase bindings until 14d | AH5-14b-2 step 2 | pending 14b-2 cutover |
 
    The table is kept current in `docs/migration/cutover.md`. Showcase policy that the shims bind stays
    Showcase-owned and is never frozen:

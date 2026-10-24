@@ -202,7 +202,10 @@ Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at
 **AH5-14b-1 released in 0.17.0** (2026-10-24, `137b0ba`). 14b-2 (transitions) follows after its review; 14c stays
 blocked by F1.
 
-## AH5-14b-2 — boundaries (recorded before any code, 2026-10-24): a concrete blocker
+## AH5-14b-2 — boundaries (pre-decision analysis, 2026-10-24)
+
+The blocker/options below are historical analysis. Master selected Option A and authorized implementation on
+2026-10-24; the recorded decision and two-step assignment follow this section.
 
 Source: Showcase `harness.py` at `792dfad` (its 0.17.0 adoption checkpoint; identical to `87e4ad6`). Method: the
 transitions' call graph beyond what 0.15–0.17 already moved.
@@ -252,7 +255,8 @@ needs `start`/`complete` moved (14b-2). As recorded, the three parts wait on eac
 - In both, 14b-2 is large (~2,750 lines): it can ship in two steps (claim/heartbeat/release/fail/ready/reconcile and
   their groups; then start/complete/replan/reopen), each rehearsed on its own.
 
-Until a decision, only the dependent part stops; nothing has been implemented for 14b-2.
+At the time of this analysis, only the dependency decision was blocked. That decision has since been made and step 1
+is committed as `d7db118`; step 2 is the remaining implementation.
 
 ### AH5-14b-2 decision and step assignment (master: option A, 2026-10-24)
 
@@ -273,10 +277,31 @@ Until a decision, only the dependent part stops; nothing has been implemented fo
   call); Showcase's patches of `load_validated`, `_read_state_unlocked_pure`, `feature_fingerprint` and its
   `verification.store` reach it. Library tests: `test_lifecycle_checks` (4) and `test_lifecycle_refusals` (6, every
   refusal; 6 mutations caught).
-- **Step 2 (transitions):** `cmd_claim`, `heartbeat`, `refresh_lease`, `lease_expired`, `cmd_heartbeat`,
-  `cmd_release`, `cmd_fail`, `cmd_complete`, `cmd_start`, `rollback_unexecuted_start`, `cmd_replan_task`,
-  `cmd_reopen`, `cmd_reconcile_feature`, `ready_ids`, `cmd_ready`, and their own groups (packets, worktrees, completion
-  publishing and repair records, human resolution, retry and replan). **Required Showcase bindings until 14d:**
+- **Step 2 (transitions; exact local-function closure from those entry points):** `_bridge_request_identity`,
+  `_completion_failpoint`, `_completion_record_semantics`, `_path_is_selected`, `_read_packet_identity_bridge`,
+  `active_task_contract`,
+  `add_completion_record`, `append_attempt_binding`, `assert_worktree_protocol_current`, `changed_paths`,
+  `checkpoint_worktree`, `classify_historical_packet_binding`, `classify_retry_authorizations`, `cmd_claim`,
+  `cmd_complete`, `cmd_fail`, `cmd_heartbeat`, `cmd_ready`, `cmd_reconcile_feature`, `cmd_release`, `cmd_reopen`,
+  `cmd_replan_task`, `cmd_start`, `completion_verification_artifact`, `consume_attempt_authorization`,
+  `correction_is_repaired`, `correction_records`, `correction_targets_current_completion`, `descendants`,
+  `ensure_task_workspace_clean`, `execution_protocol_paths`, `heartbeat`, `heartbeat_interval_seconds`,
+  `historical_feature_fingerprint`, `lease_expired`, `lease_ttl_seconds`, `legacy_packet_path`, `legacy_revision_id`,
+  `owner_guard`, `packet_bound_semantic_contract_sha256`, `packet_identity_bridge_path`,
+  `packet_matches_semantic_contract`, `packet_payload`, `parse_timestamp`, `path_matches`, `prepare_task_worktree`,
+  `prior_builder_result_digest`, `prune_task_workspace`, `publish_completion_authority`, `publish_revision`,
+  `ready_ids`, `refresh_lease`, `reopen_dependency_graph`, `repair_authorization_records`, `repair_claim_records`,
+  `replan_failpoint`, `require_available_completion_origin`, `require_task_commit_ancestry`,
+  `required_completion_criteria`, `resolve_active_packet`, `retire_finalized_completion_repair_pointers`,
+  `retry_binding`, `revision_path`, `rollback_unexecuted_start`, `semantic_task_contract`,
+  `semantic_task_contract_sha256`, `stage_first_task_base`, `task_base_commits`, `task_has_effective_completion`,
+  `task_worktree_snapshot`, `utc_now`, `validate_attempt_binding_ledger`, `validate_completion_binding`,
+  `validate_completion_proofs`, `validate_evidence`, `validate_latest_human_resolution`, `validate_packet_integrity`,
+  `validate_replan_task`, `worktree_path`, and `write_packet` (80 functions). This is the AST-resolved local call
+  closure of `cmd_claim`, `heartbeat`, `cmd_heartbeat`, `cmd_release`, `cmd_fail`, `cmd_complete`, `cmd_start`,
+  `rollback_unexecuted_start`, `cmd_replan_task`, `cmd_reopen`, `cmd_reconcile_feature`, `ready_ids`, and `cmd_ready`,
+  after removing 14a/14b-1/step-1 library-owned functions and the Showcase bindings below. The wrapper-only
+  `_policy` and `_state_access` remain adapter construction, not transition implementations. **Required Showcase bindings until 14d:**
   `task_workspace_snapshot`, `restore_task_workspace`, `restore_attempt_authorization`, called exactly where the source
   calls them, with their arguments, results and errors; no default, no no-op, no second implementation; a missing
   binding is detected before an operation that can change state starts. Stale-lease recovery (`recover_stale_leases`,

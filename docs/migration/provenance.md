@@ -280,3 +280,29 @@ Ported tests:
   writer through the binding and the fault injector; the ownership refusal and its exit code; the lock guard; the
   fingerprint refusal; the completion-record readers, including the pending authority of the current transaction.
   Showcase's suites cover the transitions through the shim.
+
+## AH5-14b-2 step 1 — shared read-only checks (Showcase `792dfad`, 2026-10-24)
+
+| Library file | Source (`harness.py`) | Changes |
+|---|---|---|
+| `agent_harness/lifecycle_checks.py` | `parse_aware_timestamp`, `validate_verification_resume`, `validate_active_verification_resume`, `validate_pending_verification_resume`, `is_unrecovered_partial_claim`, `canonical_packet_payload_sha256`, `packet_revision_id`, `packet_identity_from_embedded_checksum`, `packet_identity_from_revision`, `packet_identity_from_recovery`, `recovery_proves_packet_binding`, `recovery_record_identity`, `resolve_accepted_verification_plan`; `PacketIdentity` and packet/recovery identity scheme constants | The twelve pure parser, validator and identity functions are AST-identical to Showcase. `resolve_accepted_verification_plan` keeps its source order and checks; the library receives the released `StateAccess`, a required `feature_dir_for(root, feature_id)` binding for Showcase's `docs/specs/<id>`, and a required `verification_authority()` binding for its profile-aware validator. The existing state read and verification-store module are looked up per call through `StateAccess`, so Showcase patches still reach them. |
+
+- **Read-only review:** the moved helper closure has no state save, repair or recovery operation. `VerificationStore`
+  construction resolves the existing primary-worktree control root and derives paths; it creates no directories.
+  `load_plan_record`, `load_validated`, `_read_state_unlocked_pure`, and the feature fingerprint read their inputs.
+  `validate_plan_record(..., reconstruct=True)` validates and reconstructs by reading the profile, repository and
+  candidate surface; its `seal_candidate` and `build_plan` path does not write state or start recovery. The resolver
+  retains the source's plan-record read → feature/state reads → current binding checks → reconstruction check order.
+- **State authority:** step 1 does not change the writer, transition lock or `_authority_transaction`; the Showcase
+  wrapper still aliases `feature_access._authority_transaction`, shared with completion publishers.
+- **Evidence:** commit `d7db118` contains four focused lifecycle-check tests and six refusal/binding tests, including
+  checks that inputs remain unchanged on refusal. Twelve of thirteen source function ASTs compare exactly. The full
+  `PYTHON=python3.13 scripts/check-wheel.sh` completed against the candidate wheel: 604 tests passed, two skipped.
+  On the exact Showcase `792dfad` export with this wrapper and library source, five focused Showcase tests passed for
+  resume start/refusals, stranded-claim refusal and packet identity; `test_verification_authority` passed. The
+  combined local `test_verification_lifecycle`/authority run had one unrelated macOS fixture-path error before the
+  assertion: a `/private/var/...` temporary path was compared with its `/var/...` symlink spelling using
+  `Path.relative_to`. Showcase's exact-checkpoint CI on Linux passed; record the local host limitation rather than
+  counting that combined run as green.
+- Incident lookup behavior is unchanged. The fail-closed incident adapter fix remains a separate diff and evidence
+  item; F1 remains separate and is not closed by these checks.
