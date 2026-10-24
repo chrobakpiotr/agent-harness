@@ -198,3 +198,6 @@ Rehearsal for 14b-1 runs on Showcase's committed 0.16.0 adoption (in progress at
   verbatim read-only code (file reads and Git reads in `state_recovery`).
 - **Informational:** the shim's `lifecycle_state_lock`/`locked_state` wrappers build the binding at call, not at
   `__enter__`; no test patches `fcntl` or `STATE_DIR` between the two.
+
+**AH5-14b-1 released in 0.17.0** (2026-10-24, `137b0ba`). 14b-2 (transitions) follows after its review; 14c stays
+blocked by F1.
