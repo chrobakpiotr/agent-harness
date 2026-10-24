@@ -1,8 +1,5 @@
 """Target qualification runs (AH5-04c-1): ``qualify(job_id, out)`` runs the Q01–Q16/B1–B10 probes on Docker.
 
-Supported here (ADR 0001, amendment 2026-10-18): ``qualify``, ``probe_digest``, ``DEFAULT_IMAGE``, ``DEFAULT_TARGET``,
-and ``reference.reviewed_reference``. Everything else in this package is internal.
-
 The probe modules ``q_probes``, ``q_lifecycle``, ``b_probes`` and ``report`` are verbatim copies of Showcase's
 qualification code (docs/migration/provenance.md); ``probe_digest()`` names exactly that code. A run writes a
 contract v1 qualification report whose tuple states ``probe_digest`` and whose ``policy_digest`` is Harness's
