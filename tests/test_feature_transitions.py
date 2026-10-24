@@ -62,8 +62,8 @@ class NamespaceTest(unittest.TestCase):
 
     def test_moved_functions_take_the_namespace(self):
         import inspect
-        f1 = {'observed_contract_binding', 'require_unchanged_contract', 'require_attempt_contract',
-              'contract_binding_difference', 'verification_resume_identity',
+        f1 = {'observed_contract_binding', 'require_repository_identity', 'require_unchanged_contract',
+              'require_attempt_contract', 'contract_binding_difference', 'verification_resume_identity',
               'cmd_invalidate_verification_resume'}  # F1's own additions, not moved code
         moved = [name for name, value in vars(ft).items() if inspect.isfunction(value)
                  and value.__module__ == ft.__name__ and name != 'bind' and name not in f1]
@@ -96,6 +96,24 @@ class AttemptContractTest(unittest.TestCase):
             with self.subTest(strict=strict), self.assertRaisesRegex(SystemExit, 'BINDING_MISSING'):
                 ft.require_attempt_contract('F', 'T-1', {'attempts': 1}, present,
                                             unbound_without_contract=not strict, ns=self.ns())
+
+
+class RepositoryIdentityTest(unittest.TestCase):
+    def ns(self, root):
+        def die(message):
+            raise SystemExit(message)
+        vc = type('vc', (), {'binding_repo_root': staticmethod(root),
+                             'contract_binding': staticmethod(lambda path: ([], {'version': 1,
+                                                                                 'contract': {'present': False}}))})
+        return ft.ModuleNamespace({'die': die, 'vc': vc})
+
+    def test_identity_is_checked_and_reported_apart_from_the_contract(self):
+        def unconfirmed(path):
+            raise OSError('feature is not in the repository')
+        with self.assertRaisesRegex(SystemExit, '^VERIFICATION_REPOSITORY_UNCONFIRMED: feature is not in the repository'):
+            ft.observed_contract_binding('F', ns=self.ns(unconfirmed))  # even without a contract
+        self.assertEqual({'version': 1, 'contract': {'present': False}},
+                         ft.observed_contract_binding('F', ns=self.ns(lambda path: path)))
 
 
 class SourceShapeTest(unittest.TestCase):
