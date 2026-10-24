@@ -182,3 +182,60 @@ Git operation editing `spec.md`, `plan.md`, the constitution or `master-closure.
 
 **Not in F1:** adding the constitution or `master-closure.json` to the feature fingerprint (R2, separate decision); any
 recovery exception (R3).
+
+## Decision and conditions (master, 2026-10-24)
+
+- **Accepted**, with a limited guarantee, for implementation **after** the verbatim 14b-2 extraction, as a separate
+  behaviour change. The guarantee, in master's wording: *`complete` admits a completion only if the correctly read
+  and validated inputs observed during the check under the lock match the binding recorded at `start`.* It does not
+  guarantee an atomic snapshot of the files or their immutability until `save_state`; a change after the check may go
+  undetected, and the next operation detects it only if it is still observable and that operation re-checks these
+  inputs.
+- **Binding rules:** a versioned, unambiguously encoded set of input names, their presence and their digests; the
+  validation and the binding use the **same bytes read once** (never validate one read and hash another); under the
+  lock the required validation and the binding are recomputed; `start` records the binding with the attempt through the
+  existing `save_state`; `complete` requires a match with both its own pre-check and the attempt's recorded binding;
+  a read error, an invalid contract or a mismatch refuses with no change to the task's state and no loss of evidence;
+  `complete` never overwrites the attempt's binding.
+- **Attempts started before F1:** no recorded binding blocks a normal `complete`; nothing is back-filled. The path is
+  the existing recovery and a new `start` after validation, which keeps the previous attempt and its evidence;
+  historical completions stay readable and are not rewritten. (Spelled out command by command with the
+  implementation, R3.)
+- **Verification required:** refusal for a change before the under-lock check, a change between `start` and
+  `complete`, unreadable inputs, a missing historical binding, and an unchanged attempt that completes; the remaining
+  race after the check documented, not claimed removed.
+- AH5-14c stays blocked until F1 is implemented, independently evaluated and its adoption confirmed.
+
+## The input set (master point 3): analysis before implementation
+
+**Which set.** F1 uses the set the contract's existing staleness check already compares (`validate_contract` →
+`input_hashes`, verbatim since AH5-13): `spec.md`, `plan.md`, the constitution, and `design/gate.json` and
+`design/master-closure.json` **when present**, plus the contract file itself. This is not the R2 question: R2 is
+about adding the constitution and the closure to the **feature fingerprint** that guards stored state, and stays a
+separate decision. **For confirmation:** that "the existing accepted set" for F1 means exactly this `input_hashes`
+set (the constitution, gate and closure are in it today).
+
+| Input | Why it affects the contract's validity | Changed by normal `start`/`complete`? | Changed by other tasks? | Self-invalidation risk |
+|---|---|---|---|---|
+| `spec.md`, `plan.md` | the contract's criteria are derived from them (`inputs.spec_sha256`, `plan_sha256`) | no: no lifecycle command writes them | **yes, for some features:** 151 task `allowed_paths` across Showcase's 43 features cover a contract input; most are blanket `docs/specs/<F>/**`, some name `spec.md`/`plan.md` outright (e.g. `APP-ORCH-001` T-001, `DOMAIN-INDEP-001` T-001) | see below |
+| constitution | the contract's independent criteria cite it; `inputs.constitution_sha256` | no | only a task allowed to edit `docs/agentic-sdd/constitution.md` | as below |
+| `design/gate.json` | the design decision the contract follows; written by `design.py` | no | covered by blanket `docs/specs/<F>/**` paths | as below |
+| `design/master-closure.json` | the human authority that replaces a non-passing gate | no | covered by blanket paths; in practice a human record | as below |
+
+**No self-invalidation within one attempt in the orchestrated flow.** `orchestrate.py` calls `start` and `complete` with
+the feature directory of the **primary checkout** (`orchestrate.py:677`, `:700`); the task edits its own worktree. A
+task's own edits to `spec.md`/`plan.md` reach the primary checkout only when its work is integrated, so they do not
+change the inputs its own `complete` checks.
+
+**Concrete conflicts, reported before implementation (no exception, no automatic rebind):**
+1. **A task whose purpose is to change the spec or plan** (allowed paths naming `spec.md`/`plan.md`). Once its work
+   is integrated, the contract is stale (C1). That already holds today, and every later operation refuses until the
+   contract is re-authored. F1 adds nothing here, but it is a real workflow cost for such features.
+2. **New with F1:** a parallel attempt whose inputs change because *another* task's work is integrated while it runs
+   is refused at `complete` (`VERIFICATION_CONTRACT_CHANGED_SINCE_START`), and has to be restarted after the contract
+   is re-authored. That is the intended guarantee, but it changes how features with spec-editing tasks run.
+3. **A manual `complete` run from inside the task worktree** (feature directory under the worktree) would read the
+   worktree's own, possibly edited, `spec.md`/`plan.md` and refuse its own completion. The orchestrator does not do
+   this; manual use might.
+
+These go to master for a decision before that part of F1 is implemented.
