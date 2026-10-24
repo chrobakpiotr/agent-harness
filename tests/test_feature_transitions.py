@@ -52,7 +52,7 @@ class NamespaceTest(unittest.TestCase):
             _ = ns.missing
         self.assertFalse(hasattr(ns, 'missing'))
 
-    def test_a_transition_calls_the_consumer_recovery_binding(self):
+    def test_the_namespace_resolves_a_recovery_binding_to_the_consumer_function(self):
         calls = []
         names = complete_namespace(restore_task_workspace=lambda *a, **k: calls.append((a, k)))
         ns = ft.bind(ft.ModuleNamespace(names))
@@ -70,6 +70,44 @@ class NamespaceTest(unittest.TestCase):
                 parameter = inspect.signature(getattr(ft, name)).parameters.get('ns')
                 self.assertIsNotNone(parameter)
                 self.assertIs(inspect.Parameter.empty, parameter.default)  # required, never defaulted
+
+
+
+class SourceShapeTest(unittest.TestCase):
+    """Static checks on the moved code: the declared names, and the three recovery calls exactly as the source makes them."""
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+        import inspect
+        cls.ast = ast
+        cls.tree = ast.parse(inspect.getsource(ft))
+
+    def namespace_reads(self):
+        ast = self.ast
+        return {node.attr for node in ast.walk(self.tree) if isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name) and node.value.id == 'ns'}
+
+    def test_the_declared_names_are_exactly_the_names_the_code_reads(self):
+        self.assertEqual(set(ft.NAMESPACE_NAMES), self.namespace_reads())
+        self.assertEqual(len(ft.NAMESPACE_NAMES), len(set(ft.NAMESPACE_NAMES)))
+
+    def test_the_recovery_bindings_are_called_exactly_where_and_as_the_source_calls_them(self):
+        ast = self.ast
+        expected = {
+            ('cmd_reopen', 'ns.task_workspace_snapshot(feature, tid)'),
+            ('cmd_reopen', 'ns.restore_task_workspace(feature, tid, snapshots[tid])'),
+            ('rollback_unexecuted_start', 'ns.restore_attempt_authorization(entry)'),
+        }
+        found = set()
+        for function in self.tree.body:
+            if isinstance(function, ast.FunctionDef):
+                for node in ast.walk(function):
+                    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                            and isinstance(node.func.value, ast.Name) and node.func.value.id == 'ns'
+                            and node.func.attr in ft.RECOVERY_BINDINGS):
+                        found.add((function.name, ast.unparse(node)))
+        self.assertEqual(expected, found)
 
 
 if __name__ == '__main__':

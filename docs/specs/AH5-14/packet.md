@@ -342,3 +342,14 @@ is committed as `d7db118`; step 2 is the remaining implementation.
   base → base all ok. Host window 2026-10-24T10:08:23Z to 10:54:30Z, load about 4–13.
 - **Independent review:** attempt 1 stopped on an API session limit without a verdict (kept as an attempt, not a
   result); attempt 2 started after the reset.
+- **Independent review, attempt 2: pass with amendments** at `0d6473316fd5110dd22029433a579e43cfc90a01`. Confirmed:
+  the 80 functions exactly the packet's list; 79 AST-identical to the source after removing `ns`, the 80th
+  (`require_available_completion_origin`) differing only by the declared replacement of its two function-local imports;
+  no free name bypasses `ns` and no local is wrongly prefixed (nested scopes included); the shim changed only the 80
+  wrappers plus four declared nodes, wrappers keep exact signatures; the three recovery bindings stay Showcase's and are
+  called once each, unchanged; `ModuleNamespace` reads the shim's globals at the moment of use (patches and later
+  definitions seen, nothing replaceable beyond the source); `bind()` refuses at import; one shared
+  `_authority_transaction`. **Applied (tests only):** a static check that `NAMESPACE_NAMES` equals the names the code
+  reads, and one that the three recovery bindings are called exactly where and as the source calls them; the
+  misleading test is renamed. The reviewer's surviving mutations (a name dropped from the list; each recovery call made
+  a no-op) are now caught.
