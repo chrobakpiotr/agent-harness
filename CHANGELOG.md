@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.18.0 — unreleased (prepared 2026-10-24)
+## 0.18.0 — 2026-10-24
 
 Three separate changes, each with its own evidence (`docs/specs/release-0.18.0/packet.md`):
 

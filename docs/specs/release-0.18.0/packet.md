@@ -1,6 +1,6 @@
 # Version 0.18.0 — lifecycle transitions (AH5-14b-2), supported RetryControl (AH5-API-1), fail-closed incident lookup
 
-- Status: prepared; release on the owner's order. Distribution: annotated Git tag `v0.18.0`; consumers pin the tag
+- Status: **released** 2026-10-24 on the owner's order. Distribution: annotated Git tag `v0.18.0`; consumers pin the tag
   SHA.
 - **Not a single verbatim migration.** It contains one verbatim move, one additive API and one behaviour change in the
   Showcase adapter, each as its own commit with its own criteria and evidence:
@@ -34,3 +34,23 @@
   API; agent-benchmark uses none of this and stays on 0.14.0.
 - **Release candidate** `a204a3b66190b7bb60590d3cb19cd1e643a55dea` (version 0.18.0): `scripts/check-wheel.sh` 617
   tests OK, 2 skipped; Harness CI run 40096074883 (dispatch) success. Later commits change only `docs/`.
+
+## Evidence (2026-10-24)
+
+- AC1: `__version__` 0.18.0; CHANGELOG `## 0.18.0` naming each change and its kind; README pins `@v0.18.0`.
+- AC2: `scripts/check-wheel.sh` on the release code (`a204a3b`; `6d1c69a` adds only docs): 617 tests OK, 2 skipped.
+  CI run 40096877972 for `6d1c69a` on `main`: success (Offline package checks, Python 3.13).
+- AC3: `refs/tags/v0.18.0` = `c3cc1bd4` → commit `6d1c69a170dee8638b5535aed3f9aadb57845ba6`, pushed with `main`.
+  - A fresh CPython 3.13 venv from the tag SHA reports `agent-harness 0.18.0`; `feature_transitions`,
+    `lifecycle_checks` and `retry_control` import; `retry_control.RetryControl` is the library's own type.
+  - The shipped reference carries the installed probe digest (`sha256:ee87222a…`), as in 0.17.0.
+- **Branch protection:** the push of `6d1c69a` to `main` was accepted as an admin bypass (no pull request, unsigned
+  commits, required checks not run before the push), under the owner's direct-push decision. CI ran after the push
+  and passed. The bypass does not mean those protections were satisfied.
+
+## Consumer handoff
+
+| Consumer | Pin now | Adoption of 0.18.0 | Rollback |
+|---|---|---|---|
+| Showcase | v0.17.0 `137b0ba` (`87e4ad6`, code checkpoint `792dfad`) | **1)** pin `6d1c69a`; copy `harness.py` (mode 100755) from `migration/showcase-wrapper/` (it carries the step-2 bindings and the fail-closed incident lookup) and `tests/test_cutover_wrapper.py`; move the three version-pin tests to 0.18.0; run CI. Report the incident fix's adoption separately (its own check: an invalid lookup result refuses before it could count as "no incident"). **2)** separately: switch `verification/retry_controls.py` to `agent_harness.retry_control.RetryControl`, use `inputs_digest()`, raise its own adapter error instead of `SupervisorError`; confirm both control digests and the callback refusal through the real integration | the whole 0.17.0 set: pin `137b0ba`, the previous `harness.py` and test copies; the retry change reverts on its own |
+| agent-benchmark | v0.14.0 `cc9d33a` | not needed: none of the changed modules is used; `contract`, `execution` and `qualification` are unchanged | — |

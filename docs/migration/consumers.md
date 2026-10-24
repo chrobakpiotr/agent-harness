@@ -29,3 +29,6 @@ Create or refresh the copy with `agent-harness constitution > <path>` after re-p
 `agent-harness constitution --digest` prints the version and sha256 to record next to the pin. Status:
 agent-benchmark keeps a verbatim 1.0.1 copy in `docs/constitution.md`, checked by a unit test in CI (its `10a3cc5`;
 its repo rules live in `AGENTS.md`); Showcase has no copy yet.
+
+v0.18.0 (`6d1c69a`; AH5-14b-2, AH5-API-1, fail-closed incident lookup) is released; Showcase's adoption is pending
+(`docs/specs/release-0.18.0/packet.md`). agent-benchmark stays on v0.14.0.
