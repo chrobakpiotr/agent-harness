@@ -388,6 +388,20 @@ candidate): output identical; 43 valid, 7 invalid on both for reasons unrelated 
 (`AH5-04B-QUAL-001`, `SDD-001`, `SDD-OBS-001`); Showcase's live lifecycle state has no running attempt in them (read
 only), so no attempt is left without a binding by the adoption.
 
+**Rehearsal** (`scripts/rehearse-cutover.sh`, `BASE_PINNED=1 JOBS=4`; library `fcd9a94`, the code before the review
+fixes, which `758cb94`/`043deef` add and the targeted reruns above cover; Showcase `ac552f0`, base on its pin
+`6d1c69a` = 0.18.0; host window 2026-10-24T18:48:17Z to 19:33:31Z, load about 3 to 18.6 at the end):
+- CI: 21 commands, exit codes identical, output identical after masking durations and eval ids.
+- Tests: base 924 ok, 1 FAIL, 1 ERROR (`test_register_manual_observation_…` FAIL and `test_real_plan_acceptance_…`
+  ERROR, the two known cases); wrapped 925 ok, 7 FAIL, 6 ERROR. The 34-line difference is exactly: the 12 F1 tests
+  (wrapped only, all ok); the six intended historical-binding refusals listed above, which this runner reports per
+  class, including the subclasses that inherit them (`CanonicalCompletionRepairTests`,
+  `LegacyRepairCheckpointBindingProtocolTests`), so 10 rows; and
+  `test_harness.HarnessTest.test_concurrent_sequential_replans_have_one_winner` FAIL on the wrapped side only, a
+  timing test under the end-of-run load, OK 3 of 3 times alone on the wrapped side.
+- Rollback wrapped → base, base → wrapped and base → base: all ok.
+- CI on the branch: `fcd9a94` success; `043deef` (head) success.
+
 ## Known non-passing Showcase cases (exact identifiers)
 
 From the AH5-14b-2 step 2 run that reported 295/299 (`res17c`, one unit per line, Showcase `792dfad` + `d067955`):
