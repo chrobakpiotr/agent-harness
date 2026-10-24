@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **F1, behaviour change (fail-closed verification-contract currency and attempt binding):**
+  `verification_contract.contract_binding` validates the contract and builds a versioned binding of the contract file
+  and its inputs (names, presence, digests) from one read; an unreadable input or contract, or no repository root, is
+  now an error instead of skipping the staleness check. `start` and `claim` recheck it under the lifecycle lock and
+  record it with the new attempt; `complete` rechecks it and requires the attempt's recorded binding
+  (`VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION`, `VERIFICATION_CONTRACT_CHANGED_SINCE_START`,
+  `VERIFICATION_CONTRACT_BINDING_MISSING`). Refusals write no state. Not an atomic snapshot: a change after the check
+  under the lock is seen only by a later operation. Details and adoption: `docs/specs/F1-contract-staleness/packet.md`.
+
 ## 0.18.0 — 2026-10-24
 
 Three separate changes, each with its own evidence (`docs/specs/release-0.18.0/packet.md`):

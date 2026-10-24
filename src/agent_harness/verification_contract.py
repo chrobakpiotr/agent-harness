@@ -11,6 +11,9 @@ policy explicitly; none is built in:
 - ``is_active``: whether a feature directory is an active one (the source's ``docs/specs`` layout check).
 
 Authoring a contract (the source's ``generate``) launches an agent and stays with the consumer.
+
+F1 (behaviour change, not verbatim): currency that cannot be established fails closed, and ``contract_binding``
+returns the errors together with a binding built from the same bytes, which lifecycle transitions record and compare.
 """
 from __future__ import annotations
 

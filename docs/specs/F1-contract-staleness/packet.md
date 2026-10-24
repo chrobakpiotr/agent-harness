@@ -1,8 +1,8 @@
 # F1 — fail-closed verification-contract staleness (behaviour change, for review)
 
-- Status: **design for review**, refined after master's points 3–6 (2026-10-23); no implementation before the
-  consistency question below is decided. Separate from the verbatim
-  extraction. AH5-14c stays blocked until F1 is decided and verified.
+- Status: **candidate implemented, for independent review** (branch `f1-contract-staleness`, code `fcd9a94`); the
+  design sections below are kept as decided. Separate from the verbatim extraction. AH5-14c stays blocked until F1 is
+  implemented, independently evaluated and adopted.
 - Decision (master, 2026-10-23): **fail-closed.** A stale required contract, or one whose currency cannot be
   confirmed, blocks `start` and `complete`. Missing proof of currency is never treated as current.
 - Finding: `docs/specs/AH5-13/findings-2026-10-20.md`, F1.
@@ -278,3 +278,168 @@ this order and does not change it.
 **Planning (operational recommendation):** integrating changes to a feature's contract inputs (its spec, plan, gate,
 closure, or the constitution) can invalidate parallel attempts of the same feature that depend on those inputs. Plan
 such integrations outside active attempts that depend on them. F1 builds no scheduler for this.
+
+## Implementation (candidate, 2026-10-24)
+
+**Library, `agent_harness.verification_contract`:**
+- `contract_binding(feature_dir, *, require, repo_root, repository, constitution, is_active) -> (errors, binding)`:
+  reads `verification-contract.json` and each input **once**, validates those bytes and builds the binding from the
+  same bytes. `validate_contract` is now `contract_binding(...)[0]` (same errors as before, plus C2/C3).
+- Reads fail closed: only `FileNotFoundError` counts as "absent"; any other `OSError` is C3 (`<key> unreadable
+  (<class>)`, or `verification-contract.json unreadable (<class>)` for the contract itself). A missing `spec.md`,
+  `plan.md` or constitution is C3 (`FileNotFoundError`). A repository root that cannot be resolved (`SystemExit` or
+  `OSError` from `repo_root`) is C2. The fail-open `expected = {}` is gone.
+- **Binding, as implemented** (supersedes the hash-of-canonical-JSON and `null` sketched in the mechanism above; master
+  asked for an explicit, versioned encoding of names, presence and digests): with a contract,
+  `{"version": 1, "contract": {"present": true, "sha256": …}, "inputs": {"<key>": {"present": true, "sha256": …} |
+  {"present": false}}}` for every key in `INPUT_KEYS` (`spec_sha256`, `plan_sha256`, `constitution_sha256`,
+  `design_gate_sha256`, `master_closure_sha256`, always all five, in that order); without a contract (optional
+  policy) `{"version": 1, "contract": {"present": false}}`. With any error there is no binding (`None`).
+- Unchanged from the source: an absent design input (gate, closure) is not compared with the contract's recorded
+  hash. A first draft also reported a recorded-but-absent design input as stale; Showcase's `wayfinder to-tasks`
+  validates a scratch copy without `design/gate.json` (`test_wayfinder`), so that rule was dropped as outside the
+  agreed scope. The binding records the absence, so a removal between `start` and `complete` still refuses.
+
+**Library, `agent_harness.feature_transitions`** (F1's own functions, not moved code): `observed_contract_binding`,
+`require_unchanged_contract`, `require_attempt_contract`, `contract_binding_difference`.
+- `cmd_start` and `cmd_claim` (both start an attempt): pre-check right after `load_validated`; under the lock, first
+  statement of the transaction, `require_unchanged_contract` (`VERIFICATION_CONTRACT_INVALID` or
+  `VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION`); the new attempt records `contract_binding`. A verification resume
+  (`start` with `verification_resume_pending`) continues the same attempt: it requires that attempt's binding like
+  `complete` and does not record a new one.
+- `cmd_complete`: pre-check after evidence validation; under the lock, first statement, the same recheck; after the
+  read-only status, owner, origin and resume checks and before any side effect, `require_attempt_contract`:
+  `VERIFICATION_CONTRACT_CHANGED_SINCE_START` (names the differing file and inputs) or
+  `VERIFICATION_CONTRACT_BINDING_MISSING` (no recorded binding while a contract is present). No binding and no
+  contract: allowed (optional policy). The binding is never written by `complete`. The idempotent replay of an
+  already completed task (`ALREADY_COMPLETED`) is not an attempt completion and is not checked against the binding.
+- Every refusal raises before `save_state`, so no state is written (`locked_state` saves only on normal exit).
+
+**Shim:** `migration/showcase-wrapper/verification_contract.py` adds `contract_binding(feature_dir, *, require=None)`
+with Showcase's bindings, which the transitions reach as `ns.vc.contract_binding`. `harness.py` is unchanged.
+
+**What the existing fingerprint already did, and what F1 adds** (found while testing). The feature fingerprint
+(`feature.feature_fingerprint`) covers `spec.md`, `plan.md`, `tasks.json`, `design.json`, `design/gate.json`,
+`verification-contract.json` and `wayfinder-handoff.json`, and every lifecycle command refuses a changed fingerprint
+until `reconcile-feature` adopts it; `reconcile-feature` keeps running attempts running. So before F1:
+- a contract re-authored (for any input change) and reconciled while an attempt ran let that attempt `complete`
+  against the new contract: **F1 refuses this** (`CHANGED_SINCE_START`), the case the tests drive;
+- the constitution and `master-closure.json` are outside the fingerprint; a change to them without re-authoring is
+  C1 (stale), and with re-authoring the contract file changes, so the case above applies;
+- an unreadable input or no repository root skipped the staleness comparison: **F1 refuses (C2/C3).**
+R2 (adding the constitution and the closure to the fingerprint) stays separate and is not needed for F1's guarantee.
+
+**Refreshing after a refusal**, command by command (no rebind, no back-fill): re-author and accept the contract
+(`verification_contract.py generate` and its acceptance), commit, `reconcile-feature` (a changed contract file changes
+the fingerprint), then the existing recovery of the refused attempt (`fail` or `release`, or `recover-state` when its
+lease expired) and a new `start`, which records the new binding. The refused attempt and its evidence stay in the
+state and on disk.
+
+**Guarantee (master's wording):** `complete` admits a completion only if the correctly read and validated inputs
+observed during the check under the lock match the binding recorded at `start`. It is not an atomic snapshot: a
+change after the check under the lock and before the transaction's write is not detected by that operation; the next
+operation detects it only if it is still observable and that operation re-checks these inputs. An edit that restores
+the same bytes is invisible. The contract's writers do not take the lifecycle lock, and F1 does not make them.
+
+## Verification (candidate `fcd9a94`, 2026-10-24)
+
+**Library** (wheel installed outside the checkout, `scripts/check-wheel.sh`): 621 tests OK (2 skipped); `ruff 0.16.10`
+clean; `git diff --check` clean. `tests/test_verification_contract.py` replaces the source's fail-open test
+(`test_an_unreadable_input_skips_the_staleness_check_only`) with C2/C3, the unreadable contract, the binding's
+encoding and same-read identity, an absent design input, and an absent contract.
+
+**End to end through Showcase's shim** (`migration/showcase-wrapper/tests/test_f1_contract_binding.py`, run in Showcase
+`ac552f0` with the candidate installed; Showcase's own feature and evidence fixtures): 12 tests OK:
+
+| Required case | Test |
+|---|---|
+| change before the under-lock check (start: no attempt used, no worktree, no binding) | `test_a_change_before_the_locked_check_refuses_start_without_using_an_attempt` |
+| same, at complete | `test_a_change_before_the_locked_check_refuses_complete` |
+| change between start and complete (state bytes and evidence kept, status `running`) | `test_a_change_between_start_and_complete_refuses_and_keeps_state_and_evidence`, `test_a_reauthored_contract_alone_refuses`, `test_a_contract_added_after_start_refuses_complete` |
+| unreadable inputs, at start and at complete | `test_unreadable_inputs_refuse_start_and_complete` |
+| missing historical binding (no back-fill) | `test_an_attempt_without_a_recorded_binding_cannot_complete_normally` |
+| unchanged attempt completes; binding not rewritten | `test_an_unchanged_attempt_records_its_binding_and_completes` |
+| complete before integration passes; a later integration blocks the next start until the contract is refreshed (and reconciled) | `test_complete_before_integration_passes_and_a_later_integration_blocks_the_next_start` |
+| optional policy without a contract unchanged | `test_without_a_contract_the_optional_policy_is_unchanged` |
+| stale (C1) and fingerprint order | `test_an_input_changed_and_not_reauthored_refuses_as_stale`, `test_before_reconciliation_the_fingerprint_refuses_first` |
+
+**Mutations** (each applied to the installed library, F1 tests rerun, then restored and compared byte for byte): all
+six caught: no recheck under the lock in `start` (1 failure) or in `complete` (1); no attempt check in `complete` (4);
+`start` records no binding (3 failures, 4 errors); a missing binding allowed (1); the recorded binding not compared
+(3).
+
+**Showcase suite** (`ac552f0`, candidate installed, 299 units as in AH5-14): 290 OK. Non-passing:
+- the 4 known cases (below), except that `test_register_manual_observation_…` passed in this run;
+- **6 caused by F1, all the intended historical-binding refusal:** these fixtures write a `running` attempt directly
+  into the state, with a contract present and no `contract_binding`, then call `complete`; F1 refuses with
+  `VERIFICATION_CONTRACT_BINDING_MISSING` before the check each test exercises:
+  `test_harness.CompletionCorrectionTest.test_m4_03_complete_required_vc_proof_accepts_completion`,
+  `test_harness.CompletionCorrectionTest.test_completion_rejects_checkpoint_not_descending_from_dependency`,
+  `test_harness.CanonicalCompletionRepairTests.test_unresolved_older_correction_still_refuses_completion`,
+  `test_harness.CanonicalCompletionRepairTests.test_repaired_correction_from_prior_epoch_does_not_block_reused_attempt_number`,
+  `test_harness.CanonicalCompletionRepairTests.test_new_completion_repair_is_not_treated_as_replay_of_older_repair`,
+  `test_harness.CanonicalCompletionRepairTests.test_current_attempt_correction_requires_canonical_repair_completion`.
+  Adoption fixes them on the Showcase side (see below), not by any library exception.
+- `test_wayfinder` failed with the first draft (the dropped recorded-but-absent rule above); rerun after the fix in
+  the rehearsal below.
+
+**Showcase features** (all 50 under `docs/specs` at `ac552f0`, `harness.py validate` with 0.18.0 and with the
+candidate): output identical; 43 valid, 7 invalid on both for reasons unrelated to F1. Three features have a contract
+(`AH5-04B-QUAL-001`, `SDD-001`, `SDD-OBS-001`); Showcase's live lifecycle state has no running attempt in them (read
+only), so no attempt is left without a binding by the adoption.
+
+## Known non-passing Showcase cases (exact identifiers)
+
+From the AH5-14b-2 step 2 run that reported 295/299 (`res17c`, one unit per line, Showcase `792dfad` + `d067955`):
+1. `test_harness.HarnessTest.test_register_manual_observation_serializes_scope_resolution_with_lifecycle_mutation`
+   (`FAILED (failures=1)`);
+2. `test_verification_completion_boundary.OriginCompletionBoundaryTest.test_real_plan_acceptance_cannot_be_completed_with_legacy_proofs`
+   (`ERROR`, `StoreError: SECRET_BEARING_CANDIDATE_UNSEALABLE`);
+3. `test_verification_workspace`: in that run a single unit, `FAILED (errors=12)`; the run kept no per-method names.
+   **Evidence gap: the 12 method names of that run are not preserved.** The `rehearsal-14b2` logs do not supply them
+   either: there the module ran 14 tests, all OK, on both sides. Not reconstructed;
+4. `test_verification_sandbox_doctor`: `NO TESTS RAN` (0 tests collected), so it has no method identifiers.
+
+`rehearsal-14b2` (same code, separate runner, both sides identical) had a different set: `test_concurrent_sequential_
+replans_have_one_winner` (FAIL and ERROR), `test_register_manual_observation_…` (FAIL) and
+`test_real_plan_acceptance_…` (ERROR), recorded there as 2 FAIL, 2 ERROR.
+
+**Relation to F1's criteria:**
+- **1 does not affect them.** It tests that `register_manual_observation` (verification-store registration) serializes
+  with a lifecycle mutation, using 2–3 s thread waits; it fails under load (`mutation.is_alive()`). F1 changes neither
+  that function nor `locked_state`. F1's "under the lock" relies on `locked_state`'s exclusion between lifecycle
+  commands, which passing tests cover (`test_lifecycle_mutation_and_verifier_reservation_share_atomic_guard`,
+  `test_concurrent_sequential_replans_have_one_winner`, `test_conflicting_failed_task_replans_serialize_with_one_winner`
+  OK in the F1 run). With the candidate it passed in the full run and 5 of 5 times alone.
+- **2 does not affect them.** It errors in `verification.authority.prepare_task_plan` (candidate sealing) before any
+  lifecycle command runs; F1 does not touch that path. Its guarantee (an accepted v2 plan blocks a legacy-proof
+  `complete` with `VERIFICATION_ORIGIN_ADMISSION_UNAVAILABLE`) is not an F1 criterion. If it ran, F1 would not change
+  its outcome: its fixture has no contract (both bindings absent), and `require_available_completion_origin` runs
+  before F1's attempt check; the sibling `test_v2_normal_completion_rejects_fabricated_legacy_success`, which asserts
+  the same refusal through `cmd_complete`, passes with the candidate.
+- 3 and 4 are environment-only modules (workspace sandboxing and sandbox doctor), outside the paths F1 changes.
+
+## Open point for master
+
+`complete-repair` (`cmd_complete_repair`) is still Showcase's own code in the shim (it moves with a later packet). It
+runs `load_validated`, so C1–C3 block it, but it does not check the attempt's binding. It publishes a canonical
+repaired completion for an existing completion under an explicit repair authorization, so it is a recovery path. F1
+adds no bypass and no check there. **For decision:** require the attempt binding in `complete-repair` too when it
+moves, or keep it as a recovery path covered by C1–C3 only.
+
+## Adoption (Showcase, after a release on the owner's order)
+
+1. Pin the release and copy the shim `verification_contract.py` (adds `contract_binding`); `harness.py` is unchanged.
+2. Add `tests/test_f1_contract_binding.py` from the shim.
+3. Update the fixtures of the six tests above: they write a `running` attempt into the state for a feature with a
+   contract, so record the binding that attempt's `start` would have recorded, after the contract is written. Two
+   lines in `tests/test_harness.py` at `ac552f0`, verified in a copy (all six then pass; what each test asserts is
+   unchanged):
+   - in the shared completion fixture, after `entry.update({'status': status, 'attempts': attempts, 'owner':
+     'worker-a', 'checkpoint_commit': checkpoint_commit})` (line 4347):
+     `entry['contract_binding'] = harness.vc.contract_binding(feature)[1]`;
+   - in `test_completion_rejects_checkpoint_not_descending_from_dependency`, before its `harness.save_state(feature,
+     state)` (line 4443): `state['tasks']['T-B']['contract_binding'] = harness.vc.contract_binding(feature)[1]`.
+4. Operationally: attempts started before the adoption on a feature with a contract cannot complete normally; follow
+   *Refreshing after a refusal* above (at adoption time, none are running).
+5. Run the full suite and CI; rollback is the previous pin and shim, as before.
