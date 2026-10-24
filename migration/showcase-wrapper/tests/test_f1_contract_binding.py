@@ -265,8 +265,19 @@ class ContractBindingTest(unittest.TestCase):
             self.assertIn('repository identity unconfirmed', errors[0])
         finally:
             shutil.rmtree(other, ignore_errors=True)
-        self.assertIn('verification contract currency cannot be established: repository identity unconfirmed', err)
+        self.assertIn('VERIFICATION_REPOSITORY_UNCONFIRMED: ', err)
+        self.assertNotIn('VERIFICATION_CONTRACT_INVALID', err)  # identity is reported apart from contract validity
         self.assertEqual(before, self.state_bytes())
+
+    def test_without_a_contract_another_repository_is_still_refused(self):
+        self.without_contract()
+        before = self.state_bytes()
+        with mock.patch.object(vc, 'REPO', self.root.parent):  # not a Git checkout
+            err = self.refused(self.start)
+        self.assertIn('VERIFICATION_REPOSITORY_UNCONFIRMED: ', err)
+        self.assertEqual(before, self.state_bytes())
+        self.start()  # the configured repository, without a contract: the optional policy
+        self.assertEqual({'version': 1, 'contract': {'present': False}}, self.entry()['contract_binding'])
 
     def test_a_worktree_of_the_configured_repository_is_the_same_repository(self):
         worktree = self.root.parent / f'{self.root.name}-wt'

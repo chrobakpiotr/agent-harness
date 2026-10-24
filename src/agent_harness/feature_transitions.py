@@ -2768,8 +2768,19 @@ def prepare_task_worktree(feature_dir: pathlib.Path, doc: dict[str, Any], state:
     return target
 
 
+def require_repository_identity(feature_dir: pathlib.Path, *, ns: Any) -> None:
+    """F1: the repository whose state the operation changes is the configured one (the consumer's
+    ``vc.binding_repo_root``: same Git common directory, no fallback), with or without a contract."""
+    try:
+        ns.vc.binding_repo_root(feature_dir)
+    except OSError as exc:  # the consumer's RepositoryUnconfirmed, or any failure to confirm
+        ns.die(f'VERIFICATION_REPOSITORY_UNCONFIRMED: {exc}; nothing was written')
+
+
 def observed_contract_binding(feature_dir: pathlib.Path, *, ns: Any) -> dict[str, Any]:
-    """F1: the verification contract's binding, validated from the same read; any error refuses."""
+    """F1: the repository's identity, then the verification contract's binding, validated from the same read; any
+    error refuses (identity and contract validity are reported separately)."""
+    require_repository_identity(feature_dir, ns=ns)
     errors, binding = ns.vc.contract_binding(feature_dir)
     if errors or binding is None:
         ns.die('VERIFICATION_CONTRACT_INVALID: ' + '; '.join(errors or ['no binding']))
