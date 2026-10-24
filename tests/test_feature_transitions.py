@@ -73,6 +73,60 @@ class NamespaceTest(unittest.TestCase):
 
 
 
+class LegacyPacketReplanTest(unittest.TestCase):
+    """A packet written for a task without `test_mode`/`test_seam` stores them as null; its own replan must accept it."""
+
+    FIELDS = ('id', 'title', 'objective', 'role', 'agent_profile', 'depends_on', 'allowed_paths',
+              'acceptance_criteria', 'risk_tags', 'verification', 'test_mode', 'test_seam')
+
+    def setUp(self):
+        import hashlib
+        import pathlib
+
+        def die(message):
+            raise SystemExit(message)
+        names = {'die': die, 'safe_task_id': lambda task_id: True, 'TASK_CONTRACT_FIELDS': self.FIELDS,
+                 'sha256_bytes': lambda data: hashlib.sha256(data).hexdigest()}
+        self.ns = ft.ModuleNamespace(names)
+        names['semantic_task_contract'] = lambda *args, **kwargs: ft.semantic_task_contract(*args, ns=self.ns,
+                                                                                            **kwargs)
+        self.feature = pathlib.Path('F')
+
+    def packet(self, *, test_policy='legacy', role='builder', stored_objective='o', **fields):
+        task = {'id': 'T-1', 'title': 't', 'objective': 'o', 'role': role, 'depends_on': [], 'allowed_paths': [],
+                'acceptance_criteria': ['AC-1'], 'risk_tags': [], 'verification': ['true'], **fields}
+        stored = ft.semantic_task_contract_sha256(
+            self.feature, {'feature': 'F'}, {**task, 'objective': stored_objective}, feature_sha256='f' * 64,
+            test_policy=test_policy, ns=self.ns)
+        # As the producer writes it (`packet_payload`): the profile defaults to the role; absent test fields are null.
+        return {**{key: task[key] for key in self.FIELDS if key in task and key != 'id'}, 'feature': 'F',
+                'task': 'T-1', 'feature_fingerprint': 'f' * 64, 'test_policy': test_policy, 'agent_profile': role,
+                'test_mode': task.get('test_mode'), 'test_seam': task.get('test_seam'),
+                'semantic_contract_sha256': stored}
+
+    def bound(self, packet):
+        return ft.packet_bound_semantic_contract_sha256(self.feature, packet, ns=self.ns)
+
+    def test_a_legacy_task_without_test_fields_is_accepted(self):
+        for policy, role in (('legacy', 'builder'), ('legacy', 'evaluator'), ('risk-driven', 'evaluator')):
+            with self.subTest(policy=policy, role=role):
+                packet = self.packet(test_policy=policy, role=role)
+                self.assertEqual(packet['semantic_contract_sha256'], self.bound(packet))
+
+    def test_a_task_with_its_test_fields_is_unchanged(self):
+        packet = self.packet(test_policy='risk-driven', test_mode='existing-suite', test_seam='seam')
+        self.assertEqual(packet['semantic_contract_sha256'], self.bound(packet))
+
+    def test_where_the_policy_requires_them_null_is_not_absence(self):
+        packet = self.packet(test_policy='risk-driven')
+        with self.assertRaisesRegex(SystemExit, 'semantic contract fingerprint is inconsistent'):
+            self.bound(packet)
+
+    def test_a_packet_whose_contract_differs_from_its_hash_is_still_refused(self):
+        with self.assertRaisesRegex(SystemExit, 'semantic contract fingerprint is inconsistent'):
+            self.bound(self.packet(stored_objective='another objective'))
+
+
 class SourceShapeTest(unittest.TestCase):
     """Static checks on the moved code: the declared names, and the three recovery calls exactly as the source makes them."""
 

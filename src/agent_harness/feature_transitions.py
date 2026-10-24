@@ -1306,6 +1306,14 @@ def packet_bound_semantic_contract_sha256(feature_dir: pathlib.Path,
     stored = packet.get('semantic_contract_sha256')
     if stored is not None:
         candidates = {fingerprint, fingerprint_for(explicit)}
+        # The packet stores `test_mode`/`test_seam` as null for a task without them, while its semantic hash was
+        # computed from the task without them. Where the policy lets a task omit them (all but risk-driven builders),
+        # null is that legacy absence; the stored hash must still match.
+        if not (test_policy == 'risk-driven' and packet.get('role') == 'builder'):
+            for variant in (task, explicit):
+                absent = {key: value for key, value in variant.items()
+                          if not (key in ('test_mode', 'test_seam') and value is None)}
+                candidates.add(fingerprint_for(absent))
         if not isinstance(stored, str) or stored not in candidates:
             ns.die('ACTIVE_PACKET_AMBIGUOUS: packet semantic contract fingerprint is inconsistent')
         fingerprint = stored
