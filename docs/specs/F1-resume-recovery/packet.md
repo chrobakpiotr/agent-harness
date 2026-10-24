@@ -23,8 +23,10 @@ adoption in Showcase.
 - `load_validated` first (full validation, as every lifecycle command).
 - Under `locked_state` (the repository verification lock, then the lifecycle lock): the task must be `failed` with a
   `verification_resume_pending` and no active resume; `validate_pending_verification_resume` checks it is this
-  attempt's (`task_attempt == attempts`) and equals the latest history item; its identity
-  (`sha256:` + canonical JSON SHA-256 of the pending resume) must equal `--resume`. Any difference refuses
+  attempt's (`task_attempt == attempts`) and equals the latest history item; its identity must equal `--resume`:
+  `sha256:` + canonical JSON SHA-256 of the pending resume **and** the stopped attempt's state (`status`, `attempts`,
+  `last_failure`, `last_failure_evidence`, `last_attempt_commit`, `contract_binding`), so the same resume restored on a
+  changed attempt (after a later start and release) is a different identity. Any difference refuses
   (`VERIFICATION_RESUME_INVALIDATION_REFUSED`, or `VERIFICATION_RESUME_STATE_INVALID`) and writes nothing.
 - Effect, in the one `save_state` commit: the latest history item gets `result: invalidated`, `ended_at`, and
   `invalidation: {operator, reason, reason_sha256, at, prior_status}`; `verification_resume_pending` is removed; the
@@ -63,7 +65,20 @@ current contract and records its binding.
 - `test_r_a_resume_other_than_the_one_named_is_refused_without_change` (a changed request time, an unrelated identity);
 - `test_r_without_a_pending_resume_nothing_is_invalidated`;
 - `test_r_an_inconsistent_pending_resume_is_refused` (history differs from the pending resume);
-- `test_r_reason_and_operator_are_required`.
+- `test_r_reason_and_operator_are_required`;
+- `test_r_a_pending_resume_on_a_task_that_is_not_stopped_is_refused` (`running`, or an active resume).
+
+With F1's `test_f1_contract_binding`: 27 OK (Showcase `ac552f0`, F1 `0ddfb83` merged in).
+
+## Independent review (fresh context, 2026-10-24): PASS WITH FINDINGS, handled
+
+No way to use the operation to obtain a completion or to reuse the old binding; the checks run under the lock before
+any write; `escalated` has no side effect against the decisions. Findings: the `failed`-status and active-resume guards
+were untested (now tested); the identity covered only the pending resume (now also the attempt's state, tested with a
+changed `last_attempt_commit`); the fixture writes the pending resume directly rather than through
+`resume-verification`'s verification-blocked flow (that flow needs an accepted verification plan; the state it
+produces is the same: `failed`, the resume pending and in history); step 5's archive ref is manual (see
+*Observations*).
 
 Library: `tests/test_feature_transitions.py` (the new functions are F1's own; the namespace names they read are
 declared).

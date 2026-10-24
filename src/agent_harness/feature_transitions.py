@@ -2809,7 +2809,7 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
     resume = entry.get('verification_resume_pending')
     if isinstance(resume, dict):  # a resume continues this attempt; its way out is the explicit invalidation
         where += (f'; this attempt has a pending verification resume: invalidate it first with '
-                  f'invalidate-verification-resume --resume {verification_resume_identity(resume, ns=ns)}')
+                  f'invalidate-verification-resume --resume {verification_resume_identity(entry, ns=ns)}')
     if 'contract_binding' not in entry:
         if current['contract']['present'] or not unbound_without_contract:
             ns.die(f'VERIFICATION_CONTRACT_BINDING_MISSING: attempt {entry.get("attempts")} of {task_id} was started '
@@ -2821,8 +2821,16 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
                f'at start; {where}')
 
 
-def verification_resume_identity(resume: dict[str, Any], *, ns: Any) -> str:
-    return f'sha256:{ns.canonical_json_sha256(resume)}'
+RESUME_IDENTITY_FIELDS = ('status', 'attempts', 'last_failure', 'last_failure_evidence', 'last_attempt_commit',
+                          'contract_binding')
+
+
+def verification_resume_identity(entry: dict[str, Any], *, ns: Any) -> str:
+    """The pending resume together with the stopped attempt's state, so a later release or recovery that restores the
+    same resume on a changed attempt is a different identity."""
+    return 'sha256:' + ns.canonical_json_sha256({
+        'resume': entry.get('verification_resume_pending'),
+        'attempt': {key: entry.get(key) for key in RESUME_IDENTITY_FIELDS}})
 
 
 def cmd_invalidate_verification_resume(args: argparse.Namespace, *, ns: Any) -> None:
@@ -2847,7 +2855,7 @@ def cmd_invalidate_verification_resume(args: argparse.Namespace, *, ns: Any) -> 
                 entry.get('verification_resume_active') is not None):
             ns.die(f'VERIFICATION_RESUME_INVALIDATION_REFUSED: {args.task_id} has no pending verification resume')
         ns.validate_pending_verification_resume(entry)  # this attempt's, and its latest history item
-        if verification_resume_identity(resume, ns=ns) != args.resume:
+        if verification_resume_identity(entry, ns=ns) != args.resume:
             ns.die('VERIFICATION_RESUME_INVALIDATION_REFUSED: the pending resume differs from the one named; '
                    'nothing was changed')
         now = ns.utc_now().isoformat()

@@ -11,6 +11,8 @@ import unittest
 
 import test_f1_contract_binding as f1
 
+from agent_harness import feature_transitions as ft
+
 harness = f1.harness
 vc = f1.vc
 
@@ -70,8 +72,17 @@ class ResumeRecoveryTest(f1.ContractBindingTest):
                 feature_dir=self.feature, task_id='T-001', resume=resume_identity,
                 reason='the contract changed; the resume no longer applies', by='human:operator'))
 
-    def identity(self, resume):
-        return f'sha256:{harness.canonical_json_sha256(resume)}'
+    def identity(self, resume=None, **entry_changes):
+        """As the refusal prints it: the pending resume (or the one given) with the attempt's state."""
+        entry = {**self.entry(), **entry_changes}
+        if resume is not None:
+            entry['verification_resume_pending'] = resume
+        return ft.verification_resume_identity(entry, ns=harness._NS)
+
+    def set_entry(self, **changes):
+        state = harness.load_state(self.feature, self.doc)
+        state['tasks']['T-001'].update(changes)
+        harness.save_state(self.feature, state)
 
     def test_r_a_stuck_resume_is_refused_with_its_way_out(self):
         resume = self.pending_resume()
@@ -119,7 +130,9 @@ class ResumeRecoveryTest(f1.ContractBindingTest):
     def test_r_a_resume_other_than_the_one_named_is_refused_without_change(self):
         resume = self.pending_resume()
         before = self.state_bytes()
-        for named in (self.identity({**resume, 'requested_at': '2026-10-24T11:00:00+00:00'}), 'sha256:' + '0' * 64):
+        for named in (self.identity({**resume, 'requested_at': '2026-10-24T11:00:00+00:00'}),
+                      self.identity(last_attempt_commit='0' * 40),  # the same resume on a changed attempt
+                      'sha256:' + '0' * 64):
             with self.subTest(named=named):
                 err = self.refused(lambda named=named: self.invalidate(named))
                 self.assertIn('VERIFICATION_RESUME_INVALIDATION_REFUSED: the pending resume differs', err)
@@ -141,6 +154,21 @@ class ResumeRecoveryTest(f1.ContractBindingTest):
         err = self.refused(lambda: self.invalidate(self.identity(resume)))
         self.assertIn('VERIFICATION_RESUME_STATE_INVALID', err)
         self.assertEqual(before, self.state_bytes())
+
+    def test_r_a_pending_resume_on_a_task_that_is_not_stopped_is_refused(self):
+        resume = self.pending_resume()
+        for changes in ({'status': 'running'}, {'verification_resume_active': dict(resume)}):
+            with self.subTest(changes=list(changes)):
+                self.set_entry(**changes)
+                before = self.state_bytes()
+                err = self.refused(lambda: self.invalidate(self.identity()))
+                self.assertIn('VERIFICATION_RESUME_INVALIDATION_REFUSED: T-001 has no pending verification resume',
+                              err)
+                self.assertEqual(before, self.state_bytes())
+                state = harness.load_state(self.feature, self.doc)
+                state['tasks']['T-001'].update({'status': 'failed'})
+                state['tasks']['T-001'].pop('verification_resume_active', None)
+                harness.save_state(self.feature, state)
 
     def test_r_reason_and_operator_are_required(self):
         resume = self.pending_resume()
