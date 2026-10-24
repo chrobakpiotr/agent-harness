@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import unittest
@@ -257,6 +258,11 @@ class ContractBindingTest(unittest.TestCase):
             before = self.state_bytes()
             with mock.patch.object(vc, 'REPO', other):  # the current directory is still the feature's repository
                 err = self.refused(self.start)
+                # Git's environment (as in a hook) must not make the configured repository look like the feature's.
+                with mock.patch.dict(os.environ, {'GIT_DIR': str(other / '.git')}):
+                    errors, binding = vc.contract_binding(self.feature)
+            self.assertIsNone(binding)
+            self.assertIn('repository identity unconfirmed', errors[0])
         finally:
             shutil.rmtree(other, ignore_errors=True)
         self.assertIn('verification contract currency cannot be established: repository identity unconfirmed', err)
@@ -401,6 +407,26 @@ class CompleteRepairBindingTest(th.CanonicalCompletionRepairTests):
         self.assertEqual('completed', entry['status'])
         self.assertEqual(binding, entry['contract_binding'])
         self.assertEqual(1, len(harness.repaired_completion_records(feature, 'T-A')))
+
+
+    def test_f1_a_change_before_the_locked_check_refuses_complete_repair(self):
+        feature, doc, _, _, _, path = self._setup_repair()
+        binding = vc.contract_binding(feature)[1]
+        self.set_binding(feature, doc, binding)
+        real, calls = vc.contract_binding, []
+
+        def contract_binding(feature_dir, **kwargs):
+            errors, observed = real(feature_dir, **kwargs)
+            calls.append(feature_dir)
+            if len(calls) == 2:  # what the check under the lock sees after a change since the pre-check
+                observed = json.loads(json.dumps(observed))
+                observed['inputs']['constitution_sha256'] = {'present': True, 'sha256': '0' * 64}
+            return errors, observed
+        with mock.patch.object(vc, 'contract_binding', contract_binding):
+            err = self.repair_refused(feature, path)
+        self.assertEqual(2, len(calls))
+        self.assertIn('VERIFICATION_CONTRACT_CHANGED_DURING_OPERATION: constitution_sha256', err)
+        self.assertEqual([], harness.repaired_completion_records(feature, 'T-A'))
 
 
 def load_tests(loader, tests, pattern):

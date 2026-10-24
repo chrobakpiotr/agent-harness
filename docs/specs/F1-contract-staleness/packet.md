@@ -462,36 +462,86 @@ statements. Findings and their handling:
 Rechecked after the fixes (Showcase `ac552f0`, candidate installed): `test_f1_contract_binding` (14),
 `test_wayfinder`, `test_verification_contract`: 32 OK; library tests 30 OK.
 
-## Open points for master
+## Decisions on the open points (master, 2026-10-24) and their handling
 
-**Resume (review finding 1).** Options: (a) leave it: such an attempt stays blocked until a human-resolution path is
-decided (no bypass); (b) let `fail`/`release`-equivalent recovery clear a pending resume whose contract binding no
-longer matches, keeping its history and evidence, so a new `start` can run under the refreshed contract (a recovery
-change, outside F1 as agreed, so it would need its own decision); recommendation: (b), as a separate small package
-after F1, with F1 documenting the current block.
+1. **Pending resume:** a separate small recovery package after F1, no bypass in F1; a verified way out must exist
+   before Showcase adopts F1; the existing recovery is not sufficient. Done as `docs/specs/F1-resume-recovery/packet.md`
+   (branch `f1-resume-recovery`): `invalidate-verification-resume`, and the F1 refusal of a resume `start` names it.
+2. **`complete-repair`:** the attempt's binding is required whenever it can lead to an accepted completion; an
+   operation that only repairs the record of an already accepted completion may rely on that completion's record;
+   attempts without a binding cannot obtain a new completion through it; historical completions stay readable.
+   Done in the shim's `cmd_complete_repair` (Showcase's code until it moves): pre-check, the recheck under the lock as
+   the first statement, and `require_attempt_contract(..., unbound_without_contract=False)` before any side effect of a
+   new repaired completion, so an attempt without a binding is refused **even when the feature has no contract**
+   (`complete` keeps the optional policy, R1). The replay of an already published repair (`ALREADY_COMPLETED_REPAIR`)
+   creates no record and changes no status, and is not checked against the binding. No other path creates a
+   completion: `initial_state` only projects published C1/C2 records; `correct-completion` and the legacy-binding
+   commands require an existing completion; `human-resolve`, `reopen`, `resume-verification` and the invalidation
+   never set `completed` (checked by the second review).
+3. **Repository root:** fail closed for the F1 binding. The shim's `contract_binding` uses `binding_repo_root`: the
+   configured repository (`REPO`) must be a Git checkout and have the feature's Git common directory (so a worktree of
+   the same repository is accepted, whatever its path), else `RepositoryUnconfirmed` → `verification contract currency
+   cannot be established: repository identity unconfirmed (…)`. No fallback to the current directory's repository;
+   Git's environment overrides (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+   `GIT_CEILING_DIRECTORIES`) are removed for these lookups. `repo_root()` is unchanged for `validate_contract`, authoring
+   and the other tools; the binding check refuses in `start`, `claim`, `complete` and `complete-repair` regardless.
+   **Not covered, by design:** for a feature with **no** contract the binding (`{"contract": {"present": false}}`)
+   contains nothing derived from the repository, so no root is resolved; refusing there would refuse every
+   contract-less feature whose directory is not in `REPO`'s repository. Lifecycle state keeps its own identity
+   (`git_common_dir`). For decision if master wants the literal reading.
 
-**`repo_root` fallback (review finding 5):** keep it (authoring depends on it), or make the binding's root lookup
-fail closed without the fallback.
+## Second independent review (fresh context, 2026-10-24, on `ade61c2` and `f1-resume-recovery`): PASS WITH FINDINGS
 
-`complete-repair` (`cmd_complete_repair`) is still Showcase's own code in the shim (it moves with a later packet). It
-runs `load_validated`, so C1–C3 block it, but it does not check the attempt's binding. It publishes a canonical
-repaired completion for an existing completion under an explicit repair authorization, so it is a recovery path. F1
-adds no bypass and no check there. **For decision:** require the attempt binding in `complete-repair` too when it
-moves, or keep it as a recovery path covered by C1–C3 only.
+No path to a new completion that skips the attempt binding, and no write before the guards (authority publication
+inside `locked_state` is transactional, so a refusal discards it). Findings and handling:
+1. **Fixed:** an attempt without a binding could obtain a new repaired completion in a feature without a contract; now
+   refused (decision 2 above; library test `AttemptContractTest`).
+2. **Fixed:** `GIT_DIR` in the environment made an unrelated repository pass the identity check; the lookups now drop
+   Git's environment overrides (test: the foreign-repository case with `GIT_DIR` set; the mutation is caught). The same
+   environment sensitivity exists in the pre-F1 `feature_state.git_common_dir` (not changed).
+3. **Documented:** no identity check for a feature without a contract (decision 3 above).
+4. **Fixed (test):** the recheck under the lock in `complete-repair` is now tested
+   (`test_f1_a_change_before_the_locked_check_refuses_complete_repair`; the mutation is caught).
+5–6. Recovery findings: handled in the recovery packet.
 
-## Adoption (Showcase, after a release on the owner's order)
+## Verification of the decisions (Showcase `ac552f0`, candidate installed)
 
-1. Pin the release and copy the shim `verification_contract.py` (adds `contract_binding`); `harness.py` is unchanged.
-2. Add `tests/test_f1_contract_binding.py` from the shim.
-3. Update the fixtures of the six tests above: they write a `running` attempt into the state for a feature with a
-   contract, so record the binding that attempt's `start` would have recorded, after the contract is written. Two
-   lines in `tests/test_harness.py` at `ac552f0`, verified in a copy (all six then pass; what each test asserts is
-   unchanged):
-   - in the shared completion fixture, after `entry.update({'status': status, 'attempts': attempts, 'owner':
-     'worker-a', 'checkpoint_commit': checkpoint_commit})` (line 4347):
-     `entry['contract_binding'] = harness.vc.contract_binding(feature)[1]`;
-   - in `test_completion_rejects_checkpoint_not_descending_from_dependency`, before its `harness.save_state(feature,
-     state)` (line 4443): `state['tasks']['T-B']['contract_binding'] = harness.vc.contract_binding(feature)[1]`.
-4. Operationally: attempts started before the adoption on a feature with a contract cannot complete normally; follow
-   *Refreshing after a refusal* above (at adoption time, none are running).
-5. Run the full suite and CI; rollback is the previous pin and shim, as before.
+- `test_f1_contract_binding`: 20 OK (`ContractBindingTest` 16, `CompleteRepairBindingTest` 4: no binding, a different
+  binding, a matching binding, a change before the locked check). Library tests OK; ruff clean; CI success on
+  `ade61c2`.
+- **Full Showcase suite with the adoption fixture change applied** (`showcase-test_harness.diff`, 300 units including
+  `test_f1_contract_binding`): **295 OK.** Non-passing: the four known cases (sandbox doctor, workspace, completion
+  boundary, manual observation) and `test_harness.HarnessTest.test_conflicting_failed_task_replans_serialize_with_one_winner`,
+  a thread-join timing test (its feature has no contract and `replan-task` runs no F1 check), OK 5 of 5 alone on both
+  0.18.0 and the candidate after the run.
+- Without the fixture change, the same suite refuses 25 repair tests (`VERIFICATION_CONTRACT_INVALID: … repository
+  identity unconfirmed`): their shared fixture builds the feature in a temporary repository while the tooling's
+  `REPO` is Showcase's checkout, which is exactly what decision 3 refuses.
+
+## Readiness, separated (as master asked)
+
+**F1 implementation: ready for the next checkpoint.** Code on `f1-contract-staleness`; both reviews' findings
+handled or documented; open for decision: the no-contract identity reading (decision 3) and the two observations in the
+recovery packet.
+
+**Showcase's safe adoption: ready once the recovery package is reviewed and both are released.** Conditions:
+1. F1 and `f1-resume-recovery` released together (owner's order).
+2. The shim files (`harness.py`, `verification_contract.py`) and the tests `test_f1_contract_binding.py`,
+   `test_f1_resume_recovery.py` copied.
+3. `tests/test_harness.py` changed as in `docs/specs/F1-contract-staleness/showcase-test_harness.diff` (77 lines,
+   verified at `ac552f0`):
+   - the shared completion fixture points the contract's repository at the fixture (`mock.patch.object(harness.vc,
+     'REPO', self.root)`), writes the tooling repository's constitution bytes so that a CLI subprocess validates the
+     same, and records the attempt's binding;
+   - `test_completion_rejects_checkpoint_not_descending_from_dependency` records `T-B`'s binding;
+   - the two `complete-repair` CLI subprocesses run through `f1_cli(...)`, which sets `REPO` to the fixture before
+     running `harness.py` (no configuration switch in the shim).
+4. Operationally: attempts started before the adoption on a feature with a contract cannot complete normally
+   (*Refreshing after a refusal*); a pending resume uses the recovery package's way out. Showcase's live state has no
+   running attempt in its three contract features.
+5. Full suite and CI; rollback is the previous pin and shim.
+
+**Remaining extraction work (unchanged by F1):** AH5-14c (blocked until F1 is adopted), 14d (the three mutating
+recovery steps, `recover_stale_leases`, `cmd_recover_stale`, and `cmd_complete_repair`, which carries the F1 check
+with it), 14e, AH5-15, AH5-16, AH5-17, and the separate `generate` package; plus `supported-api-pins` for the next
+release.

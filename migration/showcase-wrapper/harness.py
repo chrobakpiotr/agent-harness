@@ -2960,7 +2960,8 @@ def cmd_complete_repair(args: argparse.Namespace) -> None:
         attempt = entry.get('attempts')
         if type(attempt) is not int or attempt < 1:
             die('COMPLETION_REPAIR_ATTEMPT_INVALID: existing attempt is absent')
-        _transitions.require_attempt_contract(args.feature_dir, args.task_id, entry, contract_binding, ns=_NS)
+        _transitions.require_attempt_contract(args.feature_dir, args.task_id, entry, contract_binding,
+                                              unbound_without_contract=False, ns=_NS)  # no new completion unbound
         active = resolve_active_packet(args.feature_dir, doc, args.task_id, state=state)
         task = active_task_contract(args.feature_dir, doc, args.task_id, state=state)
         binding_errors = validate_completion_binding(evidence_doc, args.feature_dir, args.task_id, entry, active)

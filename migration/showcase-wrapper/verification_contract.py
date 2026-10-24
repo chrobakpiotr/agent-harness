@@ -64,9 +64,12 @@ def validate_contract(feature_dir: pathlib.Path, *, require: bool | None = None)
 
 
 def _git_path(cwd: pathlib.Path, *args: str) -> pathlib.Path | None:
+    # The repository is the one at `cwd`: Git's environment overrides (as in hooks) must not substitute another.
+    env = {key: value for key, value in os.environ.items()
+           if key not in {'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES'}}
     try:
         proc = subprocess.run(['git', '-C', str(cwd), 'rev-parse', '--path-format=absolute', *args],
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True, check=False, env=env)
     except OSError:
         return None
     return pathlib.Path(proc.stdout.strip()).resolve() if proc.returncode == 0 and proc.stdout.strip() else None

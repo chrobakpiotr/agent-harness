@@ -76,6 +76,27 @@ class NamespaceTest(unittest.TestCase):
 
 
 
+class AttemptContractTest(unittest.TestCase):
+    """F1: an attempt without a recorded binding, under each policy."""
+
+    def ns(self):
+        def die(message):
+            raise SystemExit(message)
+        return ft.ModuleNamespace({'die': die, 'canonical_json_sha256': lambda value: 'c' * 64})
+
+    def test_without_a_contract_complete_keeps_the_optional_policy_and_complete_repair_refuses(self):
+        absent = {'version': 1, 'contract': {'present': False}}
+        self.assertIsNone(ft.require_attempt_contract('F', 'T-1', {'attempts': 1}, absent, ns=self.ns()))
+        with self.assertRaisesRegex(SystemExit, 'VERIFICATION_CONTRACT_BINDING_MISSING: attempt 1 of T-1'):
+            ft.require_attempt_contract('F', 'T-1', {'attempts': 1}, absent, unbound_without_contract=False,
+                                        ns=self.ns())
+        present = {'version': 1, 'contract': {'present': True, 'sha256': 'a' * 64}, 'inputs': {}}
+        for strict in (True, False):
+            with self.subTest(strict=strict), self.assertRaisesRegex(SystemExit, 'BINDING_MISSING'):
+                ft.require_attempt_contract('F', 'T-1', {'attempts': 1}, present,
+                                            unbound_without_contract=not strict, ns=self.ns())
+
+
 class SourceShapeTest(unittest.TestCase):
     """Static checks on the moved code: the declared names, and the three recovery calls exactly as the source makes them."""
 
