@@ -2796,10 +2796,11 @@ def contract_binding_difference(recorded: Any, current: dict[str, Any]) -> str:
 
 
 def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dict[str, Any],
-                             current: dict[str, Any], *, ns: Any) -> None:
+                             current: dict[str, Any], *, unbound_without_contract: bool = True, ns: Any) -> None:
     """F1: the attempt's contract binding recorded at start must equal the one observed now; it is never rewritten.
 
-    An attempt started before F1 has none: with no contract now that is the old optional policy; with one it refuses.
+    An attempt started before F1 has none: with a contract now it refuses; with none, ``complete`` keeps the old
+    optional policy (``unbound_without_contract``), while ``complete-repair`` passes False and always refuses.
     """
     where = (f'state and evidence are kept; if this run used another checkout (for example the task worktree), drive '
              f'{task_id} from the checkout whose feature directory started it (an orchestrated attempt: the primary '
@@ -2810,7 +2811,7 @@ def require_attempt_contract(feature_dir: pathlib.Path, task_id: str, entry: dic
         where += (f'; this attempt has a pending verification resume: invalidate it first with '
                   f'invalidate-verification-resume --resume {verification_resume_identity(resume, ns=ns)}')
     if 'contract_binding' not in entry:
-        if current['contract']['present']:
+        if current['contract']['present'] or not unbound_without_contract:
             ns.die(f'VERIFICATION_CONTRACT_BINDING_MISSING: attempt {entry.get("attempts")} of {task_id} was started '
                    f'without a recorded contract binding; {where}')
         return

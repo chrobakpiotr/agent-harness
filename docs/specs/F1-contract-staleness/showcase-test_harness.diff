@@ -1,0 +1,77 @@
+diff --git a/tooling/agent-harness/tests/test_harness.py b/tooling/agent-harness/tests/test_harness.py
+index fcea29b..6e63dbd 100644
+--- a/tooling/agent-harness/tests/test_harness.py
++++ b/tooling/agent-harness/tests/test_harness.py
+@@ -22,6 +22,15 @@ assert spec.loader is not None
+ spec.loader.exec_module(harness)
+ 
+ 
++# F1: a CLI subprocess whose verification contract repository is the fixture's (the in-process tests patch vc.REPO).
++F1_CLI = ("import pathlib, runpy, sys; sys.path.insert(0, sys.argv[1]); import verification_contract as vc; "
++          "vc.REPO = pathlib.Path(sys.argv[2]); sys.argv = sys.argv[3:]; runpy.run_path(sys.argv[0], run_name='__main__')")
++
++
++def f1_cli(repository, *args):
++    return [os.sys.executable, '-c', F1_CLI, str(MODULE_PATH.parent), str(repository), str(MODULE_PATH), *args]
++
++
+ class HarnessTest(unittest.TestCase):
+     def setUp(self):
+         self.tmp = tempfile.TemporaryDirectory()
+@@ -4286,6 +4295,9 @@ class CompletionCorrectionTest(unittest.TestCase):
+     feature = HarnessTest.feature
+ 
+     def completion_fixture(self, *, status='running', attempts=1):
++        repository = mock.patch.object(harness.vc, 'REPO', self.root)  # F1: the contract's repository is the fixture's
++        repository.start()
++        self.addCleanup(repository.stop)
+         vc_doc = {
+             'status': 'pass', 'summary': 'fixture verification contract',
+             'criteria': [{
+@@ -4312,7 +4324,7 @@ class CompletionCorrectionTest(unittest.TestCase):
+         feature = self.feature(tasks, spec_text='# TST-001\n\n- AC-001: completion is validated\n')
+         constitution = self.root / 'docs/agentic-sdd/constitution.md'
+         constitution.parent.mkdir(parents=True, exist_ok=True)
+-        constitution.write_text('# fixture constitution\n')
++        constitution.write_bytes((MODULE_PATH.parents[2] / 'docs/agentic-sdd/constitution.md').read_bytes())  # F1: the tooling repository's bytes, so a CLI subprocess validates the same
+         vc_doc.update({
+             'schema_version': 1, 'feature': feature.name, 'status': 'accepted',
+             'inputs': {
+@@ -4346,6 +4358,7 @@ class CompletionCorrectionTest(unittest.TestCase):
+         state['base_kind'] = 'head'
+         entry.update({'status': status, 'attempts': attempts, 'owner': 'worker-a',
+                       'checkpoint_commit': checkpoint_commit})
++        entry['contract_binding'] = harness.vc.contract_binding(feature)[1]
+         harness.save_state(feature, state)
+         return feature, doc
+ 
+@@ -4439,6 +4452,7 @@ class CompletionCorrectionTest(unittest.TestCase):
+         state['tasks']['T-A'].update({'status': 'completed', 'checkpoint_commit': dependency_checkpoint})
+         state['tasks']['T-B'].update({'status': 'running', 'attempts': 1, 'owner': 'worker-a',
+                                       'checkpoint_commit': accepted_base})
++        state['tasks']['T-B']['contract_binding'] = harness.vc.contract_binding(feature)[1]
+         harness.save_state(feature, state)
+         evidence = HarnessTest.passing_completion_evidence(
+             self, feature, doc, 'T-B', 1, accepted_base)
+@@ -5204,8 +5218,8 @@ class CanonicalCompletionRepairTests(CompletionCorrectionTest):
+             if is_first:
+                 time.sleep(0.25)
+             candidate_path = path if is_first else other_path
+-            result = subprocess.run([os.sys.executable, str(MODULE_PATH), 'complete-repair', str(feature), 'T-A',
+-                                     '--owner', 'repair-worker', '--evidence', str(candidate_path)],
++            result = subprocess.run(f1_cli(self.root, 'complete-repair', str(feature), 'T-A',
++                                     '--owner', 'repair-worker', '--evidence', str(candidate_path)),
+                                     cwd=self.root, capture_output=True, text=True,
+                                     env={**local_env, 'PYTHONPATH': str(MODULE_PATH.parent)})
+             outcomes.append((result.returncode, result.stderr, is_first))
+@@ -5287,8 +5301,8 @@ class CanonicalCompletionRepairTests(CompletionCorrectionTest):
+     def test_m42_39_40_cli_valid_and_invalid(self):
+         feature, _, _, _, _, path = self._setup_repair()
+         env = dict(os.environ); env['PYTHONPATH'] = str(MODULE_PATH.parent)
+-        valid = subprocess.run([os.sys.executable, str(MODULE_PATH), 'complete-repair', str(feature), 'T-A',
+-                                '--owner', 'repair-worker', '--evidence', str(path)], cwd=self.root,
++        valid = subprocess.run(f1_cli(self.root, 'complete-repair', str(feature), 'T-A',
++                                '--owner', 'repair-worker', '--evidence', str(path)), cwd=self.root,
+                                capture_output=True, text=True, env=env)
+         self.assertEqual(0, valid.returncode, valid.stderr)
+         self.assertEqual(1, len(harness.repaired_completion_records(feature, 'T-A')))
